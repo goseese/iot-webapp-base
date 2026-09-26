@@ -30,7 +30,9 @@
 #   /opt/voltastc/certs         RDS CA bundle
 #   /var/lib/voltastc           home of the voltastc system user; pm2 state and logs in .pm2
 #   /etc/voltastc/broker.env    broker passwords, root only
-set -euo pipefail
+set -Eeuo pipefail
+# Any failing command stops the install; say which one, so it never ends quietly.
+trap 'printf "\ninstall.sh: stopped at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
 APP_USER=voltastc
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -319,6 +321,22 @@ then
     echo "created $DYNSEC_JSON with the admin client"
 fi
 sed "s|__DYNSEC_PLUGIN__|$PLUGIN|" deploy/mosquitto/voltastc.conf > /etc/mosquitto/conf.d/voltastc.conf
+# Ubuntu 26.04's apparmor package confines mosquitto (/etc/apparmor.d/mosquitto) to mosquitto.db in
+# /var/lib/mosquitto, so the dynamic security plugin cannot read its config ("File is not readable")
+# and every login is refused. The profile's local include is the supported place for additions.
+# The plugin rewrites the file as .new and renames it, the same pattern the profile allows for
+# mosquitto.db.
+if [ -f /etc/apparmor.d/mosquitto ]
+then
+    printf '%s\n' "# Voltastc, written by deploy/install.sh: the dynamic security plugin config" \
+        "/var/lib/mosquitto/dynamic-security.json rwk," \
+        "/var/lib/mosquitto/dynamic-security.json.new rwk," > /etc/apparmor.d/local/mosquitto
+    if aa-enabled --quiet 2>/dev/null
+    then
+        apparmor_parser -r /etc/apparmor.d/mosquitto
+        echo "AppArmor: mosquitto may use $DYNSEC_JSON"
+    fi
+fi
 "$HOOK"
 systemctl enable mosquitto >/dev/null 2>&1
 systemctl restart mosquitto
@@ -382,7 +400,7 @@ if [ "$ok" = 1 ]
 then
     echo "app: $(curl -sS http://127.0.0.1:3000/health)"
 else
-    echo "warning: http://127.0.0.1:3000/health did not answer; see: sudo runuser -u $APP_USER -- pm2 logs"
+    echo "warning: http://127.0.0.1:3000/health did not answer; see: cd $APP_DIR && sudo runuser -u $APP_USER -- pm2 logs"
 fi
 if curl -fs -o /dev/null --max-time 10 "https://$DOMAIN/health"
 then
