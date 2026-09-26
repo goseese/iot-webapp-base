@@ -1,0 +1,114 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <% if (canManage) { %><a class="btn btn-primary btn-sm" href="<%= acctBase %>/alert-groups?edit=new"><i class="fa-solid fa-plus me-1"></i>New alert group</a><% } %>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-7">
+    <% groups.forEach(function (g) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header d-flex justify-content-between align-items-center">
+        <span><strong><%= g.name %></strong><% if (g.is_default) { %> <span class="badge text-bg-primary">default</span><% } %><% if (g.tag_query) { %> <span class="badge text-bg-secondary" title="<%= g.tag_query %>">tag query</span><% } %></span>
+        <% if (canManage) { %><a class="btn btn-sm btn-outline-secondary" href="<%= acctBase %>/alert-groups?edit=<%= fmt.uid(g.uid) %>">Edit</a><% } %>
+      </div>
+      <div class="iot-panel__body">
+        <% g.levels.forEach(function (l) { %>
+        <div class="d-flex gap-3 align-items-start mb-2">
+          <span class="badge rounded-pill text-bg-secondary">Level <%= l.level_no %></span>
+          <div>
+            <div class="small text-secondary"><%= l.level_no === 1 ? "Immediately" : "After " + l.wait_minutes + " min unacknowledged" %></div>
+            <div><% l.recipients.forEach(function (r) { var label = r.recipient_type === "all_access" ? "Everyone with access" : (r.recipient_type === "user" ? ((users.find(function (u) { return u.id === r.recipient_id; }) || {}).username || "user #" + r.recipient_id) : ((contacts.find(function (c) { return c.id === r.recipient_id; }) || {}).name || "contact #" + r.recipient_id)); %><span class="badge text-bg-light border me-1"><%= label %></span><% }); %></div>
+          </div>
+        </div>
+        <% }); %>
+        <% if (!g.levels.length) { %><span class="text-secondary">No levels: nobody is notified.</span><% } %>
+      </div>
+    </div>
+    <% }); %>
+
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Contacts</strong> <span class="text-secondary small ms-2">people who get messages but never log in</span></div>
+      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th></th></tr></thead><tbody>
+      <% contacts.forEach(function (c) { %>
+        <tr><td><%= c.name %></td><td><%= c.email || "" %></td><td><%= c.phone || "" %></td>
+          <td class="text-end"><% if (canManage) { %><form method="post" action="<%= acctBase %>/contacts"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="uid" value="<%= fmt.uid(c.uid) %>"><input type="hidden" name="name" value="x"><button class="btn btn-sm btn-outline-secondary" name="action" value="delete" onclick="return confirm('Remove contact?')">Remove</button></form><% } %></td></tr>
+      <% }); %>
+      <% if (canManage) { %>
+        <tr><td colspan="4">
+          <form method="post" action="<%= acctBase %>/contacts" class="row g-2">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name" required></div>
+            <div class="col-md-4"><input class="form-control form-control-sm" name="email" type="email" placeholder="Email"></div>
+            <div class="col-md-3"><input class="form-control form-control-sm" name="phone" placeholder="+1..."></div>
+            <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Add contact</button></div>
+          </form>
+        </td></tr>
+      <% } %>
+      </tbody></table></div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-5">
+  <% if (canManage && (editing || editNew)) { var g = editing || { name: "", is_default: 0, levels: [{ level_no: 1, wait_minutes: 0, recipients: [{ recipient_type: "all_access" }] }], tag_query: null }; var tq = g.tag_query ? JSON.parse(g.tag_query) : {}; %>
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong><%= editing ? "Edit " + g.name : "New alert group" %></strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="<%= acctBase %>/alert-groups" id="groupForm">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <% if (editing) { %><input type="hidden" name="uid" value="<%= fmt.uid(g.uid) %>"><% } %>
+          <label class="form-label">Name</label>
+          <input class="form-control mb-2" name="name" value="<%= g.name %>" required maxlength="80">
+          <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="is_default" value="1" id="isDefault" <%= g.is_default ? "checked" : "" %>><label class="form-check-label" for="isDefault">Account default (rules use it unless they opt out)</label></div>
+
+          <div id="levels">
+          <% g.levels.forEach(function (l, i) { var n = i + 1; %>
+            <div class="border rounded p-2 mb-2 level" data-level="<%= n %>">
+              <input type="hidden" name="level_<%= n %>_present" value="1">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <strong class="small">Level <%= n %></strong>
+                <% if (n > 1) { %><span class="small">after <input class="form-control form-control-sm d-inline-block" style="width: 70px" name="level_<%= n %>_wait" value="<%= l.wait_minutes %>"> min</span><% } else { %><span class="small text-secondary">immediately</span><% } %>
+              </div>
+              <select class="form-select form-select-sm" name="level_<%= n %>_recipients" multiple size="5">
+                <option value="all_access" <%= l.recipients.some(function (r) { return r.recipient_type === "all_access"; }) ? "selected" : "" %>>Everyone with access to the location</option>
+                <% users.forEach(function (u) { %><option value="user:<%= u.id %>" <%= l.recipients.some(function (r) { return r.recipient_type === "user" && r.recipient_id === u.id; }) ? "selected" : "" %>>User: <%= u.display_name || u.username %></option><% }); %>
+                <% contacts.forEach(function (c) { %><option value="contact:<%= c.id %>" <%= l.recipients.some(function (r) { return r.recipient_type === "contact" && r.recipient_id === c.id; }) ? "selected" : "" %>>Contact: <%= c.name %></option><% }); %>
+              </select>
+            </div>
+          <% }); %>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-secondary mb-3" id="addLevel">Add level</button>
+
+          <details class="mb-3"><summary class="small">Attach by tag query (optional)</summary>
+            <div class="row g-2 mt-1">
+              <div class="col-6"><input class="form-control form-control-sm" name="tq_any" placeholder="any of: a, b" value="<%= (tq.any || []).join(", ") %>"></div>
+              <div class="col-6"><input class="form-control form-control-sm" name="tq_all" placeholder="all of: a, b" value="<%= (tq.all || []).join(", ") %>"></div>
+              <div class="col-6"><input class="form-control form-control-sm" name="tq_none" placeholder="none of: a, b" value="<%= (tq.none || []).join(", ") %>"></div>
+              <div class="col-6"><input class="form-control form-control-sm" name="tq_text" placeholder="name contains" value="<%= tq.text || "" %>"></div>
+            </div>
+            <div class="form-text">Sensors whose effective tags match are attached to this group automatically.</div>
+          </details>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit">Save</button>
+            <a class="btn btn-outline-secondary" href="<%= acctBase %>/alert-groups">Cancel</a>
+            <% if (editing && !g.is_default) { %><button class="btn btn-outline-danger ms-auto" type="submit" name="action" value="delete" onclick="return confirm('Remove this alert group?')">Remove</button><% } %>
+          </div>
+        </form>
+      </div>
+    </div>
+    <script>
+    document.getElementById("addLevel").addEventListener("click", function ()
+    {
+        var levels = document.querySelectorAll("#levels .level");
+        var n = levels.length + 1;
+        if (n > 10) { return; }
+        var tpl = levels[levels.length - 1].cloneNode(true);
+        tpl.dataset.level = n;
+        tpl.innerHTML = tpl.innerHTML.replace(/level_\d+_/g, "level_" + n + "_").replace(/Level \d+/, "Level " + n);
+        if (!tpl.querySelector("input[name$='_wait']")) { tpl.querySelector(".text-secondary").outerHTML = '<span class="small">after <input class="form-control form-control-sm d-inline-block" style="width: 70px" name="level_' + n + '_wait" value="30"> min</span>'; }
+        tpl.querySelectorAll("option").forEach(function (o) { o.selected = false; });
+        document.getElementById("levels").appendChild(tpl);
+    });
+    </script>
+  <% } %>
+  </div>
+</div>

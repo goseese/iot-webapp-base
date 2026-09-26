@@ -1,0 +1,15 @@
+<% if (sent) { %>
+<h1 class="h4 text-center mb-3">Check your email</h1>
+<p class="text-secondary text-center">If that account exists, a sign in link is on its way. It expires soon, so use it promptly.</p>
+<a class="btn btn-outline-secondary w-100 mt-3" href="/login">Back to sign in</a>
+<% } else { %>
+<h1 class="h4 text-center mb-1">Reset your password</h1>
+<p class="text-secondary text-center mb-4">Enter your username or email and we will send a one time sign in link.</p>
+<form method="post" action="/forgot-password" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <label class="form-label" for="login">Username or email</label>
+  <input class="form-control mb-4" id="login" name="login" type="text" autocomplete="username" required autofocus>
+  <button class="btn btn-primary w-100" type="submit">Send reset link</button>
+  <a class="btn btn-link w-100 mt-2" href="/login">Back to sign in</a>
+</form>
+<% } %>

@@ -1,0 +1,34 @@
+<% /* multi-chart(elId, dataUrl, range): ECharts with one y axis per unit */ %>
+<div id="<%= elId %>" style="height: 440px"></div>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var el = document.getElementById("<%= elId %>");
+    var chart = echarts.init(el);
+    var css = getComputedStyle(document.documentElement);
+    function v(n) { return css.getPropertyValue(n).trim(); }
+    var palette = [v("--iot-primary"), v("--iot-success"), v("--iot-warning"), v("--iot-danger"), v("--iot-info"), "#a78bfa", "#f472b6", "#fb923c"];
+    async function load(range)
+    {
+        var d = await (await fetch("<%= dataUrl %>?range=" + range)).json();
+        var units = []; d.series.forEach(function (s) { if (units.indexOf(s.unit) < 0) { units.push(s.unit); } });
+        chart.setOption({
+            animation: false, color: palette,
+            grid: { left: 56, right: 24 + 44 * Math.max(0, units.length - 1), top: 40, bottom: 84 },
+            legend: { top: 0, textStyle: { color: v("--iot-text-muted") } },
+            tooltip: { trigger: "axis" },
+            xAxis: { type: "time", min: d.from, max: d.to, axisLabel: { color: v("--iot-text-muted") }, axisLine: { lineStyle: { color: v("--iot-border") } } },
+            yAxis: units.map(function (u, i) { return { type: "value", scale: true, name: u, position: i === 0 ? "left" : "right", offset: i > 1 ? (i - 1) * 44 : 0, axisLabel: { color: v("--iot-text-muted") }, splitLine: { show: i === 0, lineStyle: { color: v("--iot-border") } } }; }),
+            // zoom window: slider with a preview of the first series, drag inside to pan, pinch or ctrl + wheel to zoom
+            dataZoom: [
+                { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl" },
+                { type: "slider", xAxisIndex: 0, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
+            ],
+            series: d.series.map(function (s) { return { name: s.name, type: "line", showSymbol: false, yAxisIndex: units.indexOf(s.unit), data: s.points, lineStyle: { width: 2 }, tooltip: { valueFormatter: function (x) { return Number(x).toFixed(s.precision) + " " + s.unit; } } }; })
+        }, true);
+    }
+    el.parentElement.querySelectorAll("[data-range]").forEach(function (b) { b.addEventListener("click", function () { el.parentElement.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); }); });
+    window.addEventListener("resize", function () { chart.resize(); });
+    load("<%= range %>");
+});
+</script>

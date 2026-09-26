@@ -1,0 +1,46 @@
+<% var sev = { info: "info", warning: "warning", alarm: "alarm", emergency: "alarm" }[r.ctx.severity] || "alarm"; %>
+<h1 class="h4 text-center mb-1"><%= r.ctx.sensor_name %></h1>
+<p class="text-secondary text-center mb-3"><%= r.ctx.device_name %> at <%= r.ctx.location_name %></p>
+
+<div class="text-center mb-4">
+  <span class="iot-status iot-status--<%= r.ctx.cleared_epoch ? "online" : sev %>"><%= r.ctx.cleared_epoch ? "Cleared" : r.ctx.severity + ", " + r.ctx.direction.replace("_", " ") %></span>
+  <% if (value) { %><div class="mt-2 fs-4"><%= value %></div><% } %>
+  <div class="text-secondary small">Since <%= new Date(r.ctx.raised_epoch * 1000).toLocaleString("en-US", { timeZone: r.ctx.iana_timezone || "UTC" }) %> (<%= r.ctx.iana_timezone %>)</div>
+  <% if (r.ctx.acked_epoch) { %><div class="text-secondary small mt-1">Acknowledged until <%= new Date(r.ctx.ack_until_epoch * 1000).toLocaleTimeString("en-US", { timeZone: r.ctx.iana_timezone || "UTC" }) %></div><% } %>
+</div>
+
+<% if (done) { %>
+<div class="alert alert-success"><%= done %></div>
+<p class="text-secondary small text-center">You can close this page.</p>
+<% } else if (r.ctx.cleared_epoch) { %>
+<p class="text-secondary text-center">This alarm cleared on <%= new Date(r.ctx.cleared_epoch * 1000).toLocaleString("en-US", { timeZone: r.ctx.iana_timezone || "UTC" }) %>.</p>
+<% } else if (r.actor.type !== "user") { %>
+<p class="text-secondary text-center">Hello <%= r.actor.name %>. This link shows the alarm only; a platform user needs to act on it.</p>
+<% } else { %>
+<% if (error) { %><div class="alert alert-danger py-2"><%= error %></div><% } %>
+<form method="post" action="/a/<%= tokenValue %>" id="alarmForm" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <label class="form-label" for="comment">Comment (required)</label>
+  <input class="form-control mb-2" id="comment" name="comment" list="reasons" maxlength="500" required autofocus>
+  <datalist id="reasons"><% r.reasons.forEach(function (x) { %><option value="<%= x %>"><% }); %></datalist>
+
+  <% if (r.canAck) { %>
+  <div class="input-group mb-3">
+    <label class="input-group-text" for="minutes">Acknowledge for</label>
+    <select class="form-select" id="minutes" name="minutes">
+      <option value="30">30 minutes</option>
+      <option value="60" selected>1 hour</option>
+      <option value="240">4 hours</option>
+      <option value="720">12 hours</option>
+      <option value="1440">24 hours</option>
+    </select>
+    <button class="btn btn-primary" type="submit" name="action" value="acknowledge">Acknowledge</button>
+  </div>
+  <% } %>
+  <div class="d-flex gap-2">
+    <button class="btn btn-outline-secondary flex-fill" type="submit" name="action" value="ignore">Seen, not responding</button>
+    <% if (r.canClear) { %><button class="btn btn-outline-danger flex-fill" type="submit" name="action" value="clear">Clear alarm</button><% } %>
+  </div>
+</form>
+<% } %>
+<p class="text-secondary small text-center mt-4"><%= r.actor.name %>, this link was sent to you alone and stops working once used.</p>

@@ -1,0 +1,35 @@
+<div class="d-flex justify-content-between align-items-center mb-3"><a class="btn btn-sm btn-outline-secondary" href="<%= acctBase %>/api"><i class="fa-solid fa-key me-1"></i>API keys and webhooks</a></div>
+<div class="row"><div class="col-12 col-xl-7">
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong><%= account.name %></strong></div>
+  <div class="iot-panel__body">
+    <form method="post" action="<%= acctBase %>/settings">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label class="form-label">Account name</label>
+      <input class="form-control mb-3" name="name" value="<%= account.name %>" required maxlength="120" <%= canEdit ? "" : "readonly" %>>
+
+      <label class="form-label">Display units</label>
+      <p class="text-secondary small">Sensors and locations can override these.</p>
+      <div class="row g-2 mb-3">
+      <% unitMetrics.forEach(function (m) { var cur = current["DISPLAY_UNIT_" + m.slug] || ""; %>
+        <div class="col-md-6">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text" style="min-width: 160px"><%= m.label %></span>
+            <select class="form-select" name="unit_<%= m.slug %>" <%= canEdit ? "" : "disabled" %>>
+              <option value="">Default (<%= m.canonical %>)</option>
+              <% [m.canonical].concat(Object.keys(m.units)).forEach(function (u) { %><option value="<%= u %>" <%= cur === u ? "selected" : "" %>><%= u %></option><% }); %>
+            </select>
+          </div>
+        </div>
+      <% }); %>
+      </div>
+
+      <label class="form-label">Reading retention (days)</label>
+      <input class="form-control mb-1" name="retention_days" value="<%= current.RETENTION_DAYS || "" %>" placeholder="site default" <%= canEdit ? "" : "readonly" %>>
+      <div class="form-text mb-3">Blank uses the site default. Sensors can override.</div>
+
+      <% if (canEdit) { %><button class="btn btn-primary" type="submit">Save</button><% } %>
+    </form>
+  </div>
+</div>
+</div></div>

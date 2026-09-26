@@ -1,0 +1,25 @@
+<form class="d-flex gap-2 align-items-center mb-3" method="get">
+  <label class="small text-secondary">Last</label>
+  <select class="form-select form-select-sm" name="days" style="max-width: 140px" onchange="this.form.submit()"><% [1, 7, 30, 90].forEach(function (d) { %><option value="<%= d %>" <%= d === days ? "selected" : "" %>><%= d %> day<%= d === 1 ? "" : "s" %></option><% }); %></select>
+</form>
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0" id="histTable">
+      <thead><tr><th>Severity</th><th>Location</th><th>Device</th><th>Sensor</th><th>Condition</th><th>Raised</th><th>Cleared</th><th>Reason</th></tr></thead>
+      <tbody>
+      <% alarms.forEach(function (a) { %>
+        <tr>
+          <td><a href="/alarms/<%= fmt.uid(a.uid) %>"><span class="iot-status iot-status--<%= a.cleared_epoch ? "online" : (a.severity === "warning" ? "warning" : "alarm") %>"><%= a.severity %></span></a></td>
+          <td><%= a.location_name %></td><td><%= a.device_name %></td><td><a href="/sensors/<%= fmt.uid(a.sensor_uid) %>"><%= a.sensor_name %></a></td>
+          <td><%= a.direction.replace("_", " ") %></td>
+          <td><%= fmt.epoch(a.raised_epoch, a.iana_timezone) %></td>
+          <td><%= a.cleared_epoch ? fmt.epoch(a.cleared_epoch, a.iana_timezone) : "active" %></td>
+          <td class="text-secondary small"><%= a.clear_reason || "" %></td>
+        </tr>
+      <% }); %>
+      <% if (!alarms.length) { %><tr><td colspan="8" class="text-secondary">Nothing in this window.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% if (alarms.length > 20) { %><script>document.addEventListener("DOMContentLoaded", function () { document.querySelector("#histTable")._devmonDataTable = new simpleDatatables.DataTable("#histTable", { perPage: 25 }); });</script><% } %>

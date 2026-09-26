@@ -1,0 +1,39 @@
+<div class="row"><div class="col-12 col-xl-8">
+<div class="iot-panel"><div class="iot-panel__body">
+  <form method="post" action="<%= report ? "/reports/" + fmt.uid(report.uid) : acctBase + "/reports" %>">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">Name</label><input class="form-control" name="name" value="<%= report ? report.name : "" %>" required maxlength="120"></div>
+      <div class="col-md-6"><label class="form-label">Type</label><select class="form-select" name="report_type"><% types.forEach(function (t) { %><option value="<%= t.slug %>" <%= report && report.report_type === t.slug ? "selected" : "" %>><%= t.displayName %></option><% }); %></select></div>
+      <div class="col-md-4"><label class="form-label">Location</label><select class="form-select" name="location_id"><option value="">All locations</option><% locations.forEach(function (l) { %><option value="<%= l.id %>" <%= query.locationId === l.id ? "selected" : "" %>><%= l.name %></option><% }); %></select></div>
+      <div class="col-md-4"><label class="form-label">Window (days back)</label><input class="form-control" name="window_days" value="<%= query.windowDays || 1 %>"></div>
+      <div class="col-md-4"><label class="form-label">Output</label><select class="form-select" name="output_kind"><option value="html" <%= report && report.output_kind === "html" ? "selected" : "" %>>HTML</option><option value="csv" <%= report && report.output_kind === "csv" ? "selected" : "" %>>CSV</option></select></div>
+      <div class="col-md-6"><label class="form-label">Sensor tags (any of)</label><input class="form-control" name="tq_any" value="<%= query.tagQuery ? (query.tagQuery.any || []).join(", ") : "" %>" placeholder="dailyReport"></div>
+      <div class="col-md-6"><label class="form-label">Sensor name contains</label><input class="form-control" name="tq_text" value="<%= query.tagQuery ? (query.tagQuery.text || "") : "" %>"></div>
+    </div>
+    <hr class="my-4">
+    <div class="row g-3">
+      <div class="col-md-4"><label class="form-label">Schedule</label><select class="form-select" name="schedule_mode"><option value="">Manual only</option><option value="daily" <%= schedule && schedule.mode === "daily" ? "selected" : "" %>>Daily</option><option value="weekly" <%= schedule && schedule.mode === "weekly" ? "selected" : "" %>>Weekly</option></select></div>
+      <div class="col-md-4"><label class="form-label">Time (location local)</label><input class="form-control" name="schedule_time" type="time" value="<%= schedule ? schedule.time : "07:00" %>"></div>
+      <div class="col-md-4"><label class="form-label">Days (weekly)</label><div class="d-flex gap-2 flex-wrap"><% ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].forEach(function (d, i) { %><label class="small"><input type="checkbox" name="schedule_days" value="<%= i %>" <%= schedule && (schedule.days || []).indexOf(i) >= 0 ? "checked" : "" %>> <%= d %></label><% }); %></div></div>
+      <div class="col-md-8">
+        <label class="form-label">Email to</label>
+        <select class="form-select" name="recipients" multiple size="5">
+          <% users.forEach(function (u) { %><option value="user:<%= u.id %>" <%= recipients.indexOf("user:" + u.id) >= 0 ? "selected" : "" %>>User: <%= u.display_name || u.username %></option><% }); %>
+          <% contacts.forEach(function (c) { %><option value="contact:<%= c.id %>" <%= recipients.indexOf("contact:" + c.id) >= 0 ? "selected" : "" %>>Contact: <%= c.name %></option><% }); %>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Visibility</label>
+        <select class="form-select mb-3" name="visibility"><% [["private", "Only me"], ["account_view", "Account can view"], ["account_edit", "Account can edit"]].forEach(function (o) { %><option value="<%= o[0] %>" <%= (report ? report.visibility : "private") === o[0] ? "selected" : "" %>><%= o[1] %></option><% }); %></select>
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="is_enabled" value="1" id="en" <%= !report || report.is_enabled ? "checked" : "" %>><label class="form-check-label" for="en">Enabled</label></div>
+      </div>
+    </div>
+    <div class="d-flex gap-2 mt-4">
+      <button class="btn btn-primary" type="submit">Save report</button>
+      <a class="btn btn-outline-secondary" href="<%= acctBase %>/reports">Cancel</a>
+      <% if (report) { %><button class="btn btn-outline-danger ms-auto" name="action" value="delete" onclick="return confirm('Delete this report?')">Delete</button><% } %>
+    </div>
+  </form>
+</div></div>
+</div></div>

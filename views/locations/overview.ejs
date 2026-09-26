@@ -1,0 +1,40 @@
+<div class="row g-3 mb-4">
+  <%- include("../partials/stat", { label: "Gateways", value: counts.gateways }) %>
+  <%- include("../partials/stat", { label: "Devices", value: counts.devices, status: counts.offline ? { kind: "offline", label: counts.offline + " offline" } : null }) %>
+  <%- include("../partials/stat", { label: "Active alarms", value: counts.alarms, status: counts.alarms ? { kind: "alarm", label: "Requires attention" } : { kind: "online", label: "All clear" } }) %>
+  <% var am = location.alarm_mode || (location.notifications_muted ? "muted" : "active"); %>
+  <%- include("../partials/stat", { label: "Alarms", value: am, status: am === "active" ? { kind: "online", label: "Evaluated and notified" } : (am === "muted" ? { kind: "warning", label: "Recorded, nobody notified" } : { kind: "offline", label: "Not evaluated" }) }) %>
+</div>
+
+<% if (am !== "active") { %>
+<div class="alert alert-<%= am === "muted" ? "warning" : "secondary" %> d-flex justify-content-between align-items-center">
+  <span><i class="fa-solid <%= am === "muted" ? "fa-bell-slash" : "fa-power-off" %> me-2"></i>This location is <strong><%= am %></strong>. <%= am === "muted" ? "Alarms are recorded but nobody is notified." : "Readings log; alarm limits are not evaluated." %> Membership: <%= location.membership_mode %>.</span>
+  <%- include("../partials/alarm-mode", { location: location, canManage: permissions.has(bits, permissions.byName.manage_alarms), back: "/locations/" + fmt.uid(location.uid) }) %>
+</div>
+<% } %>
+<% if (suppressed) { %>
+<div class="alert alert-warning"><i class="fa-solid fa-tower-broadcast me-2"></i><%= suppressed %> device<%= suppressed === 1 ? "" : "s" %> silent, gateway offline. Their alarms are held until the gateway returns.</div>
+<% } %>
+
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Active alarms</strong></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>Severity</th><th>Device</th><th>Sensor</th><th>Condition</th><th>Since</th><th>Status</th></tr></thead>
+      <tbody>
+      <% alarms.forEach(function (a) { var sev = a.severity === "warning" ? "warning" : (a.severity === "info" ? "online" : "alarm"); %>
+        <tr>
+          <td><span class="iot-status iot-status--<%= sev %>"><%= a.severity %></span></td>
+          <td><a href="/devices/<%= fmt.uid(a.device_uid) %>"><%= a.device_name %></a></td>
+          <td><%= a.sensor_name %></td>
+          <td><%= a.direction.replace("_", " ") %></td>
+          <td title="<%= fmt.epoch(a.raised_epoch, location.iana_timezone) %>"><%= fmt.ago(a.raised_epoch, now) %></td>
+          <td><% if (a.suppressed_by) { %><span class="badge text-bg-secondary">Gateway offline</span><% } else if (a.acked_epoch) { %><span class="badge text-bg-warning">Acknowledged</span><% } else { %><span class="badge text-bg-danger">Unacknowledged</span><% } %></td>
+        </tr>
+      <% }); %>
+      <% if (!alarms.length) { %><tr><td colspan="6" class="text-secondary">No active alarms.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<%- include("../partials/alarm-mode-script") %>

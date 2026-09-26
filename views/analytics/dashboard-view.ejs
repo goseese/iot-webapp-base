@@ -1,0 +1,27 @@
+<% var duid = fmt.uid(dashboard.uid); %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <ul class="nav nav-pills">
+    <% tabs.forEach(function (t, i) { %><li class="nav-item"><a class="nav-link<%= i === tabIndex ? " active" : "" %>" href="/analytics/dashboards/<%= duid %>?tab=<%= i %>"><%= t.name %></a></li><% }); %>
+  </ul>
+  <% if (canEdit) { %><a class="btn btn-sm btn-outline-secondary" href="/analytics/dashboards/<%= duid %>/edit">Edit</a><% } %>
+</div>
+<% if (!tab) { %><div class="iot-panel"><div class="iot-panel__body text-secondary">No tabs yet.</div></div>
+<% } else if (tab.chart_uid) { %>
+  <% if (chart) { %>
+  <div class="iot-panel"><div class="iot-panel__header d-flex justify-content-between align-items-center"><strong><%= chart.name %></strong><div class="btn-group btn-group-sm"><% ["1h", "6h", "24h", "7d", "30d", "90d"].forEach(function (r) { %><button type="button" class="btn btn-outline-secondary<%= r === JSON.parse(chart.definition_json).range ? " active" : "" %>" data-range="<%= r %>"><%= r %></button><% }); %></div></div>
+    <div class="iot-panel__body"><%- include("../partials/multi-chart", { elId: "chart", dataUrl: "/analytics/charts/" + fmt.uid(chart.uid) + "/data", range: JSON.parse(chart.definition_json).range }) %></div></div>
+  <% } else { %><div class="iot-panel"><div class="iot-panel__body text-secondary">That chart is gone or not visible to you.</div></div><% } %>
+<% } else { %>
+  <div class="row g-2">
+  <% sensors.forEach(function (s) { %>
+    <div class="col-6 col-md-4 col-xxl-3">
+      <a class="iot-stat d-block text-decoration-none" href="/sensors/<%= fmt.uid(s.uid) %>">
+        <div class="iot-stat__label"><%= s.location_name %> / <%= s.device_name %> / <%= s.name %></div>
+        <div class="iot-stat__value" data-live="<%= fmt.uid(s.uid) %>:value"><%= s.display %></div>
+        <% if (s.alarm) { %><span class="iot-status iot-status--<%= s.alarm.severity === "warning" ? "warning" : "alarm" %>"><%= s.alarm.severity %></span><% } else { %><span class="text-secondary small" data-live="<%= fmt.uid(s.uid) %>:ago" data-epoch="<%= s.last_epoch || 0 %>"><%= fmt.ago(s.last_epoch, now) %></span><% } %>
+      </a>
+    </div>
+  <% }); %>
+  <% if (!sensors.length) { %><div class="col-12 text-secondary">No sensors match this tab's tag query.</div><% } %>
+  </div>
+<% } %>

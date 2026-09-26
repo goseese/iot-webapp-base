@@ -1,0 +1,10 @@
+<div class="text-center mb-3"><i class="fa-solid fa-user-check fa-2x text-primary"></i></div>
+<h1 class="h4 text-center mb-2"><%= title %></h1>
+<p class="text-secondary text-center">You are signed in as <strong><%= username %></strong>, so this reset link was not used.</p>
+<p class="text-secondary text-center mb-4">To change your password, use your profile. If the link is for a different account, sign out and open the link again.</p>
+<a class="btn btn-primary w-100" href="/profile/password">Change my password</a>
+<a class="btn btn-outline-secondary w-100 mt-2" href="/dashboard">Go to the dashboard</a>
+<form method="post" action="/logout" class="mt-2">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <button class="btn btn-link w-100" type="submit">Sign out</button>
+</form>

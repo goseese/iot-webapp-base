@@ -1,0 +1,47 @@
+<% var a = alarm; %>
+<div class="row g-3 mb-4">
+  <%- include("../partials/stat", { label: "Severity", value: a.severity, status: a.cleared_epoch ? { kind: "online", label: "Cleared: " + a.clear_reason } : (a.suppressed_by ? { kind: "offline", label: "Suppressed, gateway offline" } : (a.acked_epoch ? { kind: "warning", label: "Acknowledged" } : { kind: "alarm", label: "Active" })) }) %>
+  <%- include("../partials/stat", { label: "Condition", value: a.direction.replace("_", " "), status: value ? { kind: "online", label: "Trigger " + value } : null }) %>
+  <%- include("../partials/stat", { label: "Raised", value: fmt.ago(a.raised_epoch, now), status: { kind: "online", label: fmt.epoch(a.raised_epoch, a.iana_timezone) } }) %>
+  <%- include("../partials/stat", { label: "Sensor", value: a.sensor_name, status: { kind: "online", label: a.device_name + " at " + a.location_name } }) %>
+</div>
+
+<% if (!a.cleared_epoch) { %>
+<div class="mb-3"><%- include("../partials/alarm-actions", { a: a, canAck: canAck, canClear: canClear }) %></div>
+<% } %>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-7">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Timeline</strong></div>
+      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>When</th><th>Event</th><th>By</th><th>Note</th></tr></thead><tbody>
+      <% events.forEach(function (e) { %>
+        <tr>
+          <td class="text-nowrap"><%= fmt.epoch(e.epoch, a.iana_timezone, { second: "2-digit" }) %></td>
+          <td><%= e.event_kind.replace("_", " ") %><%= e.severity ? " (" + e.severity + ")" : "" %></td>
+          <td><%= e.actor_type === "user" ? (e.actor_username || "user") : e.actor_type %></td>
+          <td class="small text-secondary"><%= e.comment || "" %></td>
+        </tr>
+      <% }); %>
+      </tbody></table></div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-5">
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Escalation</strong></div>
+      <div class="iot-panel__body">
+        <% escalations.forEach(function (x) { %><div><%= x.name %>: level <%= x.current_level %><%= x.is_stopped ? " (stopped)" : "" %></div><% }); %>
+        <% if (!escalations.length) { %><span class="text-secondary">No alert groups attached.</span><% } %>
+      </div>
+    </div>
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Notifications</strong></div>
+      <div class="table-responsive"><table class="table iot-table table-sm mb-0"><thead><tr><th>To</th><th>Ch</th><th>Outcome</th><th>Reason</th></tr></thead><tbody>
+      <% notifications.forEach(function (n) { %><tr data-notification="<%= n.id %>" role="button"><td class="small"><%= n.address %></td><td class="small"><%= n.channel %></td><td><span class="iot-status iot-status--<%= n.outcome === "sent" ? "online" : (n.outcome === "failed" ? "alarm" : "offline") %>"><%= n.outcome %></span></td><td class="small text-secondary"><%= n.reason || n.ladder_note || "" %></td></tr><% }); %>
+      <% if (!notifications.length) { %><tr><td colspan="4" class="text-secondary">None.</td></tr><% } %>
+      </tbody></table></div>
+    </div>
+  </div>
+</div>
+<%- include("../partials/alarm-action-modal", { reasons: reasons, back: "/alarms/" + fmt.uid(a.uid) }) %>
+<%- include("../partials/notification-modal") %>

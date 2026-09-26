@@ -1,0 +1,99 @@
+<%# Unclaimed devices (routes/account/unclaimed.js): the account page, or with inLocation the
+    location's Unclaimed view, the same list filtered to one location. %>
+<% var bulkActions = [];
+   if (claimTargets.length) { bulkActions.push({ key: "claim", label: "Claim" }); }
+   if (canIgnore) { bulkActions.push({ key: showIgnored ? "unignore" : "ignore", label: showIgnored ? "Unignore" : "Ignore" }); if (showIgnored) { bulkActions.push({ key: "ignore", label: "Ignore" }); } }
+   var canBulk = bulkActions.length > 0;
+   var here = inLocation ? "/locations/" + fmt.uid(filter.uid) + "/unclaimed" : acctBase + "/unclaimed";
+   function link(loc, ign) { var q = []; if (!inLocation && loc) { q.push("location=" + fmt.uid(loc.uid)); } if (ign) { q.push("ignored=1"); } return here + (q.length ? "?" + q.join("&") : ""); } %>
+<p class="text-secondary small">Devices heard by <%= inLocation ? "a gateway at " + filter.name : "the gateways in " + account.name %> that are not in any location yet. A device can be heard best, or only, by the building next door, so each row lists every location that heard it, strongest signal first. Claim adds the selected devices to the location you pick.</p>
+<div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap gap-3 align-items-center">
+    <% if (inLocation) { %>
+      <span class="small">Heard at <strong><%= filter.name %></strong> <a class="ms-2" href="<%= acctBase %>/unclaimed">All locations</a></span>
+    <% } else { %>
+      <select class="form-select form-select-sm w-auto" aria-label="Heard at location" onchange="location.href=this.value">
+        <option value="<%= link(null, showIgnored) %>">Heard at any location</option>
+        <% locations.forEach(function (l) { %><option value="<%= link(l, showIgnored) %>" <%= filter && filter.id === l.id ? "selected" : "" %>>Heard at <%= l.name %></option><% }); %>
+      </select>
+    <% } %>
+    <div class="form-check form-switch mb-0">
+      <input class="form-check-input" type="checkbox" id="ignoredToggle" <%= showIgnored ? "checked" : "" %> onchange="location.href=this.checked ? '<%= link(filter, true) %>' : '<%= link(filter, false) %>'">
+      <label class="form-check-label small" for="ignoredToggle">Show ignored</label>
+    </div>
+  </div>
+  <span class="small text-secondary"><%= rows.length %> <%= rows.length === 1 ? "device" : "devices" %></span>
+</div>
+
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table is-sortable align-middle mb-0" id="unclaimedTable">
+      <thead><tr><% if (canBulk) { %><th style="width: 44px"><% if (rows.length) { %><div class="form-check form-switch mb-0" title="Select all"><input class="form-check-input" type="checkbox" id="bulkCheckAll" aria-label="Select all devices"></div><% } %></th><% } %><th class="sort-alpha">MAC</th><th class="sort-alpha">Type</th><th class="sort-custom">Heard at</th><th class="sort-numeric">Last heard</th></tr></thead>
+      <tbody>
+      <% rows.forEach(function (r) { var b = r.best; %>
+        <tr data-bulk-uid="<%= r.mac %>" data-bulk-name="<%= fmt.mac(r.mac) %>" data-ignored="<%= r.ignored ? 1 : 0 %>">
+          <% if (canBulk) { %><td><div class="form-check form-switch mb-0"><input class="form-check-input bulk-pick" type="checkbox" aria-label="Select <%= fmt.mac(r.mac) %>"></div></td><% } %>
+          <td class="font-monospace unclaimed-mac"><%= fmt.mac(r.mac) %><% if (r.ignored) { %> <span class="badge text-bg-secondary">ignored</span><% } %></td>
+          <td class="text-secondary"><%= r.type ? r.type.displayName : (r.registry && r.registry.first_model) || "unknown" %></td>
+          <td data-sort="<%= b.signal_pct !== null ? b.signal_pct : (b.last_rssi !== null ? b.last_rssi : "") %>">
+            <% r.heard.forEach(function (h, i) { %>
+              <div class="<%= i === 0 ? "" : "small text-secondary" %>"><%= h.location_name %> <span class="text-secondary small">via <%= h.gateway_name %></span> <% if (h.signal_pct !== null) { %><span title="<%= h.last_rssi %> dBm"><%= h.signal_pct %>%</span><% } else if (h.last_rssi !== null) { %><%= h.last_rssi %> dBm<% } %></div>
+            <% }); %>
+          </td>
+          <td data-sort="<%= r.last_heard_epoch %>" title="<%= fmt.epoch(r.last_heard_epoch) %>"><%= fmt.ago(r.last_heard_epoch, now) %></td>
+        </tr>
+      <% }); %>
+      <% if (!rows.length) { %><tr><td colspan="<%= canBulk ? 5 : 4 %>" class="text-secondary"><%= showIgnored ? "Nothing unclaimed or ignored here." : "Nothing unclaimed has been heard here." %></td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (canBulk) { %>
+<%- include("../partials/bulk-bar", { actions: bulkActions }) %>
+<%- include("../partials/bulk-modal", { fields: include("./unclaimed-bulk-fields", { claimTargets: claimTargets, preselect: filter }) }) %>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var account = <%- JSON.stringify(fmt.uid(account.uid)) %>;
+    function done(tr, badge)
+    {
+        tr.classList.add("iot-row-cleared");
+        tr.querySelector(".unclaimed-mac").insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary">' + badge + '</span>');
+        tr.querySelector(".bulk-pick").disabled = true;
+    }
+    iotBulk.init(
+    {
+        table: "unclaimedTable",
+        csrf: "<%= csrfToken %>",
+        noun: ["device", "devices"],
+        actions:
+        {
+            claim:
+            {
+                label: "Claim", doing: "Claiming", done: "Claimed",
+                url: function (tr) { return "<%= acctBase %>/unclaimed/" + tr.dataset.bulkUid + "/claim"; },
+                body: function () { return { account: account, location: document.getElementById("bulkLocation").value }; },
+                apply: function (tr, state) { done(tr, "claimed" + (state.location ? ": " + state.location : "")); }
+            },
+            ignore:
+            {
+                label: "Ignore", doing: "Ignoring", done: "Ignored",
+                skip: function (tr) { return tr.dataset.ignored === "1" ? "already ignored" : null; },
+                url: function (tr) { return "<%= acctBase %>/unclaimed/" + tr.dataset.bulkUid + "/ignore"; },
+                body: function () { return { account: account }; },
+                apply: function (tr) { tr.dataset.ignored = "1"; done(tr, "ignored"); }
+            },
+            unignore:
+            {
+                label: "Unignore", doing: "Unignoring", done: "Unignored",
+                skip: function (tr) { return tr.dataset.ignored === "1" ? null : "not ignored"; },
+                url: function (tr) { return "<%= acctBase %>/unclaimed/" + tr.dataset.bulkUid + "/unignore"; },
+                body: function () { return { account: account }; },
+                apply: function (tr) { tr.dataset.ignored = "0"; done(tr, "unignored"); }
+            }
+        }
+    });
+});
+</script>
+<% } %>

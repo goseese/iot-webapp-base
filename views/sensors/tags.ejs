@@ -1,0 +1,62 @@
+<% var canEdit = permissions.has(bits, permissions.byName.edit); %>
+<form method="post" action="/sensors/<%= fmt.uid(sensor.uid) %>/tags">
+<input type="hidden" name="_csrf" value="<%= csrfToken %>">
+<div class="row g-3"><div class="col-12 col-lg-6">
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Tags on <%= sensor.name %></strong></div>
+  <div class="iot-panel__body">
+    <p class="text-secondary small">Tags for this sensor only, comma separated. Tags drive dashboards, alert group attachment and report queries.</p>
+    <input class="form-control mb-2" name="tags" value="<%= own.join(", ") %>" list="alltags" placeholder="dashboard, freezer" <%= canEdit ? "" : "readonly" %>>
+    <datalist id="alltags"><% all.forEach(function (t) { %><option value="<%= t.name %>"><% }); %></datalist>
+    <div><% own.forEach(function (t) { %><span class="badge text-bg-secondary me-1"><%= t %></span><% }); %><% if (!own.length) { %><span class="text-secondary small">none</span><% } %></div>
+  </div>
+</div>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Inherited from <%= sensor.device_name %></strong></div>
+  <div class="iot-panel__body">
+    <% inherited.forEach(function (t) { %>
+      <div class="d-flex align-items-center justify-content-between py-2 border-bottom" data-inherit-row>
+        <span>
+          <span class="badge text-bg-light border me-1 <%= t.excluded ? "text-decoration-line-through opacity-50" : "" %>" data-inherit-tag><%= t.name %></span>
+          <span class="badge text-bg-secondary <%= t.excluded ? "" : "d-none" %>" data-inherit-note>not inherited</span>
+        </span>
+        <div class="form-check form-switch mb-0">
+          <input class="form-check-input" type="checkbox" name="inherit" value="<%= t.id %>" id="inherit<%= t.id %>" <%= t.excluded ? "" : "checked" %> <%= canEdit ? "" : "disabled" %>>
+          <label class="form-check-label small" for="inherit<%= t.id %>">Inherit</label>
+        </div>
+      </div>
+    <% }); %>
+    <% if (!inherited.length) { %><span class="text-secondary small">The device has no tags.</span><% } %>
+    <div class="form-text mt-2">Turn a tag off to keep this sensor out of it while the rest of the device keeps it. Change the device's tags on its <a href="/devices/<%= fmt.uid(sensor.device_uid) %>/tags">Tags tab</a>.</div>
+  </div>
+</div>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Effective tags</strong></div>
+  <div class="iot-panel__body">
+    <% effective.forEach(function (t) { %><span class="badge text-bg-primary me-1"><%= t %></span><% }); %>
+    <% if (!effective.length) { %><span class="text-secondary small">none</span><% } %>
+    <div class="form-text mt-2">What dashboards, alert groups and reports see for this sensor, as last saved.</div>
+  </div>
+</div>
+
+<% if (canEdit) { %><button class="btn btn-primary" type="submit">Save tags</button><% } %>
+</div></div>
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    document.querySelectorAll("[data-inherit-row]").forEach(function (row)
+    {
+        var box = row.querySelector("input[name=inherit]");
+        box.addEventListener("change", function ()
+        {
+            row.querySelector("[data-inherit-tag]").classList.toggle("text-decoration-line-through", !box.checked);
+            row.querySelector("[data-inherit-tag]").classList.toggle("opacity-50", !box.checked);
+            row.querySelector("[data-inherit-note]").classList.toggle("d-none", box.checked);
+        });
+    });
+});
+</script>

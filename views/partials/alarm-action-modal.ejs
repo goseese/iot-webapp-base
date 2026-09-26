@@ -1,0 +1,31 @@
+<div class="modal fade" id="alarmActionModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="post" id="alarmActionForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="back" value="<%= back %>">
+    <div class="modal-header"><h5 class="modal-title" id="alarmActionTitle">Alarm</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div id="alarmActionMinutes" class="mb-3">
+        <label class="form-label">Acknowledge for</label>
+        <select class="form-select" name="minutes"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="240">4 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option></select>
+      </div>
+      <label class="form-label">Comment (required)</label>
+      <input class="form-control" name="comment" list="ackReasons" required maxlength="500">
+      <datalist id="ackReasons"><% reasons.forEach(function (r) { %><option value="<%= r %>"><% }); %></datalist>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit" id="alarmActionSubmit">Confirm</button></div>
+  </form>
+</div></div></div>
+<script>
+document.addEventListener("click", function (e)
+{
+    var b = e.target.closest("[data-alarm-action]");
+    if (!b) { return; }
+    var labels = { ack: "Acknowledge", ignore: "Seen, not responding", clear: "Clear alarm" };
+    document.getElementById("alarmActionForm").action = "/alarms/" + b.dataset.alarmUid + "/" + b.dataset.alarmAction;
+    document.getElementById("alarmActionTitle").textContent = labels[b.dataset.alarmAction] + ": " + b.dataset.alarmName;
+    document.getElementById("alarmActionSubmit").textContent = labels[b.dataset.alarmAction];
+    document.getElementById("alarmActionSubmit").className = "btn " + (b.dataset.alarmAction === "clear" ? "btn-danger" : "btn-primary");
+    document.getElementById("alarmActionMinutes").classList.toggle("d-none", b.dataset.alarmAction !== "ack");
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("alarmActionModal")).show();
+});
+</script>

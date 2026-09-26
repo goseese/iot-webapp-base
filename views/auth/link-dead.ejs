@@ -1,0 +1,11 @@
+<div class="text-center mb-3"><i class="fa-solid fa-link-slash fa-2x text-secondary"></i></div>
+<h1 class="h4 text-center mb-2"><%= title %></h1>
+<% if (typeof kind !== "undefined" && kind === "reset") { %>
+<p class="text-secondary text-center">No harm done, reset links are short lived and work only once. This one may have expired, been used already, or been replaced by a newer email.</p>
+<p class="text-secondary text-center mb-4">Request a fresh link and use the newest email you receive.</p>
+<a class="btn btn-primary w-100" href="/forgot-password">Send me a new link</a>
+<a class="btn btn-link w-100 mt-2" href="/login">Back to sign in</a>
+<% } else { %>
+<p class="text-secondary text-center mb-4">This link has already been used, was replaced by a newer one, or has expired. If you still need it, ask whoever sent it for a new one.</p>
+<a class="btn btn-primary w-100" href="/login">Go to sign in</a>
+<% } %>

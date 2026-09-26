@@ -1,0 +1,18 @@
+<h1 class="h4 text-center mb-1">Welcome back</h1>
+<p class="text-secondary text-center mb-4">Sign in with your username or email.</p>
+
+<% if (error) { %><div class="alert alert-danger py-2" role="alert"><%= error %></div><% } %>
+
+<form method="post" action="/login" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <label class="form-label" for="login">Username or email</label>
+  <input class="form-control mb-3" id="login" name="login" type="text" autocomplete="username" value="<%= values.login || "" %>" required autofocus>
+
+  <div class="d-flex justify-content-between">
+    <label class="form-label" for="password">Password</label>
+    <a href="/forgot-password" class="small">Forgot password?</a>
+  </div>
+  <input class="form-control mb-4" id="password" name="password" type="password" autocomplete="current-password" required>
+
+  <button class="btn btn-primary w-100" type="submit">Sign in</button>
+</form>

@@ -1,0 +1,6 @@
+<%# Bulk bar (public/js/iot-bulk.js). actions: [{ key, label, danger }], already filtered to what the user may do. %>
+<div class="iot-bulk-bar d-none" id="bulkBar">
+  <span id="bulkCount" class="me-3">0 selected</span>
+  <% actions.forEach(function (a) { %><button type="button" class="btn btn-sm <%= a.danger ? "btn-outline-danger" : "btn-outline-secondary" %> me-2" data-bulk="<%= a.key %>"><%= a.label %></button><% }); %>
+  <button type="button" class="btn btn-sm btn-link text-secondary" id="bulkNone">Clear selection</button>
+</div>

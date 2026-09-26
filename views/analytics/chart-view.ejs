@@ -1,0 +1,12 @@
+<div class="iot-panel">
+  <div class="iot-panel__header d-flex justify-content-between align-items-center">
+    <strong><%= chart.name %></strong>
+    <div class="d-flex gap-2 align-items-center">
+      <div class="btn-group btn-group-sm"><% ["1h", "6h", "24h", "7d", "30d", "90d"].forEach(function (r) { %><button type="button" class="btn btn-outline-secondary<%= r === def.range ? " active" : "" %>" data-range="<%= r %>"><%= r %></button><% }); %></div>
+      <% if (canEdit) { %><a class="btn btn-sm btn-outline-secondary" href="/analytics/charts/<%= fmt.uid(chart.uid) %>/edit">Edit</a><% } %>
+    </div>
+  </div>
+  <div class="iot-panel__body">
+    <%- include("../partials/multi-chart", { elId: "chart", dataUrl: "/analytics/charts/" + fmt.uid(chart.uid) + "/data", range: def.range }) %>
+  </div>
+</div>

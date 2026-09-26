@@ -1,0 +1,6 @@
+<% /* alarm-actions(a, canAck, canClear, reasons, back): buttons + one shared modal per page (modal id alarmActionModal) */ %>
+<div class="btn-group btn-group-sm">
+  <% if (canAck && !a.acked_epoch) { %><button type="button" class="btn btn-outline-secondary" data-alarm-action="ack" data-alarm-uid="<%= fmt.uid(a.uid) %>" data-alarm-name="<%= a.sensor_name %>">Acknowledge</button><% } %>
+  <button type="button" class="btn btn-outline-secondary" data-alarm-action="ignore" data-alarm-uid="<%= fmt.uid(a.uid) %>" data-alarm-name="<%= a.sensor_name %>">Seen</button>
+  <% if (canClear) { %><button type="button" class="btn btn-outline-danger" data-alarm-action="clear" data-alarm-uid="<%= fmt.uid(a.uid) %>" data-alarm-name="<%= a.sensor_name %>">Clear</button><% } %>
+</div>

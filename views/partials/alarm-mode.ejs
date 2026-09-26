@@ -1,0 +1,13 @@
+<% /* alarm-mode(location, canManage, back): btn-check radio group; change confirms then submits */ %>
+<% var modes = [["active", "Active", "fa-bell", "btn-outline-success", "Alarms are evaluated and people are notified."], ["muted", "Muted", "fa-bell-slash", "btn-outline-warning", "Alarms are evaluated and recorded, nobody is notified."], ["offline", "Offline", "fa-power-off", "btn-outline-danger", "Readings still log. No alarm limits, no-data checks or repeat timers are evaluated."]]; %>
+<% var current = location.alarm_mode || (location.notifications_muted ? "muted" : "active"); var gid = "am_" + fmt.uid(location.uid).slice(0, 8); %>
+<form method="post" action="/locations/<%= fmt.uid(location.uid) %>/alarm-mode" class="d-inline-block" data-alarm-mode-form data-location-name="<%= location.name %>" data-current="<%= current %>">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <input type="hidden" name="back" value="<%= typeof back !== "undefined" ? back : "" %>">
+  <div class="btn-group btn-group-sm" role="group" aria-label="Alarm mode">
+    <% modes.forEach(function (m) { %>
+    <input type="radio" class="btn-check" name="mode" id="<%= gid %>_<%= m[0] %>" value="<%= m[0] %>" autocomplete="off" <%= m[0] === current ? "checked" : "" %> <%= canManage ? "" : "disabled" %>>
+    <label class="btn <%= m[3] %>" for="<%= gid %>_<%= m[0] %>" title="<%= m[4] %>"><i class="fa-solid <%= m[2] %> me-1"></i><%= m[1] %></label>
+    <% }); %>
+  </div>
+</form>

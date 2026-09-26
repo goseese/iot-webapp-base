@@ -1,0 +1,79 @@
+<div class="row g-3">
+  <div class="col-12 col-xl-7">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Your details</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/profile" novalidate>
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="username">Username</label>
+              <input class="form-control<%= errors.username ? " is-invalid" : "" %>" id="username" name="username" value="<%= values.username %>" <%= usernameLockedUntil > Math.floor(Date.now() / 1000) ? "readonly" : "" %>>
+              <div class="invalid-feedback"><%= errors.username %></div>
+              <% if (usernameLockedUntil > Math.floor(Date.now() / 1000)) { %>
+              <div class="form-text">Can be changed again on <%= new Date(usernameLockedUntil * 1000).toLocaleDateString() %>.</div>
+              <% } %>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="display_name">Display name</label>
+              <input class="form-control" id="display_name" name="display_name" value="<%= values.display_name || "" %>" placeholder="<%= values.username %>">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="email">Email</label>
+              <input class="form-control<%= errors.email ? " is-invalid" : "" %>" id="email" name="email" type="email" value="<%= values.email %>">
+              <div class="invalid-feedback"><%= errors.email %></div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="phone">Mobile number (SMS)</label>
+              <input class="form-control" id="phone" name="phone" value="<%= values.phone || "" %>" placeholder="+15155551234">
+            </div>
+          </div>
+
+          <hr class="my-4">
+          <div class="form-check form-switch mb-2">
+            <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" value="1" <%= values.email_enabled ? "checked" : "" %>>
+            <label class="form-check-label" for="email_enabled">Send me alarm emails</label>
+          </div>
+          <div class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" id="sms_enabled" name="sms_enabled" value="1" <%= values.sms_enabled ? "checked" : "" %>>
+            <label class="form-check-label" for="sms_enabled">Send me alarm text messages</label>
+          </div>
+
+          <button class="btn btn-primary" type="submit">Save changes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-5">
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Password</strong></div>
+      <div class="iot-panel__body">
+        <p class="text-secondary small mb-3">Policy: <%= policy %>.</p>
+        <a class="btn btn-outline-secondary" href="/profile/password">Change password</a>
+      </div>
+    </div>
+
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Delivery check</strong></div>
+      <div class="iot-panel__body">
+        <p class="text-secondary small mb-3">Sends a test message to <%= values.email %> and records the result.</p>
+        <form method="post" action="/profile/test-email" class="d-inline">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-outline-secondary" type="submit">Send test email</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Session</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/logout">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-outline-danger" type="submit">Sign out</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

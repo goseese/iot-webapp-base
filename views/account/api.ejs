@@ -1,0 +1,78 @@
+
+<% if (newKey) { %>
+<div class="alert alert-success"><strong>New API key, shown once:</strong> <code class="user-select-all"><%= newKey %></code><br><span class="small">Use it as <code>Authorization: Bearer &lt;key&gt;</code> against <code><%= apiBase %></code>.</span></div>
+<% } %>
+<% if (newSecret) { %>
+<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-DevMon-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
+<% } %>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>API credentials</strong></div>
+      <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Name</th><th>Prefix</th><th>Permissions</th><th>Last used</th><th></th></tr></thead><tbody>
+      <% creds.forEach(function (c) { %>
+        <tr><td><%= c.name %></td><td class="font-monospace small"><%= c.key_prefix %>_...</td><td class="small"><%= c.names.join(", ") %></td><td class="small text-secondary"><%= fmt.ago(c.last_used_epoch, now) %><%= c.expires_epoch ? ", expires " + fmt.epoch(c.expires_epoch) : "" %></td>
+          <td class="text-end"><% if (canManage) { %><form method="post" action="<%= acctBase %>/api"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="uid" value="<%= fmt.uid(c.uid) %>"><input type="hidden" name="name" value="x"><button class="btn btn-sm btn-outline-danger" name="action" value="revoke" onclick="return confirm('Revoke this key? Clients using it stop working immediately.')">Revoke</button></form><% } %></td></tr>
+      <% }); %>
+      <% if (!creds.length) { %><tr><td colspan="5" class="text-secondary">No credentials.</td></tr><% } %>
+      </tbody></table></div>
+      <% if (canManage) { %>
+      <div class="iot-panel__body border-top">
+        <% if (!keyPrefix) { %>
+        <div class="alert alert-warning mb-0 small">API keys cannot be created until API_KEY_PREFIX is set in Admin &gt; Site settings &gt; API.</div>
+        <% } else { %>
+        <form method="post" action="<%= acctBase %>/api" class="row g-2 align-items-end">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="col-md-5"><label class="form-label small">Name</label><input class="form-control form-control-sm" name="name" required placeholder="Warehouse PLC"></div>
+          <div class="col-md-3"><label class="form-label small">Expires (days)</label><input class="form-control form-control-sm" name="expires_days" placeholder="never"></div>
+          <div class="col-12 d-flex flex-wrap gap-3">
+            <% permissions.BITS.filter(function (p) { return ["view", "api_write", "ack_alarm", "clear_alarm"].indexOf(p.name) >= 0; }).forEach(function (p) { var allowed = permissions.has(ceiling, p.bit); %>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="api_<%= p.name %>" <%= p.name === "view" && allowed ? "checked" : "" %> <%= allowed ? "" : "disabled" %>><label class="form-check-label small" for="api_<%= p.name %>"><%= p.label %></label></div>
+            <% }); %>
+          </div>
+          <div class="col-12"><button class="btn btn-sm btn-primary">Create key</button></div>
+        </form>
+        <% } %>
+      </div>
+      <% } %>
+    </div>
+
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Endpoints</strong></div>
+      <div class="iot-panel__body small">
+        <code>GET  /locations</code>, <code>GET /devices?location=</code>, <code>GET /sensors?device=</code>, <code>GET /readings?sensor=&amp;from=&amp;to=</code>, <code>GET /alarms/active</code><br>
+        <code>POST /readings</code> body <code>[{ "sensor": "&lt;uid&gt;", "value": 21.5, "unit": "C", "epoch": 1789000000 }]</code> (direct devices, needs API write)<br>
+        <code>POST /alarms/&lt;uid&gt;/ack</code> <code>{ "comment": "...", "minutes": 60 }</code>, <code>POST /alarms/&lt;uid&gt;/clear</code> <code>{ "comment": "..." }</code>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Webhooks</strong> <span class="text-secondary small ms-2">outbound, signed, retried</span></div>
+      <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Name</th><th>URL</th><th>Events</th><th>Recent</th><th></th></tr></thead><tbody>
+      <% hooks.forEach(function (h) { %>
+        <tr class="<%= h.is_enabled ? "" : "text-secondary" %>"><td><%= h.name %></td><td class="small text-break"><%= h.url %></td><td class="small"><%= h.event_types %></td>
+          <td class="small"><% h.recent.forEach(function (d) { %><span class="iot-status iot-status--<%= d.outcome === "sent" ? "online" : (d.outcome === "failed" ? "alarm" : "warning") %>" title="<%= d.status_code || "" %>"><%= d.outcome %></span> <% }); %></td>
+          <td class="text-end text-nowrap"><% if (canManage) { %><form method="post" action="<%= acctBase %>/webhooks" class="d-inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="uid" value="<%= fmt.uid(h.uid) %>"><input type="hidden" name="name" value="x"><button class="btn btn-sm btn-outline-secondary" name="action" value="toggle"><%= h.is_enabled ? "Pause" : "Resume" %></button> <button class="btn btn-sm btn-outline-danger" name="action" value="delete" onclick="return confirm('Remove webhook?')">Remove</button></form><% } %></td></tr>
+      <% }); %>
+      <% if (!hooks.length) { %><tr><td colspan="5" class="text-secondary">No webhooks.</td></tr><% } %>
+      </tbody></table></div>
+      <% if (canManage) { %>
+      <div class="iot-panel__body border-top">
+        <form method="post" action="<%= acctBase %>/webhooks" class="row g-2 align-items-end">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="col-md-4"><label class="form-label small">Name</label><input class="form-control form-control-sm" name="name" required></div>
+          <div class="col-md-8"><label class="form-label small">URL</label><input class="form-control form-control-sm" name="url" required placeholder="https://example.com/hook"></div>
+          <div class="col-12 d-flex gap-3">
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="events" value="reading" id="ev_r"><label class="form-check-label small" for="ev_r">Readings</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="events" value="alarm" id="ev_a" checked><label class="form-check-label small" for="ev_a">Alarm transitions</label></div>
+          </div>
+          <div class="col-12"><button class="btn btn-sm btn-primary">Add webhook</button></div>
+        </form>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</div>

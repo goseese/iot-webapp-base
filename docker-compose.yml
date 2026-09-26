@@ -1,0 +1,28 @@
+services:
+  app:
+    env_file: .env.local
+    environment:
+      DOTENV_CONFIG_PATH: /app/.env.local
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./:/app
+      - app_node_modules:/app/node_modules
+    depends_on:
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto:2.0.18
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./docker/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./docker/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./docker/mosquitto/data:/mosquitto/data
+      - ./docker/mosquitto/log:/mosquitto/log
+
+volumes:
+  app_node_modules:

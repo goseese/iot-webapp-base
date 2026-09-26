@@ -1,0 +1,105 @@
+<% var locUid = fmt.uid(location.uid); %>
+<div class="row g-3">
+  <div class="col-12 col-xl-7">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>General</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/locations/<%= locUid %>/settings" novalidate>
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="name">Name</label>
+              <input class="form-control<%= errors.name ? " is-invalid" : "" %>" id="name" name="name" value="<%= values.name %>" required>
+              <div class="invalid-feedback"><%= errors.name %></div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="iana_timezone">Timezone (IANA)</label>
+              <input class="form-control<%= errors.iana_timezone ? " is-invalid" : "" %>" id="iana_timezone" name="iana_timezone" value="<%= values.iana_timezone %>" required>
+              <div class="invalid-feedback"><%= errors.iana_timezone %></div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="address">Address</label>
+              <input class="form-control" id="address" name="address" value="<%= values.address || "" %>">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lat">Latitude</label>
+              <input class="form-control<%= errors.lat ? " is-invalid" : "" %>" id="lat" name="lat" value="<%= values.lat === null || values.lat === undefined ? "" : values.lat %>">
+              <div class="invalid-feedback"><%= errors.lat %></div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lng">Longitude</label>
+              <input class="form-control" id="lng" name="lng" value="<%= values.lng === null || values.lng === undefined ? "" : values.lng %>">
+              <div class="form-text">Blank = not shown on the account map.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="notes">Notes</label>
+              <textarea class="form-control" id="notes" name="notes" rows="3"><%= values.notes || "" %></textarea>
+            </div>
+          </div>
+
+          <hr class="my-4">
+          <% if (permissions.has(bits, permissions.byName.lock_location)) { %>
+          <label class="form-label">Membership mode</label>
+          <% [["normal", "Normal", "Joins and commissioning work; moving devices out needs edit permission here."], ["locked", "Locked", "No automatic joins or first-hear additions ever land here."], ["release", "Release", "Devices here can be taken by any location with add permission (staging)."], ["auto_claim", "Auto claim", "BLE beacons heard by a gateway here that are in no location yet are added here automatically, until the time below. Then the location goes back to normal."]].forEach(function (m) { %>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="membership_mode" id="mode_<%= m[0] %>" value="<%= m[0] %>" <%= values.membership_mode === m[0] ? "checked" : "" %>>
+            <label class="form-check-label" for="mode_<%= m[0] %>"><strong><%= m[1] %></strong> <span class="text-secondary small">- <%= m[2] %></span></label>
+          </div>
+          <% }); %>
+          <div class="ms-4 mb-2" style="max-width: 22rem">
+            <label class="form-label small mb-1" for="auto_claim_hours">Auto claim stays on for</label>
+            <select class="form-select form-select-sm<%= errors.auto_claim ? " is-invalid" : "" %>" id="auto_claim_hours" name="auto_claim_hours">
+              <% if (autoClaimActive) { %><option value="">Keep the current end (<%= fmt.epoch(values.auto_claim_until_epoch, values.iana_timezone) %>)</option><% } else { %><option value="">Choose...</option><% } %>
+              <% autoClaimHours.forEach(function (h) { %><option value="<%= h %>" <%= String(values.auto_claim_hours) === String(h) ? "selected" : "" %>><%= h %> <%= h === 1 ? "hour" : "hours" %> from now</option><% }); %>
+            </select>
+            <% if (errors.auto_claim) { %><div class="invalid-feedback"><%= errors.auto_claim %></div><% } %>
+            <% if (autoClaimActive) { %><div class="form-text">On until <%= fmt.epoch(values.auto_claim_until_epoch, values.iana_timezone) %>.</div><% } %>
+          </div>
+          <% if (autoClaimElsewhere.length) { %>
+          <div class="alert alert-warning py-2 small">Auto claim is on at <strong><%= autoClaimElsewhere.map(function (l) { return l.name; }).join(", ") %></strong>. A beacon goes to whichever location hears it first, so devices may land there before they are heard here. For a campus, auto claim into one staging location and move devices to their buildings afterwards.</div>
+          <% } %>
+          <% } else { %>
+          <p class="text-secondary small">Membership mode: <strong><%= values.membership_mode %></strong> (needs the lock location permission to change).</p>
+          <% } %>
+
+          <% if (permissions.has(bits, permissions.byName.manage_alarms)) { %>
+          <label class="form-label mt-3">Alarm mode</label>
+          <% [["active", "Active", "Alarms are evaluated and people are notified."], ["muted", "Muted", "Alarms are evaluated and recorded, nobody is notified."], ["offline", "Offline", "Readings still log. No alarm limits, no-data checks or repeat timers run; active alarms clear."]].forEach(function (m) { %>
+          <div class="form-check mb-1">
+            <input class="form-check-input" type="radio" name="alarm_mode" id="am_<%= m[0] %>" value="<%= m[0] %>" <%= (values.alarm_mode || (values.notifications_muted ? "muted" : "active")) === m[0] ? "checked" : "" %>>
+            <label class="form-check-label" for="am_<%= m[0] %>"><strong><%= m[1] %></strong> <span class="text-secondary small">- <%= m[2] %></span></label>
+          </div>
+          <% }); %>
+          <div class="mb-4"></div>
+          <% } %>
+
+          <button class="btn btn-primary" type="submit">Save changes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <% if (permissions.has(bits, permissions.byName.delete)) { %>
+  <div class="col-12 col-xl-5">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Delete location</strong></div>
+      <div class="iot-panel__body">
+        <p class="text-secondary small">Deletes every device and sensor here. Readings are purged after the retention window. Type the location name to confirm.</p>
+        <form method="post" action="/locations/<%= locUid %>/delete" onsubmit="return confirmDelete(event)">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input class="form-control mb-2" name="confirm_name" placeholder="<%= location.name %>" autocomplete="off">
+          <button class="btn btn-outline-danger" type="submit">Delete <%= location.name %></button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <% } %>
+</div>
+<script>
+async function confirmDelete(e)
+{
+    e.preventDefault();
+    if (await iotConfirm({ title: "Delete <%= location.name %>?", body: "Every device and sensor here will be deleted and their readings purged after retention. This cannot be undone.", confirmText: "Delete", danger: true })) { e.target.submit(); }
+    return false;
+}
+</script>

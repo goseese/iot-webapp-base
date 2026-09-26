@@ -1,0 +1,46 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <% if (canAdd) { %><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addLocation"><i class="fa-solid fa-plus me-1"></i>Add location</button><% } %>
+</div>
+
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>Location</th><th>Membership</th><th>Alarms</th><th>Gateways</th><th>Devices</th><th>Active alarms</th><th>Timezone</th><th></th></tr></thead>
+      <tbody>
+      <% locations.forEach(function (l) { %>
+        <tr>
+          <td><a href="/locations/<%= fmt.uid(l.uid) %>"><%= l.name %></a></td>
+          <td><%- include("../partials/membership", { mode: l.membership_mode }) %> <span class="text-secondary small"><%= l.membership_mode %></span></td>
+          <td><%- include("../partials/alarm-mode", { location: l, canManage: canMute, back: acctBase + "/locations" }) %></td>
+          <td><%= l.counts.gateways %></td>
+          <td><%= l.counts.devices %></td>
+          <td><% if (l.counts.alarms) { %><span class="iot-status iot-status--alarm"><%= l.counts.alarms %></span><% } else { %>0<% } %></td>
+          <td class="text-secondary"><%= l.iana_timezone %></td>
+          <td class="text-end"><a class="btn btn-sm btn-outline-secondary" href="/locations/<%= fmt.uid(l.uid) %>/settings">Settings</a></td>
+        </tr>
+      <% }); %>
+      <% if (!locations.length) { %><tr><td colspan="8" class="text-secondary">No locations yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (canAdd) { %>
+<div class="modal fade" id="addLocation" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="<%= acctBase %>/locations">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><h5 class="modal-title">Add location</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label" for="name">Name</label>
+        <input class="form-control mb-3" id="name" name="name" required maxlength="120">
+        <label class="form-label" for="iana_timezone">Timezone (IANA)</label>
+        <input class="form-control" id="iana_timezone" name="iana_timezone" list="tzlist" value="America/Chicago" required>
+        <datalist id="tzlist"><% ["America/New_York","America/Chicago","America/Denver","America/Phoenix","America/Los_Angeles","America/Anchorage","Pacific/Honolulu","UTC","Europe/London","Europe/Berlin","Asia/Tokyo","Australia/Sydney"].forEach(function (z) { %><option value="<%= z %>"><% }); %></datalist>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Add location</button></div>
+    </form>
+  </div></div>
+</div>
+<% } %>
+<%- include("../partials/alarm-mode-script") %>

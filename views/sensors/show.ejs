@@ -1,0 +1,242 @@
+<% var uid = fmt.uid(sensor.uid); %>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-xl-3"><div class="iot-stat"><div class="iot-stat__label">Current value</div><div class="iot-stat__value" data-live="<%= uid %>:value"><%= value %></div><span class="iot-status iot-status--<%= sensor.last_epoch ? "online" : "warning" %>" data-live="<%= uid %>:ago" data-epoch="<%= sensor.last_epoch || 0 %>"><%= sensor.last_epoch ? fmt.ago(sensor.last_epoch, now) : "No data yet" %></span></div></div>
+  <%- include("../partials/stat", { label: "Alarm", value: active.length ? active[0].severity : "none", status: active.length ? { kind: active[0].severity === "warning" ? "warning" : "alarm", label: active[0].direction.replace("_", " ") + (active[0].acked_epoch ? ", acknowledged" : "") } : { kind: "online", label: "Clear" } }) %>
+  <%- include("../partials/stat", { label: "Rules", value: rules.filter(function (r) { return r.is_enabled; }).length, status: null }) %>
+  <% var devStatus = sensor.is_offline ? { kind: "offline", label: "Offline" } : (sensor.is_archived ? { kind: "offline", label: "Archived" } : null); %>
+  <div class="col-6 col-xl-3">
+    <div class="iot-stat">
+      <div class="iot-stat__label">Device</div>
+      <div class="iot-stat__value"><%= sensor.device_name %></div>
+      <% if (sensor.device_hardware_id) { %><div class="font-monospace small text-secondary" title="Hardware id, as printed on the device"><%= fmt.hardwareId(sensor.device_hardware_id) %></div><% } %>
+      <% if (devStatus) { %><span class="iot-status iot-status--<%= devStatus.kind %>"><%= devStatus.label %></span><% } %>
+    </div>
+  </div>
+</div>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header d-flex justify-content-between align-items-center">
+    <strong>History</strong>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary d-none" id="fitToggle" aria-pressed="false" title="Fit the y axis to the visible data only, leaving out thresholds outside it">Fit to data</button>
+      <div class="btn-group btn-group-sm" role="group">
+        <% ["1h", "24h", "7d", "30d"].forEach(function (r) { %><button type="button" class="btn btn-outline-secondary<%= r === range ? " active" : "" %>" data-range="<%= r %>"><%= r %></button><% }); %>
+      </div>
+    </div>
+  </div>
+  <div class="iot-panel__body"><div id="chart" style="height: 380px"></div></div>
+</div>
+
+<% var canEdit = permissions.has(bits, permissions.byName.edit); var ownDesc = sensor.description ? sensor.description : null; var shownDesc = ownDesc || descriptionDefault; %>
+<% if (shownDesc || canEdit) { %>
+<div class="iot-panel mb-3" id="about">
+  <div class="iot-panel__header d-flex justify-content-between align-items-center">
+    <strong>About this sensor</strong>
+    <% if (canEdit && shownDesc) { %><button type="button" class="btn btn-sm btn-outline-secondary" data-about-edit><i class="fa-solid fa-pen me-1"></i>Edit</button><% } %>
+  </div>
+  <div class="iot-panel__body">
+    <div id="aboutView">
+      <% if (shownDesc) { %>
+        <div class="iot-description"><%= shownDesc %></div>
+        <% if (!ownDesc) { %><div class="form-text mt-2">Default description from the device type.</div><% } %>
+      <% } else { %>
+        <button type="button" class="btn btn-link btn-sm p-0" data-about-edit><i class="fa-solid fa-plus me-1"></i>Add a description</button>
+      <% } %>
+    </div>
+    <% if (canEdit) { %>
+    <form id="aboutForm" class="d-none" method="post" action="/sensors/<%= uid %>/description">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <textarea class="form-control mb-2" name="description" rows="6" maxlength="4000" placeholder="What this sensor measures, how to read it, what to do when it alarms."><%= shownDesc || "" %></textarea>
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-primary btn-sm" type="submit" name="action" value="save">Save</button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" id="aboutCancel">Cancel</button>
+        <% if (descriptionDefault && ownDesc) { %><button class="btn btn-link btn-sm ms-auto" type="submit" name="action" value="default">Use device type default</button><% } %>
+      </div>
+      <div class="form-text">Plain text; line breaks are kept.<% if (descriptionDefault) { %> Leaving the default text unchanged keeps following the device type.<% } %></div>
+    </form>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel">
+      <div class="iot-panel__header d-flex justify-content-between"><strong>Alarm rules</strong><a class="small" href="/sensors/<%= uid %>/rules">Manage</a></div>
+      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>Condition</th><th>Severity</th><th>Exceed / return</th><th></th></tr></thead><tbody>
+      <% rules.forEach(function (r) { %>
+        <tr class="<%= r.is_enabled ? "" : "text-secondary" %>">
+          <td><% if (r.rule_kind === "no_data") { %>No data for <%= Math.round(r.timeout_secs / 60) %> min<% } else { %><%= r.direction === "upper" ? "Above" : "Below" %> <%= r.thresholdDisplay.toFixed(precision) %> <%= unit %><% } %></td>
+          <td><span class="iot-status iot-status--<%= r.severity === "warning" ? "warning" : (r.severity === "info" ? "online" : "alarm") %>"><%= r.severity %></span></td>
+          <td class="text-secondary small"><%= r.rule_kind === "no_data" ? "" : Math.round(r.exceed_secs / 60) + " / " + Math.round(r.return_secs / 60) + " min" %></td>
+          <td class="text-secondary small"><%= r.is_enabled ? "" : "disabled" %></td>
+        </tr>
+      <% }); %>
+      <% if (!rules.length) { %><tr><td colspan="4" class="text-secondary">No rules.</td></tr><% } %>
+      </tbody></table></div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Recent alarms</strong></div>
+      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>Severity</th><th>Condition</th><th>Raised</th><th>Cleared</th></tr></thead><tbody>
+      <% active.concat(history).forEach(function (a) { %>
+        <tr>
+          <td><a href="/alarms/<%= fmt.uid(a.uid) %>"><span class="iot-status iot-status--<%= a.cleared_epoch ? "online" : (a.severity === "warning" ? "warning" : "alarm") %>"><%= a.severity %></span></a></td>
+          <td><%= a.direction.replace("_", " ") %></td>
+          <td><%= fmt.epoch(a.raised_epoch, location.iana_timezone) %></td>
+          <td><%= a.cleared_epoch ? fmt.epoch(a.cleared_epoch, location.iana_timezone) + " (" + a.clear_reason + ")" : "active" %></td>
+        </tr>
+      <% }); %>
+      <% if (!active.length && !history.length) { %><tr><td colspan="4" class="text-secondary">None.</td></tr><% } %>
+      </tbody></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var aboutForm = document.getElementById("aboutForm");
+    if (aboutForm)
+    {
+        var aboutView = document.getElementById("aboutView"), editButtons = document.querySelectorAll("[data-about-edit]");
+        function editing(on)
+        {
+            aboutForm.classList.toggle("d-none", !on);
+            aboutView.classList.toggle("d-none", on);
+            editButtons.forEach(function (b) { b.classList.toggle("d-none", on); });
+            if (on) { aboutForm.querySelector("textarea").focus(); }
+        }
+        editButtons.forEach(function (b) { b.addEventListener("click", function () { editing(true); }); });
+        document.getElementById("aboutCancel").addEventListener("click", function () { aboutForm.reset(); editing(false); });
+    }
+
+    var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
+    var current = null;   // last loaded data, so live points can be appended in place
+    window.devmonChart =
+    {
+        sensor: "<%= uid %>",
+        append: function (t, v)
+        {
+            if (!current) { return; }
+            current.points.push([t, v]);
+            while (current.points.length && current.points[0][0] < t - (current.to - current.from)) { current.points.shift(); }
+            current.to = t;
+            chart.setOption({ xAxis: { max: t }, series: [{ data: current.points }] });
+        }
+    };
+    var css = getComputedStyle(document.documentElement);
+    function v(name) { return css.getPropertyValue(name).trim(); }
+    var sevColor = { info: v("--iot-info"), warning: v("--iot-warning"), alarm: v("--iot-danger"), emergency: v("--iot-danger") };
+    var sevAlpha = { info: 0.08, warning: 0.10, alarm: 0.12, emergency: 0.20 };
+    var fit = false;   // "Fit to data" toggle: leave thresholds out of the y axis bounds
+    var fitButton = document.getElementById("fitToggle");
+    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+    // Shaded band beyond each threshold, stacked like a ladder: an upper rule shades up to the
+    // next upper rule (or off the top of the plot), a lower rule down to the next lower rule.
+    function bands(rules)
+    {
+        var out = [];
+        ["upper", "lower"].forEach(function (dir)
+        {
+            var up = dir === "upper";
+            var list = rules.filter(function (r) { return r.direction === dir; }).sort(function (a, b) { return up ? a.value - b.value : b.value - a.value; });
+            list.forEach(function (r, i)
+            {
+                var end = i + 1 < list.length ? list[i + 1].value : (up ? 1e9 : -1e9);
+                out.push([{ yAxis: r.value, itemStyle: { color: sevColor[r.severity] || v("--iot-danger"), opacity: sevAlpha[r.severity] || 0.12 } }, { yAxis: end }]);
+            });
+        });
+        return out;
+    }
+
+    // Tick step the way ECharts picks it (1, 2, 3, 5 or 10 times a power of ten), so the bounds
+    // we hand it land on a tick and the axis does not end on an odd label.
+    function niceStep(x)
+    {
+        var p = Math.pow(10, Math.floor(Math.log10(x)));
+        var f = x / p;
+        return (f < 1.5 ? 1 : f < 2.5 ? 2 : f < 4 ? 3 : f < 7 ? 5 : 10) * p;
+    }
+    function niceBounds(lo, hi)
+    {
+        var step = 0, a = lo, b = hi;
+        for (var i = 0; i < 3; i++)
+        {
+            var s = niceStep((b - a) / 5);
+            if (s === step) { break; }
+            step = s;
+            a = +(Math.floor(lo / s) * s).toFixed(10);
+            b = +(Math.ceil(hi / s) * s).toFixed(10);
+        }
+        return [a, b];
+    }
+
+    // Thresholds stay in view by default: people assume a limit does not exist if they cannot see
+    // it. The axis spans the visible data plus every threshold, with a margin past the outermost
+    // threshold so its line and label clear the plot edge. Returning null lets ECharts decide.
+    function yBounds(rules)
+    {
+        var vals = rules.map(function (r) { return r.value; });
+        if (fit || !vals.length) { return { min: null, max: null }; }
+        var rlo = Math.min.apply(null, vals), rhi = Math.max.apply(null, vals);
+        function calc(e)
+        {
+            var dlo = isFinite(e.min) ? e.min : rlo, dhi = isFinite(e.max) ? e.max : rhi;
+            var lo = Math.min(dlo, rlo), hi = Math.max(dhi, rhi);
+            if (hi <= lo) { hi = lo + 1; }
+            var pad = 0.05 * (hi - lo);
+            return niceBounds(rlo < dlo ? lo - pad : lo, rhi > dhi ? hi + pad : hi);
+        }
+        return { min: function (e) { return calc(e)[0]; }, max: function (e) { return calc(e)[1]; } };
+    }
+
+    function draw(keepZoom)
+    {
+        var d = current;
+        var zoom = { start: 0, end: 100 };
+        if (keepZoom)
+        {
+            var z = (chart.getOption().dataZoom || [])[1];
+            if (z) { zoom = { start: z.start, end: z.end }; }
+        }
+        var marks = d.rules.map(function (r) { return { yAxis: r.value, lineStyle: { color: sevColor[r.severity] || v("--iot-danger"), type: "dashed" }, label: { position: r.direction === "lower" ? "insideEndBottom" : "insideEndTop", color: sevColor[r.severity] || v("--iot-danger"), formatter: cap(r.severity) + " " + r.value.toFixed(<%= precision %>) + " " + d.unit } }; });
+        var yb = yBounds(d.rules);
+        fitButton.classList.toggle("d-none", !d.rules.length);
+        chart.setOption({
+            animation: false,
+            grid: { left: 48, right: 16, top: 24, bottom: 84 },
+            tooltip: { trigger: "axis", valueFormatter: function (x) { return x.toFixed(<%= precision %>) + " " + d.unit; } },
+            xAxis: { type: "time", min: d.from, max: d.to, axisLabel: { color: v("--iot-text-muted") }, axisLine: { lineStyle: { color: v("--iot-border") } } },
+            yAxis: { type: "value", scale: true, min: yb.min, max: yb.max, name: d.unit, axisLabel: { color: v("--iot-text-muted") }, splitLine: { lineStyle: { color: v("--iot-border") } } },
+            // zoom window: slider with a preview of the series, drag inside to pan, pinch or ctrl + wheel to zoom
+            dataZoom: [
+                { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl", start: zoom.start, end: zoom.end },
+                { type: "slider", xAxisIndex: 0, start: zoom.start, end: zoom.end, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
+            ],
+            series: [{ type: "line", showSymbol: false, data: d.points, lineStyle: { color: v("--iot-primary"), width: 2 }, markArea: { silent: true, data: bands(d.rules) }, markLine: { silent: true, symbol: "none", data: marks } }]
+        }, true);
+    }
+    async function load(range)
+    {
+        var res = await fetch("/sensors/<%= uid %>/data?range=" + range);
+        current = await res.json();
+        draw(false);
+    }
+    fitButton.addEventListener("click", function ()
+    {
+        fit = !fit;
+        fitButton.classList.toggle("active", fit);
+        fitButton.setAttribute("aria-pressed", String(fit));
+        if (current) { draw(true); }
+    });
+    document.querySelectorAll("[data-range]").forEach(function (b)
+    {
+        b.addEventListener("click", function () { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); history.replaceState(null, "", "?range=" + b.dataset.range); });
+    });
+    window.addEventListener("resize", function () { chart.resize(); });
+    load("<%= range %>");
+});
+</script>

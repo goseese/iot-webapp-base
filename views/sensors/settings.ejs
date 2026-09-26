@@ -1,0 +1,52 @@
+<div class="row"><div class="col-12 col-xl-7">
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Sensor settings</strong></div>
+  <div class="iot-panel__body">
+    <form method="post" action="/sensors/<%= fmt.uid(sensor.uid) %>/settings">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">Name</label><input class="form-control" name="name" value="<%= sensor.name %>" required maxlength="120"></div>
+        <div class="col-md-6"><label class="form-label">Channel</label><input class="form-control" value="<%= sensor.channel_id %> (<%= metric.label %>)" readonly></div>
+        <div class="col-md-4">
+          <label class="form-label">Display unit</label>
+          <select class="form-select" name="display_unit"><option value="">Inherit (<%= unit %>)</option><% units.forEach(function (u) { %><option value="<%= u %>" <%= sensor.display_unit === u ? "selected" : "" %>><%= u || "(none)" %></option><% }); %></select>
+        </div>
+        <div class="col-md-4"><label class="form-label">Decimals</label><input class="form-control" name="display_precision" value="<%= sensor.display_precision === null ? "" : sensor.display_precision %>" placeholder="inherit"></div>
+        <div class="col-md-4">
+          <label class="form-label">Retention (days)</label>
+          <input class="form-control" name="retention_days" value="<%= sensor.retention_days === null ? "" : (sensor.retention_days === -1 ? "forever" : sensor.retention_days) %>" placeholder="inherit">
+          <div class="form-text">Blank inherits; "forever" keeps everything.</div>
+        </div>
+      </div>
+      <div class="form-check form-switch mt-3 mb-3">
+        <input class="form-check-input" type="checkbox" id="is_enabled" name="is_enabled" value="1" <%= sensor.is_enabled ? "checked" : "" %>>
+        <label class="form-check-label" for="is_enabled">Enabled (disabled sensors neither log nor alarm)</label>
+      </div>
+      <button class="btn btn-primary" type="submit">Save</button>
+    </form>
+  </div>
+</div>
+</div>
+<div class="col-12 col-xl-5">
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong><%= sensor.is_hidden ? "Unhide" : "Hide" %></strong><% if (sensor.is_hidden) { %> <span class="badge text-bg-secondary ms-2">hidden</span><% } %></div>
+  <div class="iot-panel__body">
+    <p class="text-secondary small"><%= sensor.is_hidden ? "Show this sensor on the device again and turn its alarms back on." : "Keep logging readings, but turn off alarms and leave this sensor out of the device's sensor list and chart pickers." %></p>
+    <form method="post" action="/sensors/<%= fmt.uid(sensor.uid) %>/hide" onsubmit="return confirmHide(event)"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="action" value="<%= sensor.is_hidden ? "unhide" : "hide" %>"><button class="btn btn-outline-secondary" type="submit"><%= sensor.is_hidden ? "Unhide sensor" : "Hide sensor" %></button></form>
+  </div>
+</div>
+<% if (permissions.has(bits, permissions.byName.delete)) { %>
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Delete</strong></div>
+  <div class="iot-panel__body">
+    <p class="text-secondary small">Removes this sensor and its alarm rules; readings are purged after retention. If the device still reports this channel, a new sensor with no history appears with its next value. To keep it out of sight instead, hide it.</p>
+    <form method="post" action="/sensors/<%= fmt.uid(sensor.uid) %>/delete" onsubmit="return confirmDelete(event)"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-outline-danger" type="submit">Delete <%= sensor.name %></button></form>
+  </div>
+</div>
+<% } %>
+</div>
+</div>
+<script>
+async function confirmHide(e) { e.preventDefault(); if (await iotConfirm({ title: "<%= sensor.is_hidden ? "Unhide" : "Hide" %> <%= sensor.name %>?", body: "<%= sensor.is_hidden ? "It shows on the device again and its alarms resume with the next reading." : "It keeps logging readings. Its active alarms clear and no new ones are raised until it is unhidden." %>", confirmText: "<%= sensor.is_hidden ? "Unhide" : "Hide" %>" })) { e.target.submit(); } return false; }
+async function confirmDelete(e) { e.preventDefault(); if (await iotConfirm({ title: "Delete <%= sensor.name %>?", body: "Its alarm rules are removed and readings purged after retention. If the device still reports this channel, a new sensor with no history appears with its next value.", confirmText: "Delete", danger: true })) { e.target.submit(); } return false; }
+</script>

@@ -1,0 +1,60 @@
+<%# Config rows, rendered by the config page and by GET /devices/:uid/config/rows, which the page
+    fetches when a config notice arrives over the socket. Keep all row markup here. %>
+<% var uid = fmt.uid(device.uid); var canEdit = permissions.has(bits, permissions.byName.edit) && cred && cred.state === "active"; %>
+<% function section(title, list) { %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong><%= title %></strong></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>Setting</th><th>Reported by the gateway</th><th style="min-width: 18rem">Value</th></tr></thead>
+      <tbody>
+      <% list.forEach(function (r) { var d = r.def; var pending = r.desired_value !== null && r.desired_value !== undefined; var editable = canEdit && d.writable; %>
+        <tr data-key="<%= r.key %>" class="<%= pending ? "iot-row-pending" : "" %>">
+          <td>
+            <div><%= d.label %></div>
+            <div class="text-secondary small"><code><%= r.key %></code><% if (d.description) { %> <%= d.description %><% } %></div>
+          </td>
+          <td>
+            <% if (r.reported_epoch) { %><code><%= r.reported_value %></code><div class="text-secondary small"><%= fmt.epoch(r.reported_epoch, location.iana_timezone) %></div><% } else { %><span class="text-secondary">not reported</span><% } %>
+          </td>
+          <td>
+            <% if (editable) { %>
+            <form method="post" action="/devices/<%= uid %>/config" class="d-flex gap-2 align-items-center" <% if (d.confirm) { %>data-confirm="<%= d.confirm %>" onsubmit="return confirmConfig(event)"<% } %>>
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="key" value="<%= r.key %>">
+              <% var shown = pending ? r.desired_value : (r.reported_value === undefined || r.reported_value === null ? "" : r.reported_value); %>
+              <% if (d.kind === "bool") { %>
+                <select class="form-select form-select-sm" name="value" <%= pending ? "disabled" : "" %>>
+                  <option value="true" <%= shown === "true" ? "selected" : "" %>>true</option>
+                  <option value="false" <%= shown !== "true" ? "selected" : "" %>>false</option>
+                </select>
+              <% } else { %>
+                <input class="form-control form-control-sm" name="value" value="<%= shown %>" maxlength="<%= d.maxLength || 99 %>" <%= pending ? "disabled" : "" %>>
+              <% } %>
+              <% if (!pending) { %><button class="btn btn-sm btn-primary" type="submit">Save</button><% } %>
+            </form>
+            <% if (pending) { %>
+            <div class="d-flex gap-2 align-items-center mt-1">
+              <span class="small text-secondary">Pending since <%= fmt.epoch(r.desired_epoch, location.iana_timezone) %><%= r.sent_epoch ? "" : ", not sent yet" %></span>
+              <form method="post" action="/devices/<%= uid %>/config" class="d-inline">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="key" value="<%= r.key %>">
+                <input type="hidden" name="cancel" value="1">
+                <button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button>
+              </form>
+            </div>
+            <% } %>
+            <% } else { %>
+            <span class="text-secondary small"><%= d.writable ? (canEdit ? "" : "No permission, or the unit has no active credentials") : "Read only" %></span>
+            <% } %>
+          </td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
+
+<% section("Gateway settings", rows.filter(function (r) { return !r.def.advanced; })); %>
+<% var adv = rows.filter(function (r) { return r.def.advanced; }); if (adv.length > 0) { section("Advanced", adv); } %>

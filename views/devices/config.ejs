@@ -1,0 +1,78 @@
+<% var uid = fmt.uid(device.uid); var canEdit = permissions.has(bits, permissions.byName.edit) && cred && cred.state === "active"; %>
+
+<p class="text-secondary small">Values the gateway reported, newest on every connect. A saved change is sent to the gateway and stays greyed out as pending until the gateway reports the new value back. If the gateway is offline, pending changes are sent again when it next connects.</p>
+<% if (!cred || cred.state !== "active") { %><div class="alert alert-secondary">This unit has no active broker credentials yet, so settings cannot be sent. Values appear here once it connects.</div><% } %>
+<div id="config-rows" data-device="<%= uid %>">
+<%- include("config-rows") %>
+</div>
+
+<script>
+async function confirmConfig(e) { e.preventDefault(); var f = e.target; if (await iotConfirm({ title: "Change " + f.key.value + "?", body: f.getAttribute("data-confirm"), confirmText: "Send to gateway", danger: true })) { f.submit(); } return false; }
+
+// Live rows: a "config" socket notice for this device (acct/{account}/config, no values) triggers
+// one fetch of the rows, debounced because a gateway publishes every key on connect. A row the user
+// is typing in, or has changed without saving, is left as it is.
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var box = document.getElementById("config-rows");
+    if (!box || !window.iotSocket) { return; }
+    var device = box.getAttribute("data-device");
+    var timer = null;
+
+    function busy(row)
+    {
+        if (row.contains(document.activeElement)) { return true; }
+        var inputs = row.querySelectorAll("input[name=value], select[name=value]");
+        for (var i = 0; i < inputs.length; i++)
+        {
+            var el = inputs[i];
+            if (el.tagName === "SELECT")
+            {
+                var def = el.querySelector("option[selected]");
+                if (def && el.value !== def.value) { return true; }
+            }
+            else if (el.value !== el.defaultValue) { return true; }
+        }
+        return false;
+    }
+
+    async function refresh()
+    {
+        timer = null;
+        try
+        {
+            var res = await fetch("/devices/" + device + "/config/rows", { credentials: "same-origin", headers: { "Accept": "text/html" } });
+            if (res.headers.get("x-app-status") && res.headers.get("x-app-status") !== "200") { return; }
+            var next = document.createElement("div");
+            next.innerHTML = await res.text();
+            var oldRows = box.querySelectorAll("tr[data-key]");
+            var newRows = next.querySelectorAll("tr[data-key]");
+            if (newRows.length === 0) { return; }      // not rows (e.g. the session expired and this is the login page)
+            var sameKeys = oldRows.length === newRows.length && Array.prototype.every.call(newRows, function (r, i) { return oldRows[i].getAttribute("data-key") === r.getAttribute("data-key"); });
+            if (!sameKeys)
+            {
+                if (!Array.prototype.some.call(oldRows, busy)) { box.innerHTML = next.innerHTML; }
+                return;
+            }
+            newRows.forEach(function (r, i)
+            {
+                var old = oldRows[i];
+                if (busy(old) || old.innerHTML === r.innerHTML) { return; }
+                old.replaceWith(r);
+                r.classList.add("iot-flash");
+                setTimeout(function () { r.classList.remove("iot-flash"); }, 800);
+            });
+        }
+        catch (err) { }
+    }
+
+    window.iotSocket.on("config", function (msg)
+    {
+        if (!msg || msg.device !== device) { return; }
+        if (timer) { clearTimeout(timer); }
+        timer = setTimeout(refresh, 1000);
+    });
+    // Anything missed while the socket was down.
+    window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
+});
+</script>

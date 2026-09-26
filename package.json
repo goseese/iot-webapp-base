@@ -1,0 +1,35 @@
+{
+  "name": "devmon",
+  "version": "0.1.1",
+  "private": true,
+  "engines": { "node": ">=22 <23" },
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon --watch . --ext js,ejs,json --ignore public/ --ignore views/ app.js",
+    "create-db": "node scripts/create-db.js",
+    "migrate": "node scripts/migrate.js",
+    "seed": "node scripts/seed.js",
+    "test": "node --test tests/**/*.test.js"
+  },
+  "dependencies": {
+    "@sendgrid/mail": "8.1.6",
+    "bcryptjs": "3.0.3",
+    "connect-session-knex": "5.0.0",
+    "dotenv": "17.4.2",
+    "ejs": "6.0.1",
+    "express": "4.22.2",
+    "express-ejs-layouts": "2.5.1",
+    "express-session": "1.19.0",
+    "express-validator": "7.3.2",
+    "helmet": "8.3.0",
+    "knex": "3.3.0",
+    "mqtt": "5.15.2",
+    "nodemailer": "10.0.10",
+    "pino": "10.3.1",
+    "socket.io": "4.8.3",
+    "tedious": "19.2.2"
+  },
+  "devDependencies": {
+    "nodemon": "3.1.14"
+  }
+}

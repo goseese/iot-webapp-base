@@ -1,0 +1,16 @@
+<div class="d-flex gap-2 mb-3">
+  <% if (canManage) { %>
+  <form method="post" action="/reports/<%= fmt.uid(report.uid) %>"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="name" value="<%= report.name %>"><button class="btn btn-primary btn-sm" name="action" value="run"><i class="fa-solid fa-play me-1"></i>Run now</button></form>
+  <a class="btn btn-outline-secondary btn-sm" href="/reports/<%= fmt.uid(report.uid) %>/edit">Edit</a>
+  <% } %>
+</div>
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong><%= type ? type.displayName : report.report_type %></strong> <span class="text-secondary small ms-2"><%= type ? type.description : "" %></span></div>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Run</th><th>Trigger</th><th>Outcome</th><th>Rows</th><th></th></tr></thead><tbody>
+  <% runs.forEach(function (r) { %>
+    <tr><td><%= fmt.epoch(r.epoch) %></td><td><%= r.trigger_kind %></td><td><span class="iot-status iot-status--<%= r.outcome === "ok" ? "online" : "alarm" %>"><%= r.outcome %></span> <span class="small text-secondary"><%= r.error || "" %></span></td><td><%= r.row_count === null ? "" : r.row_count %></td>
+      <td class="text-end"><% if (r.file_path) { %><a class="btn btn-sm btn-outline-secondary" href="/reports/<%= fmt.uid(report.uid) %>/runs/<%= r.id %>">Download</a><% } %></td></tr>
+  <% }); %>
+  <% if (!runs.length) { %><tr><td colspan="5" class="text-secondary">Not run yet.</td></tr><% } %>
+  </tbody></table></div>
+</div>

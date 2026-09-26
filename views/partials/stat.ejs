@@ -1,0 +1,7 @@
+<div class="col-6 col-xl-3">
+  <div class="iot-stat">
+    <div class="iot-stat__label"><%= label %></div>
+    <% if (typeof truncate !== "undefined" && truncate) { %><div class="iot-stat__value iot-stat__value--truncate" title="<%= value %>"><%= value %></div><% } else { %><div class="iot-stat__value"><%= value %></div><% } %>
+    <% if (typeof status !== "undefined" && status) { %><span class="iot-status iot-status--<%= status.kind %>"><%= status.label %></span><% } %>
+  </div>
+</div>

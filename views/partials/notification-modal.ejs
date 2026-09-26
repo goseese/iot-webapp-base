@@ -1,0 +1,37 @@
+<% /* notification detail modal; rows with data-notification="<id>" open it */ %>
+<div class="modal fade" id="notificationModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Notification</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body" id="notificationBody"><div class="text-secondary">Loading...</div></div>
+</div></div></div>
+<script>
+document.addEventListener("click", async function (e)
+{
+    var row = e.target.closest("[data-notification]");
+    if (!row || e.target.closest("a, button, form")) { return; }
+    var body = document.getElementById("notificationBody");
+    body.innerHTML = '<div class="text-secondary">Loading...</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById("notificationModal")).show();
+    var res = await fetch("/alarms/notifications/" + row.dataset.notification + ".json");
+    // Refusals arrive as 200 with x-app-status set (middleware/httpStatus.js). !res.ok still covers
+    // the case where that middleware is turned off and real status codes come back.
+    if (!res.ok || res.headers.get("x-app-status")) { body.innerHTML = '<div class="text-danger">Could not load this notification.</div>'; return; }
+    var n = await res.json();
+    var esc = function (v) { return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+    var kind = { sent: "online", failed: "alarm", suppressed: "offline" }[n.outcome] || "offline";
+    var rows = [
+        ["When", new Date(n.epoch * 1000).toLocaleString()],
+        ["Outcome", '<span class="iot-status iot-status--' + kind + '">' + esc(n.outcome) + "</span>" + (n.reason ? ' <span class="text-secondary small">' + esc(n.reason) + "</span>" : "")],
+        ["Kind", esc(n.kind) + (n.context ? ", " + esc(n.context.event) + (n.context.severity ? " (" + esc(n.context.severity) + ")" : "") : "")],
+        ["Channel / driver", esc(n.channel) + " via " + esc(n.provider)],
+        ["To", esc(n.to) + ' <span class="text-secondary small">' + esc(n.recipient_type) + "</span>" + (n.ladder ? ', <span class="text-secondary small">' + esc(n.ladder) + "</span>" : "")],
+        ["From", esc(n.from)],
+        ["Subject", esc(n.subject)],
+        ["Provider message id", n.provider_message_id ? "<code>" + esc(n.provider_message_id) + "</code>" : '<span class="text-secondary">none</span>']
+    ];
+    if (n.context) { rows.splice(3, 0, ["Alarm", '<a href="/alarms/' + esc(n.context.alarm_uid) + '">' + esc(n.context.sensor) + "</a> on " + esc(n.context.device) + " at " + esc(n.context.location)]); }
+    var html = '<table class="table table-sm mb-3"><tbody>' + rows.map(function (r) { return '<tr><th class="text-nowrap text-secondary fw-normal" style="width: 180px">' + r[0] + "</th><td>" + r[1] + "</td></tr>"; }).join("") + "</tbody></table>";
+    html += '<h6 class="text-secondary">Message</h6><pre class="iot-pre">' + esc(n.body || "(not stored)") + "</pre>";
+    html += '<h6 class="text-secondary">Provider response</h6><pre class="iot-pre">' + esc(n.provider_response == null ? "(none)" : (typeof n.provider_response === "string" ? n.provider_response : JSON.stringify(n.provider_response, null, 2))) + "</pre>";
+    body.innerHTML = html;
+});
+</script>

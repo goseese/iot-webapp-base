@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> | <%= siteName %></title>
+  <link href="/vendor/bootstrap-5.3.3/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/fontawesome-6.7.2/css/all.min.css" rel="stylesheet">
+  <link href="/vendor/simple-datatables-10.3.0/style.css" rel="stylesheet">
+  <link href="/css/iot-theme.css?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>" rel="stylesheet">
+</head>
+<body <% if (flash) { %>data-iot-flash-type="<%= flash.type %>" data-iot-flash="<%= flash.msg %>"<% } %>>
+<div class="iot-app">
+
+  <aside class="iot-sidebar">
+    <a class="iot-sidebar__brand" href="/account">
+      <span class="iot-logo-mark"><%= siteName.slice(0, 2).toUpperCase() %></span>
+      <span class="iot-logo-text"><%= siteName %></span>
+    </a>
+
+    <nav class="iot-nav" aria-label="Primary navigation">
+      <% (nav ? nav.sections : []).forEach(function (section) { %>
+      <div class="iot-nav-section"><%= section.section %></div>
+      <% if (section.scoped && section.location) { %>
+        <a class="iot-nav-scope" href="<%= acctBase %>/locations" title="Change location">
+          <i class="fa-solid fa-location-dot"></i><span><%= section.location.name %></span>
+        </a>
+      <% } %>
+      <% section.items.forEach(function (item) { %>
+      <a class="iot-nav-link<%= nav.top && nav.top.path === item.path ? " active" : "" %>" href="<%= item.path %>">
+        <i class="fa-solid <%= item.icon %>"></i><span><%= item.label %></span>
+        <% if (item.badge === "alarms") { %><span class="badge rounded-pill text-bg-danger iot-nav-badge d-none" data-live-alarm-count data-location="<%= section.location ? fmt.uid(section.location.uid) : "" %>">0</span><% } %>
+      </a>
+      <% }); %>
+      <% }); %>
+    </nav>
+
+    <footer class="iot-footer">
+      <span class="iot-footer__name"><%= siteName %></span>
+      <% var utcFmt = { timeZone: "UTC", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }; %>
+      <% var booted = build.bootedAt.toLocaleString("en-US", utcFmt) + " UTC"; %>
+      <% var built = build.builtAt && !isNaN(Date.parse(build.builtAt)) ? new Date(build.builtAt).toLocaleString("en-US", utcFmt) + " UTC" : null; %>
+      <% var tip = []; %>
+      <% if (build.buildNumber) { tip.push("Build " + build.buildNumber); } %>
+      <% if (build.shortCommit !== "unknown") { tip.push("commit " + build.shortCommit + (build.branch ? " on " + build.branch : "")); } %>
+      <% if (built) { tip.push("built " + built); } %>
+      <% tip.push("started " + booted); %>
+      <span class="iot-footer__version iot-hint" title="<%= tip.join(", ") %>">v<%= appVersion %> <%= fmt.duration((Date.now() - build.bootedAt.getTime()) / 1000) %></span>
+    </footer>
+  </aside>
+
+  <div class="iot-mobile-backdrop"></div>
+
+  <main class="iot-main">
+    <header class="iot-topbar">
+      <button class="iot-menu-toggle" type="button" data-iot-sidebar-toggle aria-label="Toggle navigation">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <div class="iot-topbar-spacer"></div>
+      <% if (currentUser) { %>
+      <% var shown = currentUser.display_name || currentUser.username; %>
+      <a class="iot-profile-link" href="/profile">
+        <span class="iot-avatar"><%= shown.slice(0, 2).toUpperCase() %></span>
+        <span class="iot-profile-name"><%= shown %></span>
+        <i class="fa-solid fa-chevron-down small text-secondary"></i>
+      </a>
+      <% } %>
+    </header>
+
+    <section class="iot-content">
+      <% var trail = buildTrail(typeof navTrail !== "undefined" ? navTrail : null); %>
+      <% if (trail.length) { %>
+      <div class="iot-breadcrumb mb-2">
+        <% trail.forEach(function (crumb, i) { %>
+          <% if (i > 0) { %><span class="mx-2">/</span><% } %>
+          <% if (crumb.isCurrent) { %><span><%= crumb.label %></span><% } else { %><a href="<%= crumb.path %>"><%= crumb.label %></a><% } %>
+        <% }); %>
+      </div>
+      <% } %>
+
+      <% var sub = (typeof navSub !== "undefined" && navSub) ? navSub : (nav ? nav.subnav : []); %>
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2<%= sub.length ? "" : " mb-3" %>">
+        <h1 class="iot-page-title mb-0"><%= title %></h1>
+        <% if (typeof titleActions !== "undefined" && titleActions) { %><div><%- titleActions %></div><% } %>
+      </div>
+
+      <% if (sub.length) { %>
+      <nav class="iot-subnav" aria-label="Section navigation">
+        <% sub.forEach(function (link) { %>
+        <a class="iot-subnav-link<%= link.active ? " active" : "" %>" href="<%= link.path %>"><%= link.label %></a>
+        <% }); %>
+      </nav>
+      <% } %>
+
+      <%- body %>
+    </section>
+  </main>
+</div>
+
+<script src="/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js"></script>
+<script src="/vendor/echarts-6.1.0/echarts.min.js"></script>
+<script src="/vendor/simple-datatables-10.3.0/simple-datatables.js"></script>
+<script src="/js/iot-theme.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<script src="/js/iot-ui.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/iot-table-tools.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<script src="/js/iot-sort.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<script src="/js/live.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<% if (typeof pageScript !== "undefined" && pageScript) { %><%- pageScript %><% } %>
+</body>
+</html>

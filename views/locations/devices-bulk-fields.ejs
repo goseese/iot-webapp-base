@@ -1,0 +1,10 @@
+<%# Bulk modal fields for the devices and gateways lists (views/partials/bulk-modal.ejs). %>
+<div data-bulk-for="delete" class="alert alert-danger py-2 mb-2">Deletes the selected <%= kinds %> with their sensors and alarm rules, and clears their active alarms.</div>
+<div data-bulk-for="archive" class="alert alert-secondary py-2 mb-2">Readings stay chartable; alarms stop.</div>
+<div data-bulk-for="offline">
+  <label class="form-label" for="bulkReason">Reason</label>
+  <select class="form-select mb-3" id="bulkReason"><% reasons.forEach(function (r) { %><option value="<%= r %>"><%= r %></option><% }); %></select>
+  <label class="form-label" for="bulkComment">Comment (required, applied to every <%= isGw ? "gateway" : "device" %>)</label>
+  <input class="form-control mb-2" id="bulkComment" maxlength="500">
+  <div class="form-text mb-2">Readings still log; alarms are disarmed.</div>
+</div>

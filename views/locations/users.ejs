@@ -1,0 +1,19 @@
+<div class="iot-panel">
+  <div class="iot-panel__header d-flex justify-content-between align-items-center"><strong>Who can see this location</strong><span class="text-secondary small">Grant editing arrives with the account users page.</span></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>User</th><th>Email</th><th>Via</th><th>Permissions</th></tr></thead>
+      <tbody>
+      <% rows.forEach(function (r) { %>
+        <tr>
+          <td><%= r.display_name || r.username %> <span class="text-secondary small"><%= r.username %></span></td>
+          <td><%= r.email %></td>
+          <td><span class="badge text-bg-secondary"><%= r.scope_type %></span></td>
+          <td class="small text-secondary"><%= permissions.names(r.permission_bits).join(", ") %></td>
+        </tr>
+      <% }); %>
+      <% if (!rows.length) { %><tr><td colspan="4" class="text-secondary">Only superadmins.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

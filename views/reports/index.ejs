@@ -1,0 +1,12 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <% if (canManage) { %><a class="btn btn-primary btn-sm" href="<%= acctBase %>/reports/new"><i class="fa-solid fa-plus me-1"></i>New report</a><% } %>
+</div>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Report</th><th>Type</th><th>Schedule</th><th>Output</th><th>Last run</th><th>Enabled</th></tr></thead><tbody>
+  <% reports.forEach(function (r) { %>
+    <tr class="<%= r.is_enabled ? "" : "text-secondary" %>"><td><a href="/reports/<%= fmt.uid(r.uid) %>"><%= r.name %></a></td><td><%= r.type ? r.type.displayName : r.report_type %></td>
+      <td class="small"><%= r.schedule ? r.schedule.mode + " at " + r.schedule.time : "manual" %></td><td class="small"><%= r.output_kind %></td><td class="small text-secondary"><%= fmt.ago(r.last_run_epoch, now) %></td><td><%= r.is_enabled ? "yes" : "no" %></td></tr>
+  <% }); %>
+  <% if (!reports.length) { %><tr><td colspan="6" class="text-secondary">No reports yet.</td></tr><% } %>
+  </tbody></table></div>
+</div>

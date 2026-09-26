@@ -1,0 +1,21 @@
+<% var uid = fmt.uid(device.uid); var ready = cred && cred.state === "active"; %>
+
+<p class="text-secondary small">Commands go to the gateway right away and are not queued. If the gateway is offline nothing happens, and nothing is sent when it reconnects.</p>
+<% if (!ready) { %><div class="alert alert-secondary">This unit has no active broker credentials yet, so commands cannot be sent.</div><% } %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Commands</strong></div>
+  <div class="iot-panel__body">
+    <% commands.forEach(function (c, i) { %>
+    <form method="post" action="/devices/<%= uid %>/commands" class="d-flex align-items-center gap-3<%= i < commands.length - 1 ? " mb-3" : "" %>"<% if (c.confirm) { %> onsubmit="return confirmCommand(event)" data-label="<%= c.label %>" data-confirm="<%= c.description %>"<% } %>>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="command" value="<%= c.name %>">
+      <button class="btn btn-outline-primary text-nowrap" style="min-width: 8rem" type="submit" <%= ready ? "" : "disabled" %>><%= c.label %></button>
+      <div class="form-text m-0"><%= c.description %></div>
+    </form>
+    <% }); %>
+  </div>
+</div>
+
+<script>
+async function confirmCommand(e) { e.preventDefault(); var f = e.target; if (await iotConfirm({ title: f.getAttribute("data-label") + "?", body: f.getAttribute("data-confirm"), confirmText: "Send to gateway", danger: true })) { f.submit(); } return false; }
+</script>

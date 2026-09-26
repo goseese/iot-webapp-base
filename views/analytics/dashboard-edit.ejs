@@ -1,0 +1,28 @@
+<div class="row"><div class="col-12 col-xl-8">
+<div class="iot-panel"><div class="iot-panel__body">
+  <form method="post" action="<%= dashboard ? "/analytics/dashboards/" + fmt.uid(dashboard.uid) : acctBase + "/analytics/dashboards" %>">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="row g-3">
+      <div class="col-md-8"><label class="form-label">Name</label><input class="form-control" name="name" value="<%= dashboard ? dashboard.name : "" %>" required maxlength="120"></div>
+      <div class="col-md-4"><label class="form-label">Visibility</label><select class="form-select" name="visibility"><% [["private", "Only me"], ["account_view", "Account can view"], ["account_edit", "Account can edit"]].forEach(function (o) { %><option value="<%= o[0] %>" <%= (dashboard ? dashboard.visibility : "private") === o[0] ? "selected" : "" %>><%= o[1] %></option><% }); %></select></div>
+    </div>
+    <label class="form-label mt-3">Tabs</label>
+    <table class="table table-sm align-middle"><thead><tr><th>Name</th><th>Kind</th><th>Chart</th><th>Tags (any of)</th><th>Name contains</th></tr></thead><tbody>
+    <% for (var i = 0; i < 12; i++) { var t = tabs[i] || {}; var tq = t.tag_query || {}; %>
+      <tr>
+        <td><input class="form-control form-control-sm" name="tab_<%= i %>_name" value="<%= t.name || "" %>" placeholder="<%= i < 3 ? "Tab " + (i + 1) : "" %>"></td>
+        <td><select class="form-select form-select-sm" name="tab_<%= i %>_kind"><option value="chart" <%= t.chart_uid ? "selected" : "" %>>Chart</option><option value="tags" <%= t.tag_query ? "selected" : "" %>>Sensor grid by tags</option></select></td>
+        <td><select class="form-select form-select-sm" name="tab_<%= i %>_chart"><option value="">-</option><% charts.forEach(function (c) { %><option value="<%= fmt.uid(c.uid) %>" <%= t.chart_uid === fmt.uid(c.uid) ? "selected" : "" %>><%= c.name %></option><% }); %></select></td>
+        <td><input class="form-control form-control-sm" name="tab_<%= i %>_any" value="<%= (tq.any || []).join(", ") %>" placeholder="dashboard, freezer"></td>
+        <td><input class="form-control form-control-sm" name="tab_<%= i %>_text" value="<%= tq.text || "" %>"></td>
+      </tr>
+    <% } %>
+    </tbody></table>
+    <div class="d-flex gap-2">
+      <button class="btn btn-primary" type="submit">Save dashboard</button>
+      <a class="btn btn-outline-secondary" href="<%= acctBase %>/analytics">Cancel</a>
+      <% if (dashboard) { %><button class="btn btn-outline-danger ms-auto" name="action" value="delete" onclick="return confirm('Delete this dashboard?')">Delete</button><% } %>
+    </div>
+  </form>
+</div></div>
+</div></div>

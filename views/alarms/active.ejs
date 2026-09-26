@@ -1,0 +1,93 @@
+<% var canAckAny = alarms.some(function (a) { return a.canAck; }); var canClearAny = alarms.some(function (a) { return a.canClear; }); %>
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0" id="activeAlarms">
+      <thead><tr>
+        <th style="width: 44px"><% if (alarms.length) { %><div class="form-check form-switch mb-0" title="Select all"><input class="form-check-input" type="checkbox" id="bulkCheckAll" aria-label="Select all alarms"></div><% } %></th>
+        <th>Severity</th><th>Location</th><th>Device</th><th>Sensor</th><th>Condition</th><th>Since</th><th>Status</th><th></th>
+      </tr></thead>
+      <tbody>
+      <% alarms.forEach(function (a) { %>
+        <tr data-bulk-uid="<%= fmt.uid(a.uid) %>" data-bulk-name="<%= a.sensor_name %>" data-can-ack="<%= a.canAck ? 1 : 0 %>" data-can-clear="<%= a.canClear ? 1 : 0 %>" data-acked="<%= a.acked_epoch ? 1 : 0 %>">
+          <td><div class="form-check form-switch mb-0"><input class="form-check-input bulk-pick" type="checkbox" aria-label="Select alarm"></div></td>
+          <td><a href="/alarms/<%= fmt.uid(a.uid) %>"><span class="iot-status iot-status--<%= a.severity === "warning" ? "warning" : (a.severity === "info" ? "online" : "alarm") %>"><%= a.severity %></span></a></td>
+          <td><a href="/locations/<%= fmt.uid(a.location_uid) %>"><%= a.location_name %></a></td>
+          <td><a href="/devices/<%= fmt.uid(a.device_uid) %>"><%= a.device_name %></a></td>
+          <td><a href="/sensors/<%= fmt.uid(a.sensor_uid) %>"><%= a.sensor_name %></a></td>
+          <td><%= a.direction.replace("_", " ") %></td>
+          <td title="<%= fmt.epoch(a.raised_epoch, a.iana_timezone) %>"><%= fmt.ago(a.raised_epoch, now) %></td>
+          <td class="alarm-state"><% if (a.suppressed_by) { %><span class="badge text-bg-secondary">Gateway offline</span><% } else if (a.acked_epoch) { %><span class="badge text-bg-warning">Acked until <%= fmt.epoch(a.ack_until_epoch, a.iana_timezone, { month: undefined, day: undefined }) %></span><% } else { %><span class="badge text-bg-danger">Unacknowledged</span><% } %></td>
+          <td class="text-end"><%- include("../partials/alarm-actions", { a: a, canAck: a.canAck, canClear: a.canClear }) %></td>
+        </tr>
+      <% }); %>
+      <% if (!alarms.length) { %><tr><td colspan="9" class="text-secondary">No active alarms.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<%- include("../partials/alarm-action-modal", { reasons: reasons, back: listBase + "/active" }) %>
+
+<% var bulkActions = [];
+   if (alarms.length && canAckAny) { bulkActions.push({ key: "ack", label: "Acknowledge" }); }
+   if (alarms.length) { bulkActions.push({ key: "ignore", label: "Seen, not responding" }); }
+   if (alarms.length && canClearAny) { bulkActions.push({ key: "clear", label: "Clear", danger: true }); } %>
+<%- include("../partials/bulk-bar", { actions: bulkActions }) %>
+<%- include("../partials/bulk-modal", { fields: include("./active-bulk-fields") }) %>
+
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    function body()
+    {
+        var comment = document.getElementById("bulkComment");
+        if (!comment.value.trim()) { comment.classList.add("is-invalid"); return null; }
+        return { comment: comment.value.trim(), minutes: document.getElementById("bulkMinutesSel").value };
+    }
+
+    iotBulk.init(
+    {
+        table: "activeAlarms",
+        csrf: "<%= csrfToken %>",
+        noun: ["alarm", "alarms"],
+        actions:
+        {
+            ack:
+            {
+                label: "Acknowledge", doing: "Acknowledging", done: "Acknowledged",
+                skip: function (tr) { return tr.dataset.canAck === "1" ? null : "no permission at that location"; },
+                url: function (tr) { return "/alarms/" + tr.dataset.bulkUid + "/ack"; },
+                body: body,
+                apply: function (tr, state)
+                {
+                    tr.querySelector(".alarm-state").innerHTML = '<span class="badge text-bg-warning">Acked until ' + new Date(state.ack_until_epoch * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + "</span>";
+                    var ackBtn = tr.querySelector('[data-alarm-action="ack"]'); if (ackBtn) { ackBtn.remove(); }
+                }
+            },
+            ignore:
+            {
+                label: "Mark seen", doing: "Marking seen", done: "Marked seen",
+                url: function (tr) { return "/alarms/" + tr.dataset.bulkUid + "/ignore"; },
+                body: body,
+                apply: function (tr)
+                {
+                    tr.querySelector(".alarm-state").insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary">Seen</span>');
+                }
+            },
+            clear:
+            {
+                label: "Clear", doing: "Clearing", done: "Cleared", danger: true,
+                skip: function (tr) { return tr.dataset.canClear === "1" ? null : "no permission at that location"; },
+                url: function (tr) { return "/alarms/" + tr.dataset.bulkUid + "/clear"; },
+                body: body,
+                apply: function (tr)
+                {
+                    tr.classList.add("iot-row-cleared");
+                    tr.querySelector(".alarm-state").innerHTML = '<span class="badge text-bg-success">Cleared</span>';
+                    tr.querySelector("td:last-child").innerHTML = "";
+                    tr.querySelector(".bulk-pick").disabled = true;
+                }
+            }
+        }
+    });
+});
+</script>

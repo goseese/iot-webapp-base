@@ -1,0 +1,35 @@
+<form class="d-flex gap-2 align-items-center mb-3" method="get">
+  <input class="form-control form-control-sm" style="max-width: 320px" type="search" name="q" value="<%= q %>" placeholder="Search name, MAC or location">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="archived" name="archived" value="1" <%= archived ? "checked" : "" %> onchange="this.form.submit()">
+    <label class="form-check-label small" for="archived">Archived</label>
+  </div>
+  <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
+</form>
+
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0" id="deviceTable">
+      <thead><tr><th>Name</th><th>Location</th><th>Type</th><th>Status</th><th>Last seen</th><th>Alarms</th></tr></thead>
+      <tbody>
+      <% devices.forEach(function (d) { %>
+        <tr>
+          <td><a href="/devices/<%= fmt.uid(d.uid) %>"><%= d.name %></a></td>
+          <td><a href="/locations/<%= fmt.uid(d.location_uid) %>"><%= d.location_name %></a></td>
+          <td class="text-secondary"><%= d.type_name %></td>
+          <td>
+            <% if (d.is_offline) { %><span class="iot-status iot-status--offline">Offline (manual)</span>
+            <% } else if (d.stale) { %><span class="iot-status iot-status--offline"><%= d.last_seen_epoch ? "No recent data" : "Waiting for data" %></span>
+            <% } else if (d.worst && d.worst !== "info") { %><span class="iot-status iot-status--<%= d.worst === "warning" ? "warning" : "alarm" %>"><%= d.worst %></span>
+            <% } else { %><span class="iot-status iot-status--online">Online</span><% } %>
+          </td>
+          <td data-live="device:<%= fmt.uid(d.uid) %>:ago" data-epoch="<%= d.last_seen_epoch || 0 %>" title="<%= fmt.epoch(d.last_seen_epoch, d.iana_timezone) %>"><%= fmt.ago(d.last_seen_epoch, now) %></td>
+          <td><% if (d.activeAlarms) { %><span class="iot-status iot-status--alarm"><%= d.activeAlarms %></span><% } else { %><span class="text-secondary">0</span><% } %></td>
+        </tr>
+      <% }); %>
+      <% if (!devices.length) { %><tr><td colspan="6" class="text-secondary">Nothing to show.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% if (devices.length > 15) { %><script>document.addEventListener("DOMContentLoaded", function () { document.querySelector("#deviceTable")._devmonDataTable = new simpleDatatables.DataTable("#deviceTable", { perPage: 25, searchable: false }); });</script><% } %>

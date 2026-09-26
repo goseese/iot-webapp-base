@@ -1,0 +1,17 @@
+<%# Bulk modal (public/js/iot-bulk.js). fields: optional HTML for the form; mark per-action parts with data-bulk-for="key1 key2". %>
+<div class="modal fade" id="bulkModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="bulkTitle"></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <div id="bulkForm">
+      <%- typeof fields !== "undefined" && fields ? fields : "" %>
+      <div class="form-text" id="bulkSkipNote"></div>
+    </div>
+    <div id="bulkProgress" class="d-none">
+      <div class="progress mb-2" style="height: 8px"><div class="progress-bar" id="bulkProgressBar" style="width: 0%"></div></div>
+      <div id="bulkStatus" class="small text-secondary"></div>
+      <ul id="bulkErrors" class="small text-danger mt-2 mb-0"></ul>
+    </div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="bulkCancel">Cancel</button><button type="button" class="btn btn-primary" id="bulkGo">Confirm</button></div>
+</div></div></div>
+<script src="/js/iot-bulk.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>

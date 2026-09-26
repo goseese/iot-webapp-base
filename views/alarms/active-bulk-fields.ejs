@@ -1,0 +1,7 @@
+<%# Bulk modal fields for the active alarms list (views/partials/bulk-modal.ejs). The ackReasons datalist comes from alarm-action-modal. %>
+<div data-bulk-for="ack" class="mb-3">
+  <label class="form-label" for="bulkMinutesSel">Acknowledge for</label>
+  <select class="form-select" id="bulkMinutesSel"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="240">4 hours</option><option value="720">12 hours</option><option value="1440">24 hours</option></select>
+</div>
+<label class="form-label" for="bulkComment">Comment (required, applied to every alarm)</label>
+<input class="form-control" id="bulkComment" list="ackReasons" maxlength="500">

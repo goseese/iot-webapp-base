@@ -1,0 +1,21 @@
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0" id="rulesTable">
+      <thead><tr><th>Location</th><th>Device</th><th>Sensor</th><th>Condition</th><th>Severity</th><th>Exceed / return</th><th>Enabled</th></tr></thead>
+      <tbody>
+      <% rules.forEach(function (r) { %>
+        <tr class="<%= r.is_enabled ? "" : "text-secondary" %>">
+          <td><%= r.location_name %></td><td><%= r.device_name %></td>
+          <td><a href="/sensors/<%= fmt.uid(r.sensor_uid) %>/rules"><%= r.sensor_name %></a></td>
+          <td><% if (r.rule_kind === "no_data") { %>No data for <%= Math.round(r.timeout_secs / 60) %> min<% } else { %><%= r.direction === "upper" ? "Above" : "Below" %> <%= r.thresholdText %><% } %></td>
+          <td><span class="iot-status iot-status--<%= r.severity === "warning" ? "warning" : (r.severity === "info" ? "online" : "alarm") %>"><%= r.severity %></span></td>
+          <td class="small text-secondary"><%= r.rule_kind === "no_data" ? "" : Math.round(r.exceed_secs / 60) + " / " + Math.round(r.return_secs / 60) + " min" %></td>
+          <td><%= r.is_enabled ? "yes" : "no" %></td>
+        </tr>
+      <% }); %>
+      <% if (!rules.length) { %><tr><td colspan="7" class="text-secondary">No rules.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% if (rules.length > 20) { %><script>document.addEventListener("DOMContentLoaded", function () { document.querySelector("#rulesTable")._devmonDataTable = new simpleDatatables.DataTable("#rulesTable", { perPage: 25 }); });</script><% } %>

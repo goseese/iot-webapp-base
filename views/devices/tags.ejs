@@ -1,0 +1,15 @@
+<div class="row"><div class="col-12 col-lg-6">
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Tags on <%= device.name %></strong></div>
+  <div class="iot-panel__body">
+    <p class="text-secondary small">Sensors on this device inherit these tags unless a sensor turns one off on its own Tags tab. Comma separated.</p>
+    <form method="post" action="/devices/<%= fmt.uid(device.uid) %>/tags">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input class="form-control mb-2" name="tags" value="<%= own.join(", ") %>" list="alltags" <%= permissions.has(bits, permissions.byName.edit) ? "" : "readonly" %>>
+      <datalist id="alltags"><% all.forEach(function (t) { %><option value="<%= t.name %>"><% }); %></datalist>
+      <div class="mb-3"><% own.forEach(function (t) { %><span class="badge text-bg-secondary me-1"><%= t %></span><% }); %></div>
+      <% if (permissions.has(bits, permissions.byName.edit)) { %><button class="btn btn-primary" type="submit">Save tags</button><% } %>
+    </form>
+  </div>
+</div>
+</div></div>

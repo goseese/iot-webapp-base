@@ -1,0 +1,330 @@
+// Stage 1: topic -> gateway/device identity, registry, coverage, dedup claim (architecture 7.4,
+// 7.5). Hands a { device, type, epoch, values } object to stages 2..6.
+const settings = require("../config/settings");
+const logger = require("../config/logger");
+const { knex, T, nowEpoch } = require("../db/knex");
+const deviceTypes = require("../deviceTypes");
+const devicesRepo = require("../db/repos/devices");
+const readingsRepo = require("../db/repos/readings");
+const registry = require("../db/repos/registry");
+const autoClaim = require("../services/autoClaim");
+const credentials = require("../db/repos/credentials");
+const frames = require("./frames");
+const topics = require("../mqtt/topics");
+const pipeline = require("./index");
+const provisioning = require("../services/provisioning");
+
+const typeSlugCache = new Map();   // device_type_id -> slug
+
+async function typeForDevice(device)
+{
+    if (!typeSlugCache.has(device.device_type_id))
+    {
+        const row = await knex(T("device_types")).where({ id: device.device_type_id }).first();
+        typeSlugCache.set(device.device_type_id, row ? row.slug : null);
+    }
+    const slug = typeSlugCache.get(device.device_type_id);
+    return slug ? deviceTypes.get(slug) : null;
+}
+
+function connectsItself(device)
+{
+    return device && !device.is_archived && (device.kind === "gateway" || device.kind === "direct");
+}
+
+// Topic GUID -> the device row the data belongs to (migration 0020).
+//
+// The GUID in dev/{guid}/... is the UNIT's broker username, not a device row uid. The unit's data
+// goes to its current placement: the one live, unarchived device row holding its MAC. A unit with no
+// placement is unclaimed: it is connected with valid credentials and there is nowhere for its data
+// to go, which is expected, not an error.
+//
+// Returns { gateway, unit }. gateway is null when there is nowhere to deliver.
+async function resolve(guid)
+{
+    const unit = await credentials.forGuid(guid);
+    if (!unit)
+    {
+        // No unit holds this GUID: hardware provisioned before the unit model, or not MAC identified
+        // (host name or IMEI), whose topic GUID is still its device row uid. Unchanged behavior.
+        const device = await devicesRepo.findByUid(guid);
+        return { gateway: connectsItself(device) ? device : null, unit: null };
+    }
+
+    // First message ever from this unit over MQTT. The 30 day cleanup revokes units that were issued
+    // credentials and never got this far, so stamp it once; later messages skip the write.
+    if (unit.mqtt_seen_epoch === null || unit.mqtt_seen_epoch === undefined)
+    {
+        await knex(T("device_credentials")).where({ id: unit.id }).whereNull("mqtt_seen_epoch").update({ mqtt_seen_epoch: nowEpoch() });
+    }
+
+    const placement = await credentials.currentPlacement(unit.mac);
+    return { gateway: connectsItself(placement) ? placement : null, unit: unit };
+}
+
+// An unclaimed unit's status still carries its firmware, and the registry is the only place a unit
+// with no placement is visible (the future unassociated devices page reads last_firmware from it).
+// A retained replay is skipped: it would stamp the registry as heard now.
+async function touchUnclaimed(unit, channel, payload, receipt, retained)
+{
+    if (channel !== "status" || retained) { return; }
+    let status = null;
+    try { status = JSON.parse(payload.toString("utf8")); }
+    catch (err) { return; }
+    const fw = firmwareOf(status);
+    await registry.touch(unit.mac, { epoch: receipt, firmware: fw, via: "frame", deviceUid: null });
+}
+
+// gw7080 firmware sends "firmware"; gateway-protocol 4.4 names it "fw". Either is accepted.
+function firmwareOf(status)
+{
+    if (!status) { return null; }
+    const fw = status.firmware !== undefined && status.firmware !== null ? status.firmware : status.fw;
+    return fw === undefined || fw === null || fw === "" ? null : String(fw);
+}
+
+async function rawLog(topic, payload)
+{
+    if (settings.get("RAW_PUBLISH_LOG_DAYS", 0) > 0)
+    {
+        await knex(T("raw_publish_log")).insert({ epoch: nowEpoch(), topic: topic, payload: payload }).catch(() => {});
+    }
+}
+
+// meta.retained: the broker sent a stored retained copy because we subscribed (mqtt/client.js).
+async function handle(topic, payload, meta)
+{
+    const retained = !!(meta && meta.retained);
+    await rawLog(topic, payload);
+    const t = topics.parse(topic);
+    if (!t) { return; }   // includes dom/ and dtm/, which belong to the legacy adapter only
+    if (t.kind === "provision") { return provisioning.handleRequest(t.hardwareId, payload); }
+
+    const receipt = nowEpoch();
+    const { gateway, unit } = await resolve(t.guid);
+
+    // Config belongs to the unit (MAC), so it is kept even while the unit has no placement.
+    if (t.channel === "config")
+    {
+        const mac = unit ? unit.mac : (gateway ? gateway.hardware_id : null);
+        return handleConfig(mac, gateway, t.key, payload, receipt);
+    }
+
+    if (!gateway)
+    {
+        if (unit)
+        {
+            // Unclaimed, or its placement was removed: expected, so debug rather than warn. Adding
+            // its MAC to a location starts delivery with no action on the device.
+            await touchUnclaimed(unit, t.channel, payload, receipt, retained);
+            logger.debug({ topic: topic, mac: unit.mac }, "publish from an unclaimed unit; nothing to deliver to");
+            return;
+        }
+        logger.warn({ topic: topic }, "publish from unknown device guid");
+        return;
+    }
+    if (t.channel === "status") { return handleStatus(gateway, payload, receipt, retained, t.guid); }
+    if (t.channel === "data") { return handleData(gateway, payload, receipt); }
+    if (t.channel === "geoscan") { return handleGeoscan(gateway, payload); }
+    if (t.channel === "cmd_ack") { return handleCmdAck(gateway, payload); }
+    if (t.channel === "frame") { return handleFrame(gateway, payload, receipt); }
+    if (t.channel === "ble") { return handleBle(gateway, payload, receipt); }
+}
+
+// dev/{guid}/status: connectivity, retained. Types that follow gateway-protocol 4.4 (statusMap) still
+// get their own sensors from it; the gw7080 sends readings on dev/{guid}/data instead (dataMap).
+// A retained replay only refreshes firmware: last seen and readings come from live messages only,
+// or every reconnect of the ingest client would mark the whole fleet as heard now.
+async function handleStatus(gateway, payload, receipt, retained, guid)
+{
+    let status;
+    try { status = JSON.parse(payload.toString("utf8")); }
+    catch (err) { logger.warn({ gateway: gateway.uid }, "status payload is not JSON"); return; }
+    const fw = firmwareOf(status);
+    if (retained)
+    {
+        if (fw) { await knex(T("devices")).where({ id: gateway.id }).update({ firmware: fw.slice(0, 24) }); }
+        return;
+    }
+    const type = await typeForDevice(gateway);
+    if (!type) { return; }
+
+    const values = mapFields(type.statusMap, status);
+    // is_offline is never written here: it is set by a person (device Settings) and by scheduled
+    // offline periods (jobs/tasks/offlinePeriods.js), and a device that comes and goes while being
+    // worked on stays offline for the whole period.
+    const patch = { last_seen_epoch: receipt };
+    if (fw) { patch.firmware = fw.slice(0, 24); }
+    await knex(T("devices")).where({ id: gateway.id }).update(patch);
+    if (gateway.hardware_id && require("../services/devices").isMac(gateway.hardware_id)) { await registry.touch(gateway.hardware_id, { epoch: receipt, firmware: fw, via: "frame", deviceUid: gateway.uid }); }
+    await pipeline.ingest({ device: gateway, type: type, epoch: receipt, values: values, gatewayId: gateway.id });
+
+    // A live connect: config writes the unit has not confirmed go out again (services/unitConfig).
+    if (status.event === "connect" && gateway.hardware_id && require("../services/devices").isMac(gateway.hardware_id))
+    {
+        await require("../services/unitConfig").resendPending(gateway.hardware_id, guid);
+    }
+}
+
+// { payload field: channel id } -> { channel: value }; absent fields skip, extra fields are ignored.
+function mapFields(map, obj)
+{
+    const values = {};
+    for (const [field, channel] of Object.entries(map || {}))
+    {
+        if (obj[field] !== undefined && obj[field] !== null) { values[channel] = obj[field]; }
+    }
+    return values;
+}
+
+// dev/{guid}/data: the device's own readings, not retained, mapped by the type's dataMap.
+async function handleData(gateway, payload, receipt)
+{
+    let data;
+    try { data = JSON.parse(payload.toString("utf8")); }
+    catch (err) { logger.warn({ gateway: gateway.uid }, "data payload is not JSON"); return; }
+    if (!data || typeof data !== "object") { logger.warn({ gateway: gateway.uid }, "data payload is not an object"); return; }
+    const type = await typeForDevice(gateway);
+    if (!type) { return; }
+
+    await knex(T("devices")).where({ id: gateway.id }).where(function () { this.whereNull("last_seen_epoch").orWhere("last_seen_epoch", "<", receipt); }).update({ last_seen_epoch: receipt });
+    await pipeline.ingest({ device: gateway, type: type, epoch: receipt, values: mapFields(type.dataMap, data), gatewayId: gateway.id });
+}
+
+// dev/{guid}/config/{key}: one config value per publish, bare value. Sent on every connect and as
+// the reply to a write, which it confirms (services/unitConfig). The type comes from the placement
+// when there is one, else from the type the unit declared when it provisioned.
+async function handleConfig(mac, gateway, key, payload, receipt)
+{
+    if (!mac || !require("../services/devices").isMac(mac)) { logger.debug({ key: key }, "config from a unit with no MAC; ignored"); return; }
+    let type = gateway ? await typeForDevice(gateway) : null;
+    if (!type)
+    {
+        const cred = await credentials.forMac(mac);
+        try { type = cred && cred.type_slug ? deviceTypes.get(cred.type_slug) : null; }
+        catch (err) { type = null; }
+    }
+    await require("../services/unitConfig").report(mac, key, payload.toString("utf8"), type, receipt);
+}
+
+// dev/{guid}/cmd_ack: the device heard a command, JSON { event, value, response|result }. Logged
+// only; the Commands tab will read these once it exists. A geoscan command has no ack: the geoscan
+// publish itself is the reply.
+async function handleCmdAck(gateway, payload)
+{
+    logger.info({ gateway: gateway.uid, ack: payload.toString("utf8").slice(0, 200) }, "gateway cmd_ack");
+}
+
+// dev/{guid}/geoscan: wifi and cell scan for location. Accepted and logged only; the location
+// lookup is not built yet.
+async function handleGeoscan(gateway, payload)
+{
+    logger.debug({ gateway: gateway.uid, bytes: payload.length }, "gateway geoscan");
+}
+
+// dev/{guid}/frame: one relayed LoRa frame (gateway-protocol 4.1).
+async function handleFrame(gateway, payload, receipt)
+{
+    let env;
+    try { env = JSON.parse(payload.toString("utf8")); }
+    catch (err) { logger.warn({ gateway: gateway.uid }, "frame payload is not JSON"); return; }
+    const raw = Buffer.from(env.frame || "", "base64");
+    const header = frames.parseHeader(raw);
+    if (!header) { logger.warn({ gateway: gateway.uid, bytes: raw.length }, "frame too short"); return; }
+
+    const observed = receipt - (Number(env.seconds_ago) || 0);
+    const rssi = env.rssi === undefined ? null : Number(env.rssi);
+    await knex(T("devices")).where({ id: gateway.id }).where(function () { this.whereNull("last_seen_epoch").orWhere("last_seen_epoch", "<", receipt); }).update({ last_seen_epoch: receipt });
+
+    const device = await devicesRepo.findLiveByHardwareId(header.mac);
+    await registry.touch(header.mac, { epoch: observed, model: header.model, firmware: header.firmware, via: "frame", deviceUid: device ? device.uid : null });
+    if (!device)
+    {
+        await registry.heardBy(header.mac, gateway.id, observed, rssi);
+        logger.info({ mac: header.mac, model: header.model, gateway: gateway.uid }, "frame from unknown device (registry updated)");
+        return;
+    }
+    const type = await typeForDevice(device);
+    if (!type) { return; }
+
+    // Coverage and the gateway's RSSI reading happen for winners and losers alike (architecture 3.6).
+    await readingsRepo.upsertCoverage(device.id, gateway.id, observed, rssi);
+    await pipeline.ingest({ device: device, type: type, epoch: observed, values: deviceTypes.gatewayValues(type, gateway.hardware_id, { rssi: rssi }), gatewayId: gateway.id, rssi: rssi, canonical: true });
+
+    let won = true;
+    if (type.dedupMode === "counter") { won = await readingsRepo.claimFrame(device.id, header.counter, observed); }
+    else if (type.dedupMode === "window")
+    {
+        const bucket = Math.floor(observed / Math.max(type.minIntervalSecs || 60, 1));
+        won = await readingsRepo.claimFrame(device.id, bucket, observed);
+    }
+    if (!won) { return; }
+
+    const values = frames.parseFields(type.fields || [], header);
+    delete values.rssi;
+    if (header.firmware && header.firmware !== device.firmware)
+    {
+        await knex(T("devices")).where({ id: device.id }).update({ firmware: header.firmware, model: header.model || device.model });
+    }
+    await pipeline.ingest({ device: device, type: type, epoch: observed, values: values, gatewayId: gateway.id, rssi: rssi });
+}
+
+// Advertisement bytes of one beacon entry: the gw7080's hex `data`, or 4.3's base64 `adv`.
+function advertisementOf(b)
+{
+    if (typeof b.data === "string" && b.data.length % 2 === 0 && /^[0-9a-fA-F]*$/.test(b.data)) { return Buffer.from(b.data, "hex"); }
+    return Buffer.from(typeof b.adv === "string" ? b.adv : "", "base64");
+}
+
+// dev/{guid}/ble: one beacon per message (deviates from gateway-protocol 4.3, see DECISIONS "BLE
+// uplink is one beacon per publish"), the gw7080's existing keys { dmac, rssi, count, data (hex) },
+// optional seconds_ago. A 4.3 batch { beacons: [{ mac, rssi, seconds_ago, adv (base64) }] } is still
+// accepted. Advertisements that do not parse as one of our structures are dropped entirely, registry
+// included (architecture 3.8 BLE guard).
+async function handleBle(gateway, payload, receipt)
+{
+    let msg;
+    try { msg = JSON.parse(payload.toString("utf8")); }
+    catch (err) { logger.warn({ gateway: gateway.uid }, "ble payload is not JSON"); return; }
+    if (!msg || typeof msg !== "object") { logger.warn({ gateway: gateway.uid }, "ble payload is not an object"); return; }
+    const beacons = Array.isArray(msg.beacons) ? msg.beacons : [msg];
+    let parsed = 0;
+    for (const b of beacons)
+    {
+        if (!b || typeof b !== "object") { continue; }
+        const mac = String(b.mac || b.dmac || "").toUpperCase();
+        if (!mac) { continue; }
+        const adv = advertisementOf(b);
+        if (adv.length === 0) { continue; }
+        const type = Object.values(deviceTypes.all).find((t) => t.kind === "beacon" && t.parseAdvertisement && t.parseAdvertisement(adv));
+        if (!type) { continue; }
+        parsed++;
+        const observed = receipt - (Number(b.seconds_ago) || 0);
+        const values = type.parseAdvertisement(adv);
+        let device = await devicesRepo.findLiveByHardwareId(mac);
+        await registry.touch(mac, { epoch: observed, model: type.slug, via: "ble", deviceUid: device ? device.uid : null });
+        const rssi = b.rssi === undefined ? null : Number(b.rssi);
+        if (!device)
+        {
+            // Unplaced: record where it is heard, then claim it if this gateway's location is in
+            // auto claim (DECISIONS "Auto claim membership mode"); the claiming message is stored below.
+            await registry.heardBy(mac, gateway.id, observed, rssi);
+            device = await autoClaim.tryClaim(mac, type, gateway);
+            if (!device) { continue; }
+        }
+        await readingsRepo.upsertCoverage(device.id, gateway.id, observed, rssi);
+        // What this gateway observed (RSSI, times heard this cycle), one sensor per hearing gateway
+        // (perGateway channels), for winners and losers alike, as for LoRa frames (architecture 3.6).
+        const seen = deviceTypes.gatewayValues(type, gateway.hardware_id, { "rssi": rssi, "heard-count": b.count });
+        if (Object.keys(seen).length > 0)
+        {
+            await pipeline.ingest({ device: device, type: type, epoch: observed, values: seen, gatewayId: gateway.id, rssi: rssi, canonical: true });
+        }
+        const bucket = Math.floor(observed / Math.max(type.minIntervalSecs || 600, 1));
+        if (!(await readingsRepo.claimFrame(device.id, bucket, observed))) { continue; }
+        await pipeline.ingest({ device: device, type: type, epoch: observed, values: values, gatewayId: gateway.id, rssi: rssi });
+    }
+    logger.debug({ gateway: gateway.uid, beacons: beacons.length, parsed: parsed }, "ble batch");
+}
+
+module.exports = { handle, typeForDevice };

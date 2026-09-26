@@ -1,0 +1,16 @@
+<form class="row g-2 mb-3" method="get">
+  <div class="col-md-3"><input class="form-control form-control-sm" name="action" placeholder="action starts with" value="<%= q.action || "" %>"></div>
+  <div class="col-md-3"><input class="form-control form-control-sm" name="actor" placeholder="actor contains" value="<%= q.actor || "" %>"></div>
+  <div class="col-md-2"><select class="form-select form-select-sm" name="outcome"><option value="">any outcome</option><% ["ok", "denied", "failed"].forEach(function (o) { %><option <%= q.outcome === o ? "selected" : "" %>><%= o %></option><% }); %></select></div>
+  <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Filter</button></div>
+</form>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Outcome</th><th>Entity</th><th>IP</th><th>Detail</th></tr></thead><tbody>
+  <% rows.forEach(function (r) { %>
+    <tr><td class="text-nowrap"><%= fmt.epoch(r.epoch, "UTC", { second: "2-digit" }) %></td><td><%= r.actor_name || r.actor_type %></td><td><%= r.action %></td>
+      <td><span class="iot-status iot-status--<%= r.outcome === "ok" ? "online" : "alarm" %>"><%= r.outcome %></span></td>
+      <td class="small text-secondary"><%= r.entity_type || "" %></td><td class="small text-secondary"><%= r.ip || "" %></td><td class="small text-secondary"><%= r.detail || "" %></td></tr>
+  <% }); %>
+  <% if (!rows.length) { %><tr><td colspan="7" class="text-secondary">Nothing matches.</td></tr><% } %>
+  </tbody></table></div>
+</div>

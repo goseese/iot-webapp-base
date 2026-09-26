@@ -1,1 +1,25 @@
-#
+# Dependencies
+node_modules/
+
+# Environment files hold secrets; only the template is committed
+.env
+.env.*
+!.env.example
+
+# Runtime output
+logs/
+storage/
+*.log
+
+# Local dev broker state and credentials
+docker/mosquitto/data/
+docker/mosquitto/log/
+docker/mosquitto/passwd
+
+# Build stamp written at deploy time
+build.json
+
+# OS and editor
+.DS_Store
+.vscode/
+.idea/

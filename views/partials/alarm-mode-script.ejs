@@ -1,0 +1,11 @@
+<script>
+document.addEventListener("change", async function (e)
+{
+    var form = e.target.closest("[data-alarm-mode-form]");
+    if (!form || e.target.name !== "mode") { return; }
+    var mode = e.target.value, name = form.dataset.locationName, prev = form.dataset.current;
+    var text = { active: "Alarms will be evaluated and people notified again.", muted: "Alarms will still be recorded, but nobody will be emailed or texted until it is set back to active.", offline: "No alarm limits, no-data checks or repeat timers will run; active alarms clear now. Readings keep logging." };
+    if (await iotConfirm({ title: "Set " + name + " to " + mode + "?", body: text[mode], confirmText: "Set " + mode, danger: mode === "offline" })) { form.submit(); }
+    else { var back = form.querySelector('input[type="radio"][value="' + prev + '"]'); if (back) { back.checked = true; } }
+});
+</script>

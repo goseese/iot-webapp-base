@@ -1,0 +1,22 @@
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Alarm history</strong> <span class="text-secondary small ms-2">last 200</span></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>Severity</th><th>Device</th><th>Sensor</th><th>Condition</th><th>Raised</th><th>Cleared</th><th>Reason</th></tr></thead>
+      <tbody>
+      <% alarms.forEach(function (a) { var sev = a.cleared_epoch ? "online" : (a.severity === "warning" ? "warning" : "alarm"); %>
+        <tr>
+          <td><span class="iot-status iot-status--<%= sev %>"><%= a.severity %></span></td>
+          <td><a href="/devices/<%= fmt.uid(a.device_uid) %>"><%= a.device_name %></a></td>
+          <td><%= a.sensor_name %></td>
+          <td><%= a.direction.replace("_", " ") %></td>
+          <td><%= fmt.epoch(a.raised_epoch, location.iana_timezone) %></td>
+          <td><%= a.cleared_epoch ? fmt.epoch(a.cleared_epoch, location.iana_timezone) : "active" %></td>
+          <td class="text-secondary"><%= a.clear_reason || "" %></td>
+        </tr>
+      <% }); %>
+      <% if (!alarms.length) { %><tr><td colspan="7" class="text-secondary">No alarms recorded.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

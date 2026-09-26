@@ -1,0 +1,39 @@
+<div class="row g-3 mb-4">
+  <%- include("../partials/stat", { label: "Active alarms", value: tiles.alarms, status: tiles.alarms ? { kind: "alarm", label: "Requires attention" } : { kind: "online", label: "All clear" } }) %>
+  <%- include("../partials/stat", { label: "Devices", value: tiles.devices, status: tiles.silent ? { kind: "offline", label: tiles.silent + " silent" } : { kind: "online", label: "All reporting" } }) %>
+  <%- include("../partials/stat", { label: "Gateways", value: tiles.gateways, status: null }) %>
+  <div class="col-6 col-xl-3"><div class="iot-stat"><div class="iot-stat__label">Updates</div><div class="iot-stat__value">&nbsp;</div><span class="iot-status iot-status--warning" data-live-status>connecting</span></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-8">
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Watch list</strong> <span class="text-secondary small ms-2">sensors tagged dashboard</span></div>
+      <div class="iot-panel__body">
+        <div class="row g-2">
+        <% sensors.forEach(function (s) { %>
+          <div class="col-6 col-md-4 col-xxl-3">
+            <a class="iot-stat d-block text-decoration-none" href="/sensors/<%= fmt.uid(s.uid) %>">
+              <div class="iot-stat__label"><%= s.device_name %> / <%= s.name %></div>
+              <div class="iot-stat__value" data-live="<%= fmt.uid(s.uid) %>:value"><%= s.display %></div>
+              <% if (s.alarm) { %><span class="iot-status iot-status--<%= s.alarm.severity === "warning" ? "warning" : "alarm" %>"><%= s.alarm.severity %></span><% } else { %><span class="text-secondary small" data-live="<%= fmt.uid(s.uid) %>:ago" data-epoch="<%= s.last_epoch || 0 %>"><%= fmt.ago(s.last_epoch, now) %></span><% } %>
+            </a>
+          </div>
+        <% }); %>
+        <% if (!sensors.length) { %><div class="col-12 text-secondary">Tag a device or sensor with <code>dashboard</code> and it shows up here.</div><% } %>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-4">
+    <div class="iot-panel">
+      <div class="iot-panel__header d-flex justify-content-between"><strong>Active alarms</strong><a class="small" href="/locations/<%= fmt.uid(location.uid) %>/alarms/active">All</a></div>
+      <div class="table-responsive"><table class="table iot-table mb-0"><tbody>
+      <% alarms.forEach(function (a) { %>
+        <tr><td><a href="/alarms/<%= fmt.uid(a.uid) %>"><span class="iot-status iot-status--<%= a.severity === "warning" ? "warning" : "alarm" %>"><%= a.severity %></span></a></td><td><%= a.sensor_name %> <span class="text-secondary small"><%= a.device_name %></span></td><td class="text-secondary small text-nowrap"><%= fmt.ago(a.raised_epoch, now) %></td></tr>
+      <% }); %>
+      <% if (!alarms.length) { %><tr><td class="text-secondary">None.</td></tr><% } %>
+      </tbody></table></div>
+    </div>
+  </div>
+</div>

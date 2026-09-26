@@ -1,0 +1,79 @@
+<% var uid = fmt.uid(sensor.uid); var can = permissions.has(bits, permissions.byName.manage_alarms); var SEV = ["info", "warning", "alarm", "emergency"]; %>
+<%
+function ruleForm(r, action, isNew)
+{
+%>
+<form method="post" action="<%= action %>" class="<%= isNew ? "" : "border-top pt-3 mt-3" %>">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-2">
+      <label class="form-label small">Kind</label>
+      <% if (isNew) { %><select class="form-select form-select-sm" name="rule_kind" onchange="this.form.querySelectorAll('[data-th]').forEach(function (e) { e.classList.toggle('d-none', this.value === 'no_data'); }, this); this.form.querySelectorAll('[data-nd]').forEach(function (e) { e.classList.toggle('d-none', this.value !== 'no_data'); }, this);"><option value="threshold">Threshold</option><option value="no_data">No data</option></select>
+      <% } else { %><input type="hidden" name="rule_kind" value="<%= r.rule_kind %>"><div class="form-control-plaintext form-control-sm"><%= r.rule_kind === "no_data" ? "No data" : "Threshold" %></div><% } %>
+    </div>
+    <div class="col-md-2 <%= (r && r.rule_kind === "no_data") ? "d-none" : "" %>" data-th>
+      <label class="form-label small">Direction</label>
+      <select class="form-select form-select-sm" name="direction"><option value="upper" <%= r && r.direction === "upper" ? "selected" : "" %>>Above</option><option value="lower" <%= r && r.direction === "lower" ? "selected" : "" %>>Below</option></select>
+    </div>
+    <div class="col-md-2 <%= (r && r.rule_kind === "no_data") ? "d-none" : "" %>" data-th>
+      <label class="form-label small">Threshold (<%= unit %>)</label>
+      <input class="form-control form-control-sm" name="threshold" value="<%= r && r.thresholdDisplay !== null && r.thresholdDisplay !== undefined ? r.thresholdDisplay : "" %>">
+    </div>
+    <div class="col-md-2 <%= (r && r.rule_kind === "no_data") ? "d-none" : "" %>" data-th>
+      <label class="form-label small">Exceed / return (min)</label>
+      <div class="input-group input-group-sm"><input class="form-control" name="exceed_minutes" value="<%= r ? Math.round(r.exceed_secs / 60) : 5 %>"><input class="form-control" name="return_minutes" value="<%= r ? Math.round(r.return_secs / 60) : 5 %>"></div>
+    </div>
+    <div class="col-md-2 <%= (!r || r.rule_kind !== "no_data") ? "d-none" : "" %>" data-nd>
+      <label class="form-label small">Timeout (min)</label>
+      <input class="form-control form-control-sm" name="timeout_minutes" value="<%= r && r.timeout_secs ? Math.round(r.timeout_secs / 60) : 30 %>">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label small">Severity</label>
+      <select class="form-select form-select-sm" name="severity"><% SEV.forEach(function (s) { %><option value="<%= s %>" <%= (r ? r.severity : "alarm") === s ? "selected" : "" %>><%= s %></option><% }); %></select>
+    </div>
+    <div class="col-md-2">
+      <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="is_enabled" value="1" id="en_<%= r ? r.uid : "new" %>" <%= (!r || r.is_enabled) ? "checked" : "" %>><label class="form-check-label small" for="en_<%= r ? r.uid : "new" %>">Enabled</label></div>
+      <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="use_default_group" value="1" id="dg_<%= r ? r.uid : "new" %>" <%= (!r || r.use_default_group) ? "checked" : "" %>><label class="form-check-label small" for="dg_<%= r ? r.uid : "new" %>">Default group</label></div>
+    </div>
+  </div>
+  <div class="row g-2 mt-1">
+    <div class="col-md-5">
+      <label class="form-label small">Also notify these alert groups</label>
+      <select class="form-select form-select-sm" name="groups" multiple size="3">
+        <% groups.forEach(function (g) { %><option value="<%= g.id %>" <%= r && r.groups && r.groups.indexOf(g.id) >= 0 ? "selected" : "" %>><%= g.name %><%= g.is_default ? " (default)" : "" %></option><% }); %>
+      </select>
+    </div>
+    <div class="col-md-5">
+      <label class="form-label small">Channels per transition</label>
+      <table class="table table-sm mb-0 small"><thead><tr><th></th><th>Email</th><th>SMS</th></tr></thead><tbody>
+      <% [["raise", "Raise"], ["escalate", "Escalate"], ["de_escalate", "De-escalate"], ["clear", "Clear"]].forEach(function (t) { var p = r && r.policy && r.policy[t[0]]; %>
+        <tr><td><%= t[1] %></td><td><input type="checkbox" name="p_<%= t[0] %>_email" value="1" <%= (!p || p.email !== false) ? "checked" : "" %>></td><td><input type="checkbox" name="p_<%= t[0] %>_sms" value="1" <%= (!p || p.sms !== false) ? "checked" : "" %>></td></tr>
+      <% }); %>
+      </tbody></table>
+    </div>
+    <div class="col-md-2 d-flex align-items-end justify-content-end gap-2">
+      <% if (!isNew) { %><button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="delete" onclick="return confirm('Remove this rule?')">Remove</button><% } %>
+      <button class="btn btn-sm btn-primary" type="submit"><%= isNew ? "Add rule" : "Save" %></button>
+    </div>
+  </div>
+</form>
+<% } %>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Rules on <%= sensor.name %></strong> <span class="text-secondary small ms-2">thresholds in <%= unit %></span></div>
+  <div class="iot-panel__body">
+    <% if (!rules.length) { %><p class="text-secondary">No rules yet.</p><% } %>
+    <% rules.forEach(function (r) { %>
+      <% if (can) { ruleForm(r, "/sensors/" + uid + "/rules/" + fmt.uid(r.uid), false); } else { %>
+      <div class="border-top pt-2 mt-2"><%= r.rule_kind === "no_data" ? "No data for " + Math.round(r.timeout_secs / 60) + " min" : (r.direction === "upper" ? "Above " : "Below ") + r.thresholdDisplay + " " + unit %> - <%= r.severity %><%= r.is_enabled ? "" : " (disabled)" %></div>
+      <% } %>
+    <% }); %>
+  </div>
+</div>
+
+<% if (can) { %>
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Add a rule</strong></div>
+  <div class="iot-panel__body"><% ruleForm(null, "/sensors/" + uid + "/rules", true); %></div>
+</div>
+<% } %>

@@ -1,0 +1,26 @@
+<div class="row"><div class="col-12 col-xl-8">
+<div class="iot-panel">
+  <div class="iot-panel__body">
+    <form method="post" action="<%= chart ? "/analytics/charts/" + fmt.uid(chart.uid) : acctBase + "/analytics/charts" %>">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">Name</label><input class="form-control" name="name" value="<%= chart ? chart.name : "" %>" required maxlength="120"></div>
+        <div class="col-md-3"><label class="form-label">Default range</label><select class="form-select" name="range"><% ["1h", "6h", "24h", "7d", "30d", "90d"].forEach(function (r) { %><option <%= def.range === r ? "selected" : "" %>><%= r %></option><% }); %></select></div>
+        <div class="col-md-3"><label class="form-label">Visibility</label><select class="form-select" name="visibility" <%= chart && chart.owner_user_id !== currentUser.id && !currentUser.is_superadmin ? "disabled" : "" %>><% [["private", "Only me"], ["account_view", "Account can view"], ["account_edit", "Account can edit"]].forEach(function (o) { %><option value="<%= o[0] %>" <%= (chart ? chart.visibility : "private") === o[0] ? "selected" : "" %>><%= o[1] %></option><% }); %></select></div>
+      </div>
+      <label class="form-label mt-3">Sensors <span class="text-secondary small">(up to 12; one axis per unit)</span></label>
+      <input class="form-control form-control-sm mb-2" placeholder="filter" oninput="var q=this.value.toLowerCase(); document.querySelectorAll('#sensorList label').forEach(function(l){ l.classList.toggle('d-none', q && l.textContent.toLowerCase().indexOf(q) < 0); });">
+      <div id="sensorList" class="border rounded p-2" style="max-height: 360px; overflow: auto">
+        <% sensors.forEach(function (s) { var u = fmt.uid(s.uid); %>
+        <label class="d-block small"><input type="checkbox" name="sensors" value="<%= u %>" <%= def.sensors.indexOf(u) >= 0 ? "checked" : "" %>> <%= s.location_name %> / <%= s.device_name %> / <%= s.name %> <span class="text-secondary">(<%= s.metric %>)</span><% if (s.is_hidden) { %> <span class="badge text-bg-secondary">hidden</span><% } %></label>
+        <% }); %>
+      </div>
+      <div class="d-flex gap-2 mt-3">
+        <button class="btn btn-primary" type="submit">Save chart</button>
+        <a class="btn btn-outline-secondary" href="<%= chart ? "/analytics/charts/" + fmt.uid(chart.uid) : acctBase + "/analytics" %>">Cancel</a>
+        <% if (chart) { %><button class="btn btn-outline-danger ms-auto" name="action" value="delete" onclick="return confirm('Delete this chart?')">Delete</button><% } %>
+      </div>
+    </form>
+  </div>
+</div>
+</div></div>

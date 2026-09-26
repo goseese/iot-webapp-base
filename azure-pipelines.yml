@@ -1,0 +1,156 @@
+# ======================================================================
+# WEBAPP PROJECT PIPELINE (PER-REPO)
+# ======================================================================
+#
+# PURPOSE
+# -------
+# This file is intentionally simple.
+#
+# It ONLY:
+#   1) Defines which customer/site this repo belongs to
+#   2) Defines which domain suffix this repo uses
+#   3) Calls the shared deployment template
+#
+# All actual deployment logic lives in:
+#   Docklink/SharedScripts → templates/node-deploy.yml
+#
+# DO NOT add build/deploy logic here.
+# Keep this file minimal and consistent across all repos.
+#
+# ======================================================================
+
+
+# ===========================================================
+# TRIGGERS
+# ===========================================================
+#
+# develop → deploy to Stage
+# main    → deploy to Production
+#
+trigger:
+  branches:
+    include:
+#      - develop
+      - main
+
+
+# ===========================================================
+# REQUIRED VARIABLE (MUST BE UPDATED PER REPO)
+# ===========================================================
+#
+# 🔴 IMPORTANT 🔴
+#
+# These are the ONLY values you need to change when setting up
+# a new repo/pipeline.
+#
+# customerName:
+#   Set this to the CUSTOMER/SITE PREFIX, NOT the full domain.
+#
+# domainSuffix:
+#   Set this to one of:
+#     Docklink.net
+#     Docklink.IO
+#     DataTelematics.net
+#     DataTelematics.IO
+#     lumperlink.net
+#
+# Examples:
+#   Repo/site: A1.docklink.net
+#     customerName: 'A1'
+#     domainSuffix: 'docklink.net'
+#
+#   Repo/site: devmon.datatelematics.io
+#     customerName: 'devmon'
+#     domainSuffix: 'datatelematics.io'
+#
+# These values drive:
+#   - IIS site/app pool   → <customer>.<domainSuffix>
+#   - Folder path         → F:\DevOpsSites\<customer>\<customer>.<domainSuffix>
+#   - Host headers        → stage + production
+#   - Artifact naming
+#
+variables:
+  customerName: 'devmon'     # ← 🔴 CHANGE THIS FOR EACH REPO 🔴
+  domainSuffix: 'datatelematics.io'     # ← 🔴 CHANGE THIS WHEN NOT Docklink.net 🔴
+
+
+# ===========================================================
+# SHARED TEMPLATE REPOSITORY
+# ===========================================================
+#
+# This connects to the central repo that contains:
+#
+#   /templates/        → YAML deployment templates
+#   /deploy-scripts/   → PowerShell deployment scripts
+#
+# All pipelines use this shared source to ensure consistency.
+#
+resources:
+  repositories:
+    - repository: deployScripts
+      type: git
+      name: Docklink/SharedScripts
+
+
+# ===========================================================
+# EXECUTE STANDARD DEPLOYMENT TEMPLATE
+# ===========================================================
+#
+# This calls the shared deployment template.
+#
+# The template handles EVERYTHING:
+#   - Build
+#   - Artifact creation
+#   - Stage deployment
+#   - Production deployment
+#   - Health checks
+#   - Rollback logic
+#
+# This file only passes customerName and domainSuffix into the template.
+#
+
+stages:
+  
+- stage: Validate_Config
+  displayName: 'Validate configuration'
+  jobs:
+  - job: Validate
+    pool:
+      name: Docklink-BuildPool
+    steps:
+    - powershell: |
+        $customerName = "$(customerName)".Trim()
+        $domainSuffix = "$(domainSuffix)".Trim()
+        $allowedDomainSuffixes = @(
+          'Docklink.net',
+          'Docklink.IO',
+          'DataTelematics.net',
+          'DataTelematics.IO',
+          'Lumperlink.net'
+        )
+
+        $allowedDomainSuffixesLower = @(
+          $allowedDomainSuffixes | ForEach-Object { $_.ToLowerInvariant() }
+        )
+
+        if ([string]::IsNullOrWhiteSpace($customerName) -or $customerName -eq 'customerName' -or $customerName -eq 'InsertCustomerName') {
+          Write-Error "customerName is not set. Update azure-pipelines.yml before running."
+          exit 1
+        }
+
+        if ($customerName -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$') {
+          Write-Error "customerName must be a DNS label only, not a full hostname. Example: devmon, not devmon.datatelematics.io."
+          exit 1
+        }
+
+        if ($allowedDomainSuffixesLower -notcontains $domainSuffix.ToLowerInvariant()) {
+          Write-Error "domainSuffix '$domainSuffix' is not allowed. Allowed values: $($allowedDomainSuffixes -join ', ')"
+          exit 1
+        }
+
+        Write-Host "Validated site: $customerName.$domainSuffix"
+      displayName: 'Ensure customerName is set'
+- template: templates/node-deploy-axcluster.yml@deployScripts
+  parameters:
+    customerName: $(customerName)
+    domainSuffix: $(domainSuffix)

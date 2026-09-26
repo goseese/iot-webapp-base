@@ -1,0 +1,193 @@
+<% var isGw = kinds === "gateways"; var canAdd = permissions.has(bits, permissions.byName.add_device); var locUid = fmt.uid(location.uid); %>
+<% var bulkActions = [];
+   if (permissions.has(bits, permissions.byName.delete)) { bulkActions.push({ key: "delete", label: "Delete", danger: true }); }
+   if (permissions.has(bits, permissions.byName.edit)) { bulkActions.push({ key: "archive", label: "Archive" }); }
+   if (permissions.has(bits, permissions.byName.set_offline)) { bulkActions.push({ key: "offline", label: "Set offline" }); }
+   var canBulk = bulkActions.length > 0; %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="archivedToggle" <%= archived ? "checked" : "" %> onchange="location.href='?archived=' + (this.checked ? 1 : 0)">
+    <label class="form-check-label small" for="archivedToggle">Show archived</label>
+  </div>
+  <% if (canAdd && location.membership_mode !== "locked") { %><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addDevice"><i class="fa-solid fa-plus me-1"></i>Add <%= isGw ? "gateway" : "device" %></button><% } %>
+  <% if (canAdd && location.membership_mode === "locked") { %><span class="text-secondary small"><i class="fa-solid fa-lock me-1"></i>Location is locked; unlock it in settings to add devices.</span><% } %>
+</div>
+
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0" id="deviceTable">
+      <thead><tr><% if (canBulk) { %><th style="width: 44px"><% if (devices.length) { %><div class="form-check form-switch mb-0" title="Select all"><input class="form-check-input" type="checkbox" id="bulkCheckAll" aria-label="Select all <%= kinds %>"></div><% } %></th><% } %><th>Name</th><th>Type</th><th>Hardware id</th><th>Status</th><th>Last seen</th><th>Alarms</th></tr></thead>
+      <tbody>
+      <% devices.forEach(function (d) { %>
+        <tr data-bulk-uid="<%= fmt.uid(d.uid) %>" data-bulk-name="<%= d.name %>" data-archived="<%= d.is_archived ? 1 : 0 %>" data-offline="<%= d.is_offline ? 1 : 0 %>">
+          <% if (canBulk) { %><td><div class="form-check form-switch mb-0"><input class="form-check-input bulk-pick" type="checkbox" aria-label="Select <%= d.name %>"></div></td><% } %>
+          <td class="device-name"><a href="/devices/<%= fmt.uid(d.uid) %>"><%= d.name %></a><% if (d.is_archived) { %> <span class="badge text-bg-secondary">archived</span><% } %></td>
+          <td class="text-secondary"><%= d.type_name %></td>
+          <td class="font-monospace small"><%= fmt.hardwareId(d.hardware_id) %></td>
+          <td class="device-status">
+            <% if (d.is_offline) { %><span class="iot-status iot-status--offline">Offline (manual)</span>
+            <% } else if (d.awaiting) { %><span class="iot-status iot-status--warning">Waiting for first connection</span>
+            <% } else if (!d.last_seen_epoch) { %><span class="iot-status iot-status--warning">Waiting for first data</span>
+            <% } else if (now - d.last_seen_epoch > 900) { %><span class="iot-status iot-status--offline">No recent data</span>
+            <% } else { %><span class="iot-status iot-status--online">Online</span><% } %>
+          </td>
+          <td data-live="device:<%= fmt.uid(d.uid) %>:ago" data-epoch="<%= d.last_seen_epoch || 0 %>" title="<%= fmt.epoch(d.last_seen_epoch, location.iana_timezone) %>"><%= fmt.ago(d.last_seen_epoch, now) %></td>
+          <td><% if (d.activeAlarms) { %><span class="iot-status iot-status--alarm"><%= d.activeAlarms %></span><% } else { %><span class="text-secondary">0</span><% } %></td>
+        </tr>
+      <% }); %>
+      <% if (!devices.length) { %><tr><td colspan="<%= canBulk ? 7 : 6 %>" class="text-secondary">No <%= kinds %> here yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (canBulk) { %>
+<%- include("../partials/bulk-bar", { actions: bulkActions }) %>
+<%- include("../partials/bulk-modal", { fields: include("./devices-bulk-fields", { kinds: kinds, isGw: isGw, reasons: reasons }) }) %>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    iotBulk.init(
+    {
+        table: "deviceTable",
+        csrf: "<%= csrfToken %>",
+        noun: <%- JSON.stringify(isGw ? ["gateway", "gateways"] : ["device", "devices"]) %>,
+        actions:
+        {
+            delete:
+            {
+                label: "Delete", doing: "Deleting", done: "Deleted", danger: true,
+                url: function (tr) { return "/devices/" + tr.dataset.bulkUid + "/delete"; },
+                apply: function (tr)
+                {
+                    tr.classList.add("iot-row-cleared");
+                    var name = tr.querySelector(".device-name"); name.textContent = tr.dataset.bulkName;
+                    tr.querySelector(".device-status").innerHTML = '<span class="badge text-bg-secondary">Deleted</span>';
+                    tr.querySelector(".bulk-pick").disabled = true;
+                }
+            },
+            archive:
+            {
+                label: "Archive", doing: "Archiving", done: "Archived",
+                skip: function (tr) { return tr.dataset.archived === "1" ? "already archived" : null; },
+                url: function (tr) { return "/devices/" + tr.dataset.bulkUid + "/archive"; },
+                apply: function (tr)
+                {
+                    tr.dataset.archived = "1";
+                    tr.querySelector(".device-name").insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary">archived</span>');
+                }
+            },
+            offline:
+            {
+                label: "Set offline", doing: "Setting offline", done: "Set offline",
+                skip: function (tr) { return tr.dataset.offline === "1" ? "already offline" : null; },
+                url: function (tr) { return "/devices/" + tr.dataset.bulkUid + "/offline"; },
+                body: function ()
+                {
+                    var comment = document.getElementById("bulkComment");
+                    if (!comment.value.trim()) { comment.classList.add("is-invalid"); return null; }
+                    return { reason: document.getElementById("bulkReason").value, comment: comment.value.trim() };
+                },
+                apply: function (tr)
+                {
+                    tr.dataset.offline = "1";
+                    tr.querySelector(".device-status").innerHTML = '<span class="iot-status iot-status--offline">Offline (manual)</span>';
+                }
+            }
+        }
+    });
+});
+</script>
+<% } %>
+
+<% if (canAdd) { %>
+<div class="modal fade" id="addDevice" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="/locations/<%= locUid %>/devices" id="addForm">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <input type="hidden" name="kinds" value="<%= kinds %>">
+      <input type="hidden" name="resolution" id="resolution" value="">
+      <input type="hidden" name="action" id="action" value="add">
+      <div class="modal-header"><h5 class="modal-title">Add <%= isGw ? "gateway" : "device" %></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label" for="mac">MAC (from the label)</label>
+        <input class="form-control font-monospace mb-1" id="mac" name="mac" placeholder="A4:CF:12:34:56:78" required autocomplete="off">
+        <div class="form-text mb-3" id="macInfo">Type the MAC to check whether this device has been heard before.</div>
+
+        <div id="conflictBox" class="alert alert-warning d-none"></div>
+
+        <label class="form-label" for="name">Name</label>
+        <input class="form-control mb-3" id="name" name="name" required maxlength="120">
+
+        <label class="form-label" for="type">Device type</label>
+        <select class="form-select" id="type" name="type">
+          <% types.forEach(function (t) { %><option value="<%= t.slug %>"><%= t.displayName %></option><% }); %>
+        </select>
+        <div class="form-text">Pre-selected from the registry when the MAC has been heard before.</div>
+      </div>
+      <div class="modal-footer" id="footerAdd">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" type="submit" id="submitAdd">Add <%= isGw ? "gateway" : "device" %></button>
+      </div>
+    </form>
+  </div></div>
+</div>
+<script>
+(function ()
+{
+    var mac = document.getElementById("mac"), info = document.getElementById("macInfo"), box = document.getElementById("conflictBox");
+    var typeSel = document.getElementById("type"), submit = document.getElementById("submitAdd"), resolution = document.getElementById("resolution"), action = document.getElementById("action");
+    var timer = null;
+    function clean(v) { return v.replace(/[^0-9a-fA-F]/g, "").toUpperCase(); }
+    mac.addEventListener("input", function ()
+    {
+        clearTimeout(timer);
+        var m = clean(mac.value);
+        if (m.length !== 12) { info.textContent = "12 hex digits, separators optional."; box.classList.add("d-none"); submit.disabled = false; resolution.value = ""; return; }
+        timer = setTimeout(lookup, 300);
+    });
+    async function lookup()
+    {
+        var res = await fetch("/locations/<%= locUid %>/lookup?mac=" + encodeURIComponent(mac.value));
+        var d = await res.json();
+        resolution.value = ""; action.value = "add"; submit.disabled = false; box.classList.add("d-none"); box.innerHTML = "";
+        if (d.error) { info.textContent = d.error; return; }
+        if (d.registry)
+        {
+            info.textContent = "First heard " + new Date(d.registry.firstHeard * 1000).toLocaleString() + (d.registry.model ? ", model " + d.registry.model : "") + (d.registry.firmware ? ", firmware " + d.registry.firmware : "") + ".";
+            if (d.suggestedType) { typeSel.value = d.suggestedType; }
+        }
+        else { info.textContent = "Never heard before. A placeholder will show \"waiting for first data\"."; }
+        if (!d.conflict) { return; }
+        box.classList.remove("d-none");
+        if (d.conflict.visible)
+        {
+            box.innerHTML = "This device is in use at <strong></strong> as <a></a>. Choose what to do:";
+            box.querySelector("strong").textContent = d.conflict.locationName;
+            var a = box.querySelector("a"); a.textContent = d.conflict.deviceName; a.href = "/devices/" + d.conflict.deviceUid;
+            var opts = document.createElement("div"); opts.className = "mt-2 d-grid gap-2";
+            function add(label, val, hint, enabled)
+            {
+                var b = document.createElement("button"); b.type = "button"; b.className = "btn btn-sm " + (enabled ? "btn-outline-dark" : "btn-outline-secondary");
+                b.textContent = label + (enabled ? "" : " (no permission)"); b.disabled = !enabled; b.title = hint;
+                b.onclick = function () { resolution.value = val; Array.from(opts.children).forEach(function (c) { c.classList.remove("active"); }); b.classList.add("active"); submit.disabled = false; };
+                opts.appendChild(b);
+            }
+            add("Archive there, add as new here", "archive", "History stays where it was earned; no data is lost.", d.conflict.canArchiveOrMove);
+            add("Move it here", "move", "Same device, history travels with it.", d.conflict.canArchiveOrMove);
+            add("Delete there, add as new here", "delete", "Removes it from the other location.", d.conflict.canDelete);
+            box.appendChild(opts);
+            submit.disabled = true;
+        }
+        else
+        {
+            box.textContent = "This device is already in use. ";
+            var r = document.createElement("button"); r.type = "button"; r.className = "btn btn-sm btn-outline-dark ms-2"; r.textContent = "Request access";
+            r.onclick = function () { action.value = "request_access"; document.getElementById("addForm").submit(); };
+            box.appendChild(r);
+            submit.disabled = true;
+        }
+    }
+})();
+</script>
+<% } %>

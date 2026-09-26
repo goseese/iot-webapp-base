@@ -1,0 +1,213 @@
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <% if (canGrant) { %><div class="d-flex gap-2"><button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#addUserModal"><i class="fa-solid fa-user-check me-1"></i>Add user</button><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#inviteModal"><i class="fa-solid fa-user-plus me-1"></i>Invite user</button></div><% } %>
+</div>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Access</strong></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>User</th><th>Scope</th><th>Permissions</th><th>Last login</th><th></th></tr></thead>
+      <tbody>
+      <% rows.forEach(function (r) { %>
+        <tr>
+          <td><%= r.display_name || r.username %> <span class="text-secondary small"><%= r.username %>, <%= r.email %></span></td>
+          <td><span class="badge text-bg-secondary"><%= r.scope_type %></span> <%= r.scopeName %></td>
+          <td class="small"><%= r.names.join(", ") %></td>
+          <td class="text-secondary small"><%= fmt.ago(r.last_login_epoch, now) %></td>
+          <td class="text-end">
+            <% if (canGrant) { %>
+            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#g<%= r.grant_id %>">Edit</button>
+            <% } %>
+          </td>
+        </tr>
+        <% if (canGrant) { %>
+        <tr class="collapse" id="g<%= r.grant_id %>"><td colspan="5">
+          <form method="post" action="<%= acctBase %>/users/grant/<%= r.grant_id %>" class="d-flex flex-wrap gap-3 align-items-center">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% permissions.BITS.forEach(function (p) { var held = permissions.has(r.permission_bits, p.bit); var allowed = permissions.has(ceiling, p.bit); %>
+            <div class="form-check form-check-inline" title="<%= p.description %>"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="p<%= r.grant_id %>_<%= p.name %>" <%= held ? "checked" : "" %> <%= allowed ? "" : "disabled" %>><label class="form-check-label small" for="p<%= r.grant_id %>_<%= p.name %>"><%= p.label %></label></div>
+            <% }); %>
+            <button class="btn btn-sm btn-primary" type="submit">Save</button>
+            <button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="remove" onclick="return confirm('Remove this access?')">Remove</button>
+          </form>
+        </td></tr>
+        <% } %>
+      <% }); %>
+      <% if (!rows.length) { %><tr><td colspan="5" class="text-secondary">Only superadmins have access so far.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (canGrant && pending.length) { %>
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Pending invitations</strong></div>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Email</th><th>Username</th><th>Scope</th><th>Expires</th><th>Last email</th><th></th></tr></thead><tbody>
+  <% pending.forEach(function (p) { %>
+    <tr>
+      <td><%= p.email %></td><td><%= p.username %></td><td><%= p.scopeName %></td>
+      <td><% if (p.expired) { %><span class="iot-status iot-status--offline">expired</span> <span class="text-secondary small"><%= fmt.epoch(p.expires_epoch) %></span><% } else { %><%= fmt.epoch(p.expires_epoch) %><% } %></td>
+      <td><% if (p.lastMail) { %><span class="iot-status iot-status--<%= p.lastMail.outcome === "sent" ? "online" : (p.lastMail.outcome === "failed" ? "alarm" : "offline") %>" title="<%= p.lastMail.reason || "" %>"><%= p.lastMail.outcome %></span> <span class="text-secondary small"><%= fmt.ago(p.lastMail.epoch, now) %></span><% } else { %><span class="text-secondary small">none</span><% } %></td>
+      <td class="text-end text-nowrap">
+        <form method="post" action="<%= acctBase %>/users/invite/<%= fmt.uid(p.uid) %>/resend" class="d-inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-sm btn-outline-secondary"><%= p.expired ? "Renew and resend" : "Resend" %></button></form>
+        <form method="post" action="<%= acctBase %>/users/invite/<%= fmt.uid(p.uid) %>/cancel" class="d-inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-sm btn-outline-secondary">Cancel</button></form>
+      </td>
+    </tr>
+  <% }); %>
+  </tbody></table></div>
+</div>
+<% } %>
+
+<% if (canGrant) { %>
+<div class="modal fade" id="inviteModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+  <form method="post" action="<%= acctBase %>/users/invite">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="modal-header"><h5 class="modal-title">Invite user</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div class="row g-3">
+        <div class="col-md-6"><label class="form-label">Email</label><input class="form-control" name="email" type="email" required></div>
+        <div class="col-md-6"><label class="form-label">Suggested username</label><input class="form-control" name="username" required minlength="3" maxlength="40" pattern="[^@\s]+"><div class="form-text">They can change it when accepting.</div></div>
+        <div class="col-md-6">
+          <label class="form-label">Scope</label>
+          <select class="form-select" name="scope_type" onchange="document.getElementById('scopeLoc').classList.toggle('d-none', this.value !== 'location')"><option value="account">Whole account (<%= account.name %>)</option><option value="location">One location</option></select>
+        </div>
+        <div class="col-md-6 d-none" id="scopeLoc"><label class="form-label">Location</label><select class="form-select" name="scope_id"><% locations.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }); %></select></div>
+      </div>
+      <label class="form-label mt-3">Permissions <span class="text-secondary small">(only those you hold can be granted)</span></label>
+      <div class="d-flex flex-wrap gap-3">
+        <% permissions.BITS.forEach(function (p) { var allowed = permissions.has(ceiling, p.bit); %>
+        <div class="form-check" title="<%= p.description %>"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="inv_<%= p.name %>" <%= allowed && p.name === "view" ? "checked" : "" %> <%= allowed ? "" : "disabled" %>><label class="form-check-label" for="inv_<%= p.name %>"><%= p.label %></label></div>
+        <% }); %>
+      </div>
+      <p class="text-secondary small mt-3 mb-0">If the address already has an account, they get access immediately and an email saying so; otherwise they get an invitation link. The message you see is the same either way.</p>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Send</button></div>
+  </form>
+</div></div></div>
+
+<%# Add an existing user (routes/account/users.js /users/search and /users/add). No email is sent. %>
+<div class="modal fade" id="addUserModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-lg"><div class="modal-content">
+  <form method="post" action="<%= acctBase %>/users/add" id="addUserForm">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="user" id="addUserUid" value="">
+    <div class="modal-header"><h5 class="modal-title">Add existing user</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <div id="addUserSearchStep">
+        <label class="form-label" for="addUserQuery">Search by name, username or email</label>
+        <input class="form-control" id="addUserQuery" type="search" autocomplete="off" placeholder="Start typing (2 characters or more)">
+        <div class="form-text">Lists users who already share an account or location with you.</div>
+        <div class="table-responsive mt-2"><table class="table iot-table align-middle mb-0"><tbody id="addUserResults"></tbody></table></div>
+        <div class="text-secondary small mt-2" id="addUserStatus"></div>
+      </div>
+      <div id="addUserPickStep" class="d-none">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div><strong id="addUserName"></strong> <span class="text-secondary small" id="addUserDetail"></span><div class="small text-secondary" id="addUserAccess"></div></div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="addUserChange">Change</button>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Scope</label>
+            <select class="form-select" name="scope_type" id="addUserScope"><option value="account">Whole account (<%= account.name %>)</option><option value="location">One location</option></select>
+          </div>
+          <div class="col-md-6 d-none" id="addScopeLoc"><label class="form-label">Location</label><select class="form-select" name="scope_id"><% locations.forEach(function (l) { %><option value="<%= l.id %>"><%= l.name %></option><% }); %></select></div>
+        </div>
+        <label class="form-label mt-3">Permissions <span class="text-secondary small">(only those you hold can be granted)</span></label>
+        <div class="d-flex flex-wrap gap-3">
+          <% permissions.BITS.forEach(function (p) { var allowed = permissions.has(ceiling, p.bit); %>
+          <div class="form-check" title="<%= p.description %>"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="add_<%= p.name %>" <%= allowed && p.name === "view" ? "checked" : "" %> <%= allowed ? "" : "disabled" %>><label class="form-check-label" for="add_<%= p.name %>"><%= p.label %></label></div>
+          <% }); %>
+        </div>
+        <p class="text-secondary small mt-3 mb-0">They get access immediately. No email is sent.</p>
+      </div>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit" id="addUserSubmit" disabled>Add</button></div>
+  </form>
+</div></div></div>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var modal = document.getElementById("addUserModal");
+    var query = document.getElementById("addUserQuery");
+    var results = document.getElementById("addUserResults");
+    var status = document.getElementById("addUserStatus");
+    var searchStep = document.getElementById("addUserSearchStep");
+    var pickStep = document.getElementById("addUserPickStep");
+    var uidInput = document.getElementById("addUserUid");
+    var submit = document.getElementById("addUserSubmit");
+    var searchUrl = "<%= acctBase %>/users/search?q=";
+    var timer = null;
+    var seq = 0;
+
+    function cell(tr, text, cls)
+    {
+        var td = document.createElement("td");
+        if (cls) { td.className = cls; }
+        td.textContent = text;
+        tr.appendChild(td);
+    }
+
+    function render(users, text)
+    {
+        results.textContent = "";
+        status.textContent = text.length < 2 ? "" : (users.length ? "" : "No matching users.");
+        users.forEach(function (u)
+        {
+            var tr = document.createElement("tr");
+            tr.tabIndex = 0;
+            tr.style.cursor = "pointer";
+            cell(tr, u.display_name || u.username);
+            cell(tr, u.username + ", " + u.email, "text-secondary small");
+            cell(tr, u.access.length ? "Has: " + u.access.join(", ") : "", "text-secondary small");
+            tr.addEventListener("click", function () { pick(u); });
+            tr.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); pick(u); } });
+            results.appendChild(tr);
+        });
+    }
+
+    async function search()
+    {
+        var text = query.value.trim();
+        var mine = ++seq;
+        if (text.length < 2) { render([], text); return; }
+        status.textContent = "Searching...";
+        try
+        {
+            var d = await (await fetch(searchUrl + encodeURIComponent(text), { headers: { accept: "application/json" } })).json();
+            if (mine !== seq) { return; }
+            render(d.users || [], text);
+        }
+        catch (e)
+        {
+            if (mine === seq) { results.textContent = ""; status.textContent = "Search failed. Reload the page and try again."; }
+        }
+    }
+
+    function pick(u)
+    {
+        uidInput.value = u.uid;
+        document.getElementById("addUserName").textContent = u.display_name || u.username;
+        document.getElementById("addUserDetail").textContent = u.username + ", " + u.email;
+        document.getElementById("addUserAccess").textContent = u.access.length ? "Already has access: " + u.access.join(", ") : "No access in this account yet.";
+        searchStep.classList.add("d-none");
+        pickStep.classList.remove("d-none");
+        submit.disabled = false;
+    }
+
+    function back()
+    {
+        uidInput.value = "";
+        pickStep.classList.add("d-none");
+        searchStep.classList.remove("d-none");
+        submit.disabled = true;
+        query.focus();
+    }
+
+    query.addEventListener("input", function () { clearTimeout(timer); timer = setTimeout(search, 250); });
+    query.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); } });
+    document.getElementById("addUserChange").addEventListener("click", back);
+    document.getElementById("addUserScope").addEventListener("change", function () { document.getElementById("addScopeLoc").classList.toggle("d-none", this.value !== "location"); });
+    modal.addEventListener("shown.bs.modal", function () { query.focus(); });
+    modal.addEventListener("hidden.bs.modal", function () { query.value = ""; results.textContent = ""; status.textContent = ""; back(); });
+});
+</script>
+<% } %>

@@ -1,0 +1,109 @@
+<% var uid = fmt.uid(device.uid); var canEdit = permissions.has(bits, permissions.byName.edit); %>
+<div class="row g-3">
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Name</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/devices/<%= uid %>/rename" class="d-flex gap-2">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input class="form-control" name="name" value="<%= device.name %>" maxlength="120" <%= canEdit ? "" : "readonly" %>>
+          <% if (canEdit) { %><button class="btn btn-primary" type="submit">Rename</button><% } %>
+        </form>
+      </div>
+    </div>
+
+    <% if (chemistryDefault) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Battery</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/devices/<%= uid %>/battery" class="d-flex gap-2">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <select class="form-select" name="battery_chemistry" <%= canEdit ? "" : "disabled" %>>
+            <% var def = chemistries.find(function (c) { return c.key === chemistryDefault; }); %>
+            <option value=""<%= device.battery_chemistry ? "" : " selected" %>>Default for this model (<%= def ? def.label : chemistryDefault %>)</option>
+            <% chemistries.forEach(function (c) { %><option value="<%= c.key %>"<%= device.battery_chemistry === c.key ? " selected" : "" %>><%= c.label %></option><% }); %>
+          </select>
+          <% if (canEdit) { %><button class="btn btn-primary" type="submit">Save</button><% } %>
+        </form>
+        <div class="form-text">Sets how battery voltage converts to battery percent. Change it only if this unit runs on a different battery than its model normally does.</div>
+      </div>
+    </div>
+    <% } %>
+
+    <% if (cred) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Broker credentials</strong></div>
+      <div class="iot-panel__body">
+        <p class="mb-1">State: <strong><%= cred.state %></strong><% if (cred.activated_epoch) { %> <span class="text-secondary small">since <%= fmt.epoch(cred.activated_epoch, location.iana_timezone) %></span><% } %></p>
+        <p class="mb-1">Broker username (unit id): <code><%= cred.broker_username %></code></p>
+        <p class="mb-1">First MQTT connection: <% if (cred.mqtt_seen_epoch) { %><%= fmt.epoch(cred.mqtt_seen_epoch, location.iana_timezone) %><% } else { %><span class="text-secondary">never</span><% } %><% if (cred.type_slug) { %> <span class="text-secondary small">, provisioned as <%= cred.type_slug %></span><% } %></p>
+        <p class="text-secondary small">The unit id belongs to the hardware, not to this placement: it stays the same if the device moves or is removed. Publishes on <code>dev/<%= cred.broker_username %>/status|data|config/+|geoscan|cmd_ack|frame|ble</code>, listens on <code>dev/<%= cred.broker_username %>/cmd/#</code>.</p>
+        <% if (canEdit && cred.state === "active") { %>
+        <form method="post" action="/devices/<%= uid %>/reprovision" onsubmit="return confirmRe(event)">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <button class="btn btn-outline-secondary" type="submit">Reprovision</button>
+          <div class="form-text">Use after a flash loss, or when the device page reports a broker account problem. The unit's broker account is deleted, its next login fails, and it provisions itself again with a fresh password under the same unit id.</div>
+        </form>
+        <% } %>
+      </div>
+    </div>
+    <% } else if (unitHardware) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Broker credentials</strong></div>
+      <div class="iot-panel__body"><p class="text-secondary mb-0">None yet. The unit is issued credentials on its first contact with the provisioning endpoint, and this panel fills in then.</p></div>
+    </div>
+    <% } %>
+
+    <% if (permissions.has(bits, permissions.byName.set_offline)) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Offline</strong></div>
+      <div class="iot-panel__body">
+        <% if (device.is_offline) { %>
+        <p>This device is marked offline. Readings still log; alarms are disarmed.</p>
+        <form method="post" action="/devices/<%= uid %>/offline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="action" value="end"><button class="btn btn-primary" type="submit">Bring back online</button></form>
+        <% } else { %>
+        <form method="post" action="/devices/<%= uid %>/offline">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="action" value="start">
+          <div class="row g-2">
+            <div class="col-md-5"><select class="form-select" name="reason"><% reasons.forEach(function (r) { %><option><%= r %></option><% }); %></select></div>
+            <div class="col-md-7"><input class="form-control" name="comment" placeholder="Comment (required)" required maxlength="500"></div>
+          </div>
+          <button class="btn btn-outline-secondary mt-2" type="submit">Set offline</button>
+        </form>
+        <% } %>
+        <% if (offline.length) { %>
+        <table class="table iot-table table-sm mt-3 mb-0"><thead><tr><th>From</th><th>To</th><th>Reason</th></tr></thead><tbody>
+        <% offline.forEach(function (o) { %><tr><td><%= fmt.epoch(o.start_epoch, location.iana_timezone) %></td><td><%= o.end_epoch ? fmt.epoch(o.end_epoch, location.iana_timezone) : "open" %></td><td><%= o.reason %> <span class="text-secondary small"><%= o.comment %></span></td></tr><% }); %>
+        </tbody></table>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <div class="col-12 col-xl-6">
+    <% if (canEdit) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong><%= device.is_archived ? "Restore" : "Archive" %></strong></div>
+      <div class="iot-panel__body">
+        <p class="text-secondary small"><%= device.is_archived ? "Bring this device back into service." : "Retire in place: readings kept and chartable, alarms stop, the MAC is freed for a replacement." %></p>
+        <form method="post" action="/devices/<%= uid %>/archive" onsubmit="return confirmArchive(event)"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-outline-secondary" type="submit"><%= device.is_archived ? "Restore device" : "Archive device" %></button></form>
+      </div>
+    </div>
+    <% } %>
+    <% if (permissions.has(bits, permissions.byName.delete)) { %>
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Delete</strong></div>
+      <div class="iot-panel__body">
+        <p class="text-secondary small">Removes the device and its sensors; readings are purged after retention.</p>
+        <form method="post" action="/devices/<%= uid %>/delete" onsubmit="return confirmDelete(event)"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-outline-danger" type="submit">Delete <%= device.name %></button></form>
+      </div>
+    </div>
+    <% } %>
+  </div>
+</div>
+<script>
+async function confirmDelete(e) { e.preventDefault(); if (await iotConfirm({ title: "Delete <%= device.name %>?", body: "Its sensors and alarm rules are removed and readings purged after retention. This cannot be undone.", confirmText: "Delete", danger: true })) { e.target.submit(); } return false; }
+async function confirmArchive(e) { e.preventDefault(); if (await iotConfirm({ title: "<%= device.is_archived ? "Restore" : "Archive" %> <%= device.name %>?", body: "<%= device.is_archived ? "Alarm evaluation resumes." : "Alarms stop and its active alarms clear. Readings stay." %>", confirmText: "<%= device.is_archived ? "Restore" : "Archive" %>" })) { e.target.submit(); } return false; }
+async function confirmRe(e) { e.preventDefault(); if (await iotConfirm({ title: "Reprovision <%= device.name %>?", body: "The unit\u2019s broker account is deleted. Its next login fails and it provisions itself again with a fresh password under the same unit id.", confirmText: "Reprovision" })) { e.target.submit(); } return false; }
+</script>

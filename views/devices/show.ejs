@@ -1,0 +1,57 @@
+<% var uid = fmt.uid(device.uid); var isGw = device.kind === "gateway" || device.kind === "direct"; %>
+<div class="row g-3 mb-4">
+  <%- include("../partials/stat", { label: "Status", value: device.is_offline ? "Offline" : (awaiting ? "Pending" : (!device.last_seen_epoch ? "No data" : (now - device.last_seen_epoch > threshold ? "Silent" : "Online"))),
+      status: device.is_offline ? { kind: "offline", label: "Set offline manually" } : (awaiting ? { kind: "warning", label: "Waiting for first connection" } : (!device.last_seen_epoch ? { kind: "warning", label: "Waiting for first data" } : (now - device.last_seen_epoch > threshold ? { kind: "offline", label: "No recent data" } : { kind: "online", label: "Reporting" }))) }) %>
+  <div class="col-6 col-xl-3"><div class="iot-stat"><div class="iot-stat__label">Last seen</div><div class="iot-stat__value" data-live="device:<%= uid %>:ago" data-epoch="<%= device.last_seen_epoch || 0 %>"><%= fmt.ago(device.last_seen_epoch, now) %></div><% if (device.last_seen_epoch) { %><span class="iot-status iot-status--online"><%= fmt.epoch(device.last_seen_epoch, location.iana_timezone) %></span><% } %></div></div>
+  <%- include("../partials/stat", { label: "Type", value: type.display_name, truncate: true, status: device.model ? { kind: "online", label: device.model + (device.firmware ? " fw " + device.firmware : "") } : null }) %>
+  <%- include("../partials/stat", { label: "Hardware id", value: fmt.hardwareId(device.hardware_id) || "n/a", truncate: true, status: device.joined_epoch ? { kind: "online", label: "Joined " + fmt.epoch(device.joined_epoch, location.iana_timezone) } : null }) %>
+</div>
+
+<% if (awaiting) { %>
+<div class="alert alert-info">
+  <strong>Waiting for first connection.</strong> Checklist: power and antenna connected, broker host set in the firmware, cellular or network link up. The device provisions itself on its first contact with the server and this page updates. If it already provisioned somewhere else, it needs nothing: its data starts arriving here as soon as it is connected.
+</div>
+<% } %>
+<% if (cred && cred.state === "active" && cred.broker_fault) { %>
+<div class="alert alert-warning">
+  <strong>This device cannot be reached reliably.</strong> <%= cred.broker_fault %>
+  <div class="mt-2">To fix it, open <a href="/devices/<%= uid %>/settings">Settings</a> and use <strong>Reprovision</strong>. The device's next broker login fails, it provisions itself again, and its account is recreated with the correct permissions. This page clears once that happens.</div>
+  <% if (cred.broker_checked_epoch) { %><div class="small text-secondary mt-1">Found by the daily broker check <span data-epoch="<%= cred.broker_checked_epoch %>"><%= fmt.ago(cred.broker_checked_epoch, now) %></span>.</div><% } %>
+</div>
+<% } %>
+<% if (device.is_archived) { %><div class="alert alert-secondary">This device is archived. Readings stay chartable; no alarms are evaluated.</div><% } %>
+
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Sensors</strong><% if (hiddenCount > 0) { %> <a class="small ms-3" href="/devices/<%= fmt.uid(device.uid) %><%= showHidden ? "" : "?hidden=1" %>"><%= showHidden ? "Hide hidden" : "Show hidden (" + hiddenCount + ")" %></a><% } %></div>
+  <div class="table-responsive">
+    <table class="table iot-table is-sortable align-middle mb-0">
+      <thead><tr><th class="sort-alpha">Sensor</th><th class="sort-numeric">Value</th><th class="sort-numeric">Updated</th><th class="sort-custom">Alarm</th><th>Tags</th></tr></thead>
+      <tbody>
+      <% sensors.forEach(function (s) { %>
+        <tr>
+          <td><a href="/sensors/<%= fmt.uid(s.uid) %>"><%= s.name %></a><% if (s.is_derived) { %> <span class="badge text-bg-secondary">signal</span><% } %><% if (!s.is_enabled) { %> <span class="badge text-bg-secondary">disabled</span><% } %><% if (s.is_hidden) { %> <span class="badge text-bg-secondary">hidden</span><% if (permissions.has(bits, permissions.byName.edit)) { %> <form class="d-inline" method="post" action="/sensors/<%= fmt.uid(s.uid) %>/hide"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="action" value="unhide"><input type="hidden" name="from" value="device"><button class="btn btn-link btn-sm p-0 ms-1 align-baseline" type="submit">Unhide</button></form><% } %><% } %></td>
+          <td class="fw-semibold" data-live="<%= fmt.uid(s.uid) %>:value" data-sort="<%= s.sort_value %>"><%= s.display %></td>
+          <td class="text-secondary" title="<%= fmt.epoch(s.last_epoch, location.iana_timezone) %>" data-live="<%= fmt.uid(s.uid) %>:ago" data-epoch="<%= s.last_epoch || 0 %>" data-sort="<%= s.last_epoch || "" %>"><%= fmt.ago(s.last_epoch, now) %></td>
+          <td data-sort="<%= s.alarm ? (s.alarm.severity === "warning" ? 1 : 2) : 0 %>"><% if (s.alarm) { %><span class="iot-status iot-status--<%= s.alarm.severity === "warning" ? "warning" : "alarm" %>"><%= s.alarm.severity %> <%= s.alarm.direction.replace("_", " ") %></span><% } else { %><span class="text-secondary small">none</span><% } %></td>
+          <td class="small text-secondary"><%= s.tags.join(", ") %></td>
+        </tr>
+      <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong><%= isGw ? "Devices heard by this gateway" : "Gateways hearing this device" %></strong> <span class="text-secondary small ms-2">coverage</span></div>
+  <div class="table-responsive">
+    <table class="table iot-table is-sortable align-middle mb-0">
+      <thead><tr><th class="sort-alpha">Name</th><th class="sort-numeric">Last heard</th><th class="sort-custom">Signal</th></tr></thead>
+      <tbody>
+      <% coverage.forEach(function (c) { %>
+        <tr><td><a href="/devices/<%= fmt.uid(c.uid) %>"><%= c.name %></a></td><td data-sort="<%= c.last_heard_epoch %>"><%= fmt.ago(c.last_heard_epoch, now) %></td><td data-sort="<%= c.signal_pct !== null ? c.signal_pct : (c.last_rssi === null ? "" : c.last_rssi) %>"><% if (c.signal_pct !== null) { %><span title="<%= c.last_rssi %> dBm"><%= c.signal_pct %>%</span><% } else { %><%= c.last_rssi === null ? "" : c.last_rssi + " dBm" %><% } %></td></tr>
+      <% }); %>
+      <% if (!coverage.length) { %><tr><td colspan="3" class="text-secondary">Nothing yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>

@@ -1,0 +1,21 @@
+<h1 class="h4 text-center mb-1">Accept your invitation</h1>
+<p class="text-secondary text-center mb-4">Choose a username and password for <strong><%= invite.email %></strong>.</p>
+
+<form method="post" action="/invite/<%= invite.token %>" novalidate>
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+
+  <label class="form-label" for="username">Username</label>
+  <input class="form-control mb-1<%= errors.username ? " is-invalid" : "" %>" id="username" name="username" type="text" autocomplete="username" value="<%= values.username %>" required>
+  <div class="invalid-feedback mb-2"><%= errors.username %></div>
+
+  <label class="form-label" for="password">Password</label>
+  <input class="form-control mb-1<%= errors.password ? " is-invalid" : "" %>" id="password" name="password" type="password" autocomplete="new-password" required>
+  <div class="invalid-feedback mb-2"><%= errors.password %></div>
+  <div class="form-text mb-3"><%= policy %></div>
+
+  <label class="form-label" for="password2">Repeat password</label>
+  <input class="form-control mb-1<%= errors.password2 ? " is-invalid" : "" %>" id="password2" name="password2" type="password" autocomplete="new-password" required>
+  <div class="invalid-feedback mb-4"><%= errors.password2 %></div>
+
+  <button class="btn btn-primary w-100" type="submit">Create my account</button>
+</form>

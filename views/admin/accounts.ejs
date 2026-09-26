@@ -1,0 +1,23 @@
+<div class="d-flex justify-content-end mb-3"><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAccount"><i class="fa-solid fa-plus me-1"></i>New account</button></div>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Account</th><th>Locations</th><th>Devices</th><th>Users</th><th>Alarms</th><th>Status</th><th></th></tr></thead><tbody>
+  <% accounts.forEach(function (a) { %>
+    <tr class="<%= a.is_enabled ? "" : "text-secondary" %>">
+      <td><a href="/account/<%= fmt.uid(a.uid) %>"><%= a.name %></a> <% if (a.notifications_muted) { %><i class="fa-solid fa-bell-slash text-secondary" title="Notifications muted"></i><% } %></td>
+      <td><%= a.locations %></td><td><%= a.devices %></td><td><%= a.users %></td>
+      <td><% if (a.alarms) { %><span class="iot-status iot-status--alarm"><%= a.alarms %></span><% } else { %>0<% } %></td>
+      <td><span class="iot-status iot-status--<%= a.is_enabled ? "online" : "offline" %>"><%= a.is_enabled ? "enabled" : "disabled" %></span></td>
+      <td class="text-end">
+        <form method="post" action="/admin/accounts/<%= fmt.uid(a.uid) %>" class="d-inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="btn btn-sm btn-outline-secondary" name="action" value="toggle"><%= a.is_enabled ? "Disable" : "Enable" %></button></form>
+      </td>
+    </tr>
+  <% }); %>
+  </tbody></table></div>
+</div>
+<div class="modal fade" id="newAccount" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="post" action="/admin/accounts"><input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <div class="modal-header"><h5 class="modal-title">New account</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><label class="form-label">Name</label><input class="form-control" name="name" required maxlength="120"><div class="form-text">Creates the known tags and a Default alert group. Invite users from the account's Users tab.</div></div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary">Create</button></div>
+  </form>
+</div></div></div>

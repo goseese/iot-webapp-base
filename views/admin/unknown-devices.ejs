@@ -1,0 +1,91 @@
+<p class="text-secondary small">Hardware that has spoken to the server (provisioning, frames, or parseable BLE) but belongs to no live device. A unit with credentials is already connected and waiting: claiming it into a location starts its data arriving there at once, with nothing to do on the device.</p>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="form-check form-switch mb-0">
+    <input class="form-check-input" type="checkbox" id="ignoredToggle" <%= showIgnored ? "checked" : "" %> onchange="location.href='?ignored=' + (this.checked ? 1 : 0)">
+    <label class="form-check-label small" for="ignoredToggle">Show ignored</label>
+  </div>
+  <span class="small text-secondary">Ignore hides a device from this page only; accounts still see it on their Unclaimed devices page.</span>
+</div>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" id="unknownTable"><thead><tr><th style="width: 44px"><% if (rows.length) { %><div class="form-check form-switch mb-0" title="Select all"><input class="form-check-input" type="checkbox" id="bulkCheckAll" aria-label="Select all"></div><% } %></th><th>MAC</th><th>Model</th><th>Firmware</th><th>Unit</th><th>First heard</th><th>Last heard</th><th>Via</th><th></th></tr></thead><tbody>
+  <% rows.forEach(function (r) { %>
+    <tr data-bulk-uid="<%= r.mac %>" data-bulk-name="<%= fmt.mac(r.mac) %>" data-ignored="<%= r.is_ignored ? 1 : 0 %>">
+      <td><div class="form-check form-switch mb-0"><input class="form-check-input bulk-pick" type="checkbox" aria-label="Select <%= fmt.mac(r.mac) %>"></div></td>
+      <td class="font-monospace unknown-mac"><%= fmt.mac(r.mac) %><% if (r.is_ignored) { %> <span class="badge text-bg-secondary">ignored</span><% } %></td>
+      <td><%= r.first_model || "" %> <% if (r.typeName) { %><span class="text-secondary small">(<%= r.typeName %>)</span><% } %></td>
+      <td><%= r.last_firmware || "" %></td>
+      <td><% if (r.unit) { %><span class="iot-status iot-status--<%= r.unit.state === "active" ? (r.unit.mqtt_seen_epoch ? "online" : "warning") : "offline" %>"><%= r.unit.state === "active" ? (r.unit.mqtt_seen_epoch ? "connected before" : "issued, never connected") : r.unit.state %></span><div class="font-monospace small text-secondary" title="Unit id (broker username)"><%= r.unit.broker_username %></div><% } else { %><span class="text-secondary small">no credentials</span><% } %></td>
+      <td><%= fmt.epoch(r.first_heard_epoch) %></td>
+      <td><%= fmt.ago(r.last_heard_epoch, now) %></td>
+      <td><%= r.first_heard_via %></td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#c<%= r.id %>">Claim</button>
+        <% if (r.unit && r.unit.state === "active") { %>
+        <form method="post" action="/admin/unknown-devices/reprovision" class="d-inline" onsubmit="return confirmUnitRe(event, '<%= r.mac %>')">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="mac" value="<%= r.mac %>">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Reprovision</button>
+        </form>
+        <% } %>
+      </td>
+    </tr>
+    <tr class="collapse" id="c<%= r.id %>"><td colspan="9">
+      <form method="post" action="/admin/unknown-devices/claim" class="row g-2 align-items-end">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="mac" value="<%= r.mac %>">
+        <div class="col-md-4"><label class="form-label small">Location</label><select class="form-select form-select-sm" name="location_id"><% locations.forEach(function (l) { %><option value="<%= l.id %>"><%= l.account_name %> / <%= l.name %></option><% }); %></select></div>
+        <div class="col-md-3"><label class="form-label small">Name</label><input class="form-control form-control-sm" name="name" value="<%= r.first_model || "" %> <%= r.mac.slice(-4) %>"></div>
+        <div class="col-md-3"><label class="form-label small">Type</label><select class="form-select form-select-sm" name="type"><% types.forEach(function (t) { %><option value="<%= t.slug %>" <%= r.typeSlug === t.slug ? "selected" : "" %>><%= t.displayName %></option><% }); %></select></div>
+        <div class="col-md-2"><button class="btn btn-sm btn-primary w-100">Add</button></div>
+      </form>
+    </td></tr>
+  <% }); %>
+  <% if (!rows.length) { %><tr><td colspan="9" class="text-secondary"><%= showIgnored ? "Nothing unknown or ignored." : "Nothing unknown has been heard." %></td></tr><% } %>
+  </tbody></table></div>
+</div>
+
+<script>
+// Called from onsubmit, so it only has to exist by the time a button is clicked; defined globally
+// the same way as confirmRe on the device settings page.
+async function confirmUnitRe(e, mac)
+{
+    e.preventDefault();
+    if (await iotConfirm({ title: "Reprovision " + mac + "?", body: "The unit's broker account is deleted. Its next login fails and it provisions itself again with a fresh password under the same unit id.", confirmText: "Reprovision" })) { e.target.submit(); }
+    return false;
+}
+</script>
+
+<%- include("../partials/bulk-bar", { actions: showIgnored ? [{ key: "unignore", label: "Unignore" }, { key: "ignore", label: "Ignore" }] : [{ key: "ignore", label: "Ignore" }] }) %>
+<%- include("../partials/bulk-modal", { fields: '<div data-bulk-for="ignore" class="alert alert-secondary py-2 mb-2">Hidden from this page. Accounts still see them.</div><div data-bulk-for="unignore" class="alert alert-secondary py-2 mb-2">Listed on this page again.</div>' }) %>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    function done(tr, badge)
+    {
+        tr.classList.add("iot-row-cleared");
+        tr.querySelector(".unknown-mac").insertAdjacentHTML("beforeend", ' <span class="badge text-bg-secondary">' + badge + '</span>');
+        tr.querySelector(".bulk-pick").disabled = true;
+    }
+    iotBulk.init(
+    {
+        table: "unknownTable",
+        csrf: "<%= csrfToken %>",
+        noun: ["device", "devices"],
+        actions:
+        {
+            ignore:
+            {
+                label: "Ignore", doing: "Ignoring", done: "Ignored",
+                skip: function (tr) { return tr.dataset.ignored === "1" ? "already ignored" : null; },
+                url: function (tr) { return "/admin/unknown-devices/" + tr.dataset.bulkUid + "/ignore"; },
+                apply: function (tr) { tr.dataset.ignored = "1"; done(tr, "ignored"); }
+            },
+            unignore:
+            {
+                label: "Unignore", doing: "Unignoring", done: "Unignored",
+                skip: function (tr) { return tr.dataset.ignored === "1" ? null : "not ignored"; },
+                url: function (tr) { return "/admin/unknown-devices/" + tr.dataset.bulkUid + "/unignore"; },
+                apply: function (tr) { tr.dataset.ignored = "0"; done(tr, "unignored"); }
+            }
+        }
+    });
+});
+</script>
