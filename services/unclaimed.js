@@ -1,9 +1,8 @@
 // Unclaimed devices for one account (DECISIONS "Unclaimed devices, per account"): MACs on no live
-// device that a gateway in the account has heard (DTM_unclaimed_heard), with every location that
+// device that a gateway in the account has heard (unclaimed_heard), with every location that
 // heard each one, strongest signal first. Used by the account page and the location's Unclaimed
-// view (the same view, filtered), and by auto claim (isIgnored). Claim, ignore and unignore live
-// here so both pages share them.
-const { knex, T, nowEpoch } = require("../db/knex");
+// view (the same view, filtered). Claim, ignore and unignore live here so both pages share them.
+const { knex, T, nowEpoch, isUniqueViolation } = require("../db/knex");
 const deviceTypes = require("../deviceTypes");
 const levels = require("./levels");
 
@@ -34,7 +33,7 @@ async function list(opts)
         .join(T("locations") + " as l", "l.id", "g.location_id")
         .leftJoin(T("devices") + " as d", function ()
         {
-            this.on("d.hardware_id", "h.mac").andOnNull("d.delete_epoch").andOn("d.is_archived", knex.raw("0"));
+            this.on("d.hardware_id", "h.mac").andOnNull("d.delete_epoch").andOn("d.is_archived", knex.raw("false"));
         })
         .whereNull("d.id")
         .whereNull("g.delete_epoch").where("g.is_archived", 0)
@@ -95,7 +94,7 @@ async function setIgnored(accountId, mac, ignore, actor)
     if (ignore)
     {
         try { await knex(T("unclaimed_ignored")).insert({ account_id: accountId, mac: mac, ignored_by: actor ? actor.id : null, ignored_epoch: nowEpoch() }); }
-        catch (err) { if (err.number !== 2601 && err.number !== 2627) { throw err; } }
+        catch (err) { if (!isUniqueViolation(err)) { throw err; } }
     }
     else
     {

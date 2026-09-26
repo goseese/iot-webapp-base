@@ -119,9 +119,9 @@ router.post("/contacts", body("name").trim().isLength({ min: 1, max: 80 }), asyn
         }
         if (!validationResult(req).isEmpty()) { req.flash("danger", "Name is required."); return res.redirect(req.acctBase + "/alert-groups"); }
         const email = (req.body.email || "").trim().toLowerCase() || null;
-        const phone = (req.body.phone || "").trim() || null;
-        if (!email && !phone) { req.flash("danger", "A contact needs an email or a phone."); return res.redirect(req.acctBase + "/alert-groups"); }
-        await knex(T("contacts")).insert({ account_id: req.account.id, name: req.body.name.trim(), email: email, phone: phone, created_epoch: nowEpoch() });
+        // SMS is hidden in this app: contacts are email only and phone is never taken from a form.
+        if (!email) { req.flash("danger", "A contact needs an email."); return res.redirect(req.acctBase + "/alert-groups"); }
+        await knex(T("contacts")).insert({ account_id: req.account.id, name: req.body.name.trim(), email: email, created_epoch: nowEpoch() });
         req.flash("success", "Contact added.");
         res.redirect(req.acctBase + "/alert-groups");
     }

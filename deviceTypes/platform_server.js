@@ -16,7 +16,7 @@ module.exports =
     channels:
     [
         { id: "http_response_ms", name: "HTTP response time", metric: "duration", inboundUnit: "ms", displayUnit: "ms",
-          description: "Time for the leader to fetch its own /health page through the public site address, so it includes IIS, ARR and the network path, not just Node.\n\nMeasured once a minute. A timeout records 5000 ms.",
+          description: "Time for the leader to fetch its own /health page through the public site address, so it includes nginx, TLS and the network path, not just Node.\n\nMeasured once a minute. A timeout records 5000 ms.",
           defaultAlarms: [{ direction: "upper", threshold: 2.0, severity: "warning", exceedSecs: 300, returnSecs: 300 }] },
         { id: "db_query_ms", name: "Database query time", metric: "duration", inboundUnit: "ms", displayUnit: "ms",
           description: "Time for one small query (a count of the settings table) from the leader to SQL Server.\n\nA rising value points at database load, locking or the network between the app servers and SQL Server.",

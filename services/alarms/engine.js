@@ -1,7 +1,7 @@
 // Applies ladder transitions to the database (architecture 8.2, 8.5): alarm rows, append only
 // events, escalation rows at level 1, then notification resolution. Every function here is
 // the only way an alarm changes state; routes and jobs call in, never write alarms directly.
-const { knex, T } = require("../../db/knex");
+const { knex, T, isUniqueViolation } = require("../../db/knex");
 const alarmsRepo = require("../../db/repos/alarms");
 const notify = require("./notify");
 const logger = require("../../config/logger");
@@ -32,7 +32,7 @@ async function raise(sensor, direction, rule, severity, value, epoch, extra)
         }
         catch (err)
         {
-            if (err.number === 2601 || err.number === 2627) { return; }   // already active: lost a race, fine
+            if (isUniqueViolation(err)) { return; }   // already active: lost a race, fine. Postgres has aborted trx, so no statement may follow.
             throw err;
         }
         eventId = await alarmsRepo.insertEvent({ alarm_id: alarmId, epoch: epoch, event_kind: suppressedBy ? "suppressed" : "raised", severity: severity, value: value === undefined ? null : value, actor_type: "system" }, trx);

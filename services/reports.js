@@ -63,7 +63,7 @@ async function run(report, triggerKind, actorUser)
         {
             const row = rc.recipient_type === "user" ? await knex(T("users")).where({ id: rc.recipient_id }).whereNull("delete_epoch").first() : await knex(T("contacts")).where({ id: rc.recipient_id }).whereNull("delete_epoch").first();
             if (!row || !row.email) { continue; }
-            await mail.send({ kind: "report", to: row.email, recipientType: rc.recipient_type, recipientId: rc.recipient_id, subject: settings.get("SITE_NAME", "DevMon") + " report: " + report.name,
+            await mail.send({ kind: "report", to: row.email, recipientType: rc.recipient_type, recipientId: rc.recipient_id, subject: settings.siteName() + " report: " + report.name,
                 text: report.name + " (" + type.displayName + ") has run: " + rows.length + " rows.\n\nDownload: " + env.appUrl + "/reports/" + String(report.uid).toLowerCase() + "/runs/" + runId + "\n" });
         }
         return { ok: true, runId: runId, rows: rows.length };

@@ -4,7 +4,7 @@ const { knex, T } = require("../db/knex");
 // group: general | email | sms | mqtt | logging | api (tabs on the admin settings page)
 const DEFAULTS =
 [
-    { key: "SITE_NAME", value: "DevMon", kind: "string", group: "general", description: "Name shown in the sidebar, page titles and emails." },
+    { key: "SITE_NAME", value: "Voltastc", kind: "string", group: "general", description: "Name shown in the sidebar, page titles and emails." },
     { key: "SESSION_HOURS", value: "168", kind: "int", group: "general", description: "Hours a login session stays valid without activity. Needs restart.", min: 1, max: 720 },
     { key: "PW_MIN_LENGTH", value: "10", kind: "int", group: "general", description: "Minimum password length.", min: 6, max: 128 },
     { key: "PW_REQUIRE_UPPER", value: "1", kind: "bool", group: "general", description: "Passwords must contain an upper case letter." },
@@ -29,7 +29,7 @@ const DEFAULTS =
 
     { key: "API_RATE_PER_MINUTE", value: "120", kind: "int", group: "api", description: "API requests per minute per credential.", min: 10, max: 10000 },
     { key: "API_MAX_OBJECTS", value: "1000", kind: "int", group: "api", description: "Maximum reading objects per API post.", min: 1, max: 10000 },
-    { key: "API_KEY_PREFIX", value: "devmon", kind: "string", group: "api", description: "Prefix for new API keys, 1 to 16 characters from A-Z a-z 0-9 - . _ ~. Existing keys are not changed." },
+    { key: "API_KEY_PREFIX", value: "voltastc", kind: "string", group: "api", description: "Prefix for new API keys, 1 to 16 characters from A-Z a-z 0-9 - . _ ~. Existing keys are not changed." },
 
     { key: "MAIL_DRIVER", value: "none", kind: "string", group: "email", description: "Outbound mail driver." },
     { key: "MAIL_FROM_ADDRESS", value: null, kind: "string", group: "email", description: "From address for every email the platform sends. Must be a verified sender at the provider." },

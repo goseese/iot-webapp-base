@@ -1,5 +1,5 @@
 // One interface, one module per provider (conventions.md section 8). Every send writes
-// DTM_notifications first, then sends, then records the outcome. The driver and its
+// notifications first, then sends, then records the outcome. The driver and its
 // credentials come from site settings (Email tab); .env keys of the same names override.
 const env = require("../../config/env");
 const settings = require("../../config/settings");
@@ -9,8 +9,7 @@ const notifications = require("../../db/repos/notifications");
 const drivers =
 {
     none: require("./none"),
-    sendgrid: require("./sendgrid"),
-    smtp: require("./smtp")
+    ses: require("./ses")
 };
 
 function chosen()
@@ -48,13 +47,14 @@ async function send(msg)
     }
     try
     {
-        const result = await driver.send({ to: msg.to, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.get("SITE_NAME", ""), subject: msg.subject, text: msg.text, html: msg.html || null });
+        const result = await driver.send({ to: msg.to, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.siteName(), subject: msg.subject, text: msg.text, html: msg.html || null });
         await notifications.update(id, { outcome: "sent", reason: null, provider_message_id: result.messageId });
         return { ok: true, notificationId: id };
     }
     catch (err)
     {
-        const reason = (err.response && err.response.body && JSON.stringify(err.response.body).slice(0, 190)) || (err.message || "send failed").slice(0, 190);
+        // AWS SDK errors carry the SES error code in err.name (MessageRejected, AccessDeniedException, ...).
+        const reason = ((err.name && err.name !== "Error" ? err.name + ": " : "") + (err.message || "send failed")).slice(0, 190);
         logger.error({ err: err.message, to: msg.to, driver: driver.name }, "mail send failed");
         await notifications.update(id, { outcome: "failed", reason: reason });
         return { ok: false, notificationId: id, reason: reason };

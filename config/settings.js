@@ -102,4 +102,11 @@ async function set(k, value, userId)
     await reload();
 }
 
-module.exports = { reload, ensureFresh, get, all, set, encrypt, decrypt };
+// The one place the site name comes from: Admin > Site settings > General, SITE_NAME. Every page
+// title, email, alert and report uses this; never hard code the name or its fallback elsewhere.
+function siteName()
+{
+    return get("SITE_NAME", "") || "Voltastc";
+}
+
+module.exports = { reload, ensureFresh, get, all, set, encrypt, decrypt, siteName };

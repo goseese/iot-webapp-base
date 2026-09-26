@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %> | <%= siteName %></title>
+  <link rel="icon" type="image/png" href="/img/icon.png">
   <link href="/vendor/bootstrap-5.3.3/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/fontawesome-6.7.2/css/all.min.css" rel="stylesheet">
   <link href="/vendor/simple-datatables-10.3.0/style.css" rel="stylesheet">
@@ -14,8 +15,8 @@
 
   <aside class="iot-sidebar">
     <a class="iot-sidebar__brand" href="/account">
-      <span class="iot-logo-mark"><%= siteName.slice(0, 2).toUpperCase() %></span>
-      <span class="iot-logo-text"><%= siteName %></span>
+      <img class="iot-logo-icon" src="/img/icon.png" alt="<%= siteName %>">
+      <img class="iot-logo-text iot-logo-img" src="/img/site_logo.png" alt="<%= siteName %>">
     </a>
 
     <nav class="iot-nav" aria-label="Primary navigation">

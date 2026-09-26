@@ -18,13 +18,13 @@ function build()
 
     return session(
     {
-        name: "devmon.sid",
+        name: "voltastc.sid",
         secret: env.sessionSecret,
         store: store,
         resave: false,
         saveUninitialized: false,
         rolling: true,
-        proxy: env.isProd,           // IIS ARR terminates TLS; trust X-Forwarded-Proto
+        proxy: env.isProd,           // nginx terminates TLS; trust X-Forwarded-Proto
         cookie:
         {
             httpOnly: true,

@@ -9,13 +9,13 @@ test("device topics use the dev/ prefix, lower case guid", () =>
     assert.equal(topics.device.setConfig("ABC-1", "rf_channel"), "dev/abc-1/cmd/set_config/rf_channel");
     assert.equal(topics.device.command("ABC-1", "publish_now"), "dev/abc-1/cmd/publish_now");
     assert.equal(topics.account.config("ACC-1"), "acct/acc-1/config");
-    assert.deepEqual(topics.ingestSubscriptions, ["dev/+/frame", "dev/+/ble", "dev/+/status", "dev/+/data", "dev/+/geoscan", "dev/+/cmd_ack", "dev/+/config/+", "provision/request/+"]);
+    assert.deepEqual(topics.ingestSubscriptions, ["dev/+/frame", "dev/+/status", "dev/+/data", "dev/+/geoscan", "dev/+/cmd_ack", "dev/+/config/+"]);
 });
 
-test("parse accepts platform topics and rejects legacy prefixes", () =>
+test("parse accepts platform topics and rejects everything else", () =>
 {
     assert.deepEqual(topics.parse("dev/ABC/status"), { kind: "device", guid: "abc", channel: "status" });
-    assert.deepEqual(topics.parse("provision/request/A4CF12345678"), { kind: "provision", hardwareId: "A4CF12345678" });
+    assert.equal(topics.parse("provision/request/A4CF12345678"), null);   // MQTT provisioning is gone; HTTPS only
     assert.deepEqual(topics.parse("dev/ABC/data"), { kind: "device", guid: "abc", channel: "data" });
     assert.deepEqual(topics.parse("dev/ABC/config/rf_channel"), { kind: "device", guid: "abc", channel: "config", key: "rf_channel" });
     assert.equal(topics.parse("dev/abc/config"), null);       // config always carries its key
@@ -24,8 +24,7 @@ test("parse accepts platform topics and rejects legacy prefixes", () =>
     assert.equal(topics.parse("dev/abc/cmd"), null);          // downlink is never ingested
     assert.equal(topics.parse("dom/site1/frame"), null);
     assert.equal(topics.parse("dtm/x/y"), null);
-    assert.ok(topics.isLegacy("dom/site1/frame"));
-    assert.ok(!topics.isLegacy("dev/abc/frame"));
+    assert.equal(topics.parse("dev/abc/ble"), null);          // BLE uplink is gone
 });
 
 test("device ACLs: publish own uplinks, subscribe and receive own cmd subtree", () =>
@@ -34,7 +33,6 @@ test("device ACLs: publish own uplinks, subscribe and receive own cmd subtree", 
     assert.deepEqual(acls.map((a) => a.acltype + " " + a.topic),
     [
         "publishClientSend dev/abc/frame",
-        "publishClientSend dev/abc/ble",
         "publishClientSend dev/abc/status",
         "publishClientSend dev/abc/data",
         "publishClientSend dev/abc/geoscan",

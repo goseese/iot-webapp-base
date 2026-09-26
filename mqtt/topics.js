@@ -1,7 +1,6 @@
 // MQTT topic scheme, the single place topics are built and parsed.
 //
 //   dev/{device_guid}/frame     uplink, one relayed LoRa frame + rssi
-//   dev/{device_guid}/ble       uplink, one relayed BLE beacon per message (not a 4.3 batch)
 //   dev/{device_guid}/status    uplink, device self JSON, retained, LWT online:false
 //   dev/{device_guid}/data      uplink, the device's own readings (not retained)
 //   dev/{device_guid}/config/+  uplink, one config value per publish, key in the topic (not retained)
@@ -13,17 +12,11 @@
 //                               subscription also matches the parent level (MQTT 3.1.1 4.7.1.2),
 //                               which is why the server still publishes to the bare cmd topic.
 //   acct/{account_guid}/#       server published account namespace
-//   provision/request/{hw_id}   device -> server
-//   provision/response/{hw_id}  server -> device
 //   con/endpoint                retained, server published: the HTTPS provisioning URL. The only
 //                               topic the shared `announce` credential is allowed to read.
-//   dom/# and dtm/#             reserved for the legacy adapter ONLY. The legacy shared credential
-//                               holds ACLs there, so new platform traffic under those prefixes would
-//                               let the old fleet publish as any new device. Security boundary.
 const DEVICE_PREFIX = "dev";
 const ACCOUNT_PREFIX = "acct";
-const LEGACY_PREFIXES = ["dom", "dtm"];
-const UPLINK_KINDS = ["frame", "ble", "status", "data", "geoscan", "cmd_ack"];
+const UPLINK_KINDS = ["frame", "status", "data", "geoscan", "cmd_ack"];
 // Kinds whose last topic level is a key: dev/{guid}/config/{key}, one value per publish.
 const KEYED_UPLINK_KINDS = ["config"];
 
@@ -32,7 +25,6 @@ const lower = (g) => String(g).toLowerCase();
 const device =
 {
     frame: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/frame",
-    ble: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/ble",
     status: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/status",
     cmd: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd",
     // One config write, bare value payload, not retained. The unit replies on config/{key}.
@@ -60,12 +52,10 @@ const account =
 // from the retained message, disconnects and makes the HTTPS call. A literal topic, not a builder:
 // it is the same string in every firmware image. Retained, QoS 1, published by the leader only.
 const connect = { endpoint: "con/endpoint" };
-const provision = { request: (hw) => "provision/request/" + hw, response: (hw) => "provision/response/" + hw };
 
 // What the ingest process subscribes to.
 const ingestSubscriptions = UPLINK_KINDS.map((k) => DEVICE_PREFIX + "/+/" + k)
-    .concat(KEYED_UPLINK_KINDS.map((k) => DEVICE_PREFIX + "/+/" + k + "/+"))
-    .concat(["provision/request/+"]);
+    .concat(KEYED_UPLINK_KINDS.map((k) => DEVICE_PREFIX + "/+/" + k + "/+"));
 
 // ACLs for a per device broker user, in the shape the dynsec control API takes: publish its own
 // uplinks, subscribe to and receive its own commands, nothing else.
@@ -99,17 +89,13 @@ function deviceAcls(guid)
 }
 
 // parse("dev/<guid>/frame") -> { kind: "device", guid, channel: "frame" }
-// parse("provision/request/<hw>") -> { kind: "provision", hardwareId }
-// anything else, including legacy prefixes -> null
+// anything else -> null
 function parse(topic)
 {
     const parts = String(topic).split("/");
-    if (parts[0] === "provision" && parts[1] === "request" && parts.length === 3) { return { kind: "provision", hardwareId: parts[2] }; }
     if (parts[0] === DEVICE_PREFIX && parts.length === 3 && UPLINK_KINDS.includes(parts[2])) { return { kind: "device", guid: parts[1].toLowerCase(), channel: parts[2] }; }
     if (parts[0] === DEVICE_PREFIX && parts.length === 4 && KEYED_UPLINK_KINDS.includes(parts[2]) && parts[3] !== "") { return { kind: "device", guid: parts[1].toLowerCase(), channel: parts[2], key: parts[3] }; }
     return null;
 }
 
-function isLegacy(topic) { return LEGACY_PREFIXES.includes(String(topic).split("/")[0]); }
-
-module.exports = { DEVICE_PREFIX, ACCOUNT_PREFIX, LEGACY_PREFIXES, device, account, provision, connect, ingestSubscriptions, deviceAcls, parse, isLegacy };
+module.exports = { DEVICE_PREFIX, ACCOUNT_PREFIX, device, account, connect, ingestSubscriptions, deviceAcls, parse };

@@ -31,7 +31,7 @@ async function invite(input)
         await mail.send(
         {
             kind: "invite", to: email, recipientType: "user", recipientId: existingUser.id,
-            subject: "You have been added to " + input.scopeName + " on " + settings.get("SITE_NAME", "DevMon"),
+            subject: "You have been added to " + input.scopeName + " on " + settings.siteName(),
             text: (input.invitedBy.display_name || input.invitedBy.username) + " added you to " + input.scopeName + ".\n\n" +
                   "Sign in: " + env.appUrl + "/login\n"
         });
@@ -57,7 +57,7 @@ async function invite(input)
     await mail.send(
     {
         kind: "invite", to: email, recipientType: "address",
-        subject: "You are invited to " + input.scopeName + " on " + settings.get("SITE_NAME", "DevMon"),
+        subject: "You are invited to " + input.scopeName + " on " + settings.siteName(),
         text: (input.invitedBy.display_name || input.invitedBy.username) + " invited you to " + input.scopeName + ".\n\n" +
               "Accept and set your password: " + env.appUrl + "/invite/" + token + "\n\n" +
               "This link expires in " + settings.get("INVITE_DAYS", 7) + " days.\n"
@@ -77,7 +77,7 @@ async function resend(inviteRow, byUser)
     return mail.send(
     {
         kind: "invite", to: inviteRow.email, recipientType: "address",
-        subject: "You are invited to " + scopeName + " on " + settings.get("SITE_NAME", "DevMon"),
+        subject: "You are invited to " + scopeName + " on " + settings.siteName(),
         text: (byUser.display_name || byUser.username) + " sent you a new invitation to " + scopeName + ".\n\n" +
               "Accept and set your password: " + env.appUrl + "/invite/" + token + "\n\n" +
               "This link expires in " + settings.get("INVITE_DAYS", 7) + " days. Earlier invitation links no longer work.\n"

@@ -181,26 +181,15 @@ then
     exit 1
 fi
 
-# Every reply is 200 by design (middleware/httpStatus.js); x-app-status carries the real code.
-APP_STATUS="$(tr -d '\r' < "$HDR_FILE" | awk 'tolower($1) == "x-app-status:" { print $2 }')"
 RATE_REMAINING="$(tr -d '\r' < "$HDR_FILE" | awk 'tolower($1) == "x-ratelimit-remaining:" { print $2 }')"
 echo "http:     $HTTP_CODE"
-echo "app:      ${APP_STATUS:-200 (no x-app-status, so the app accepted it)}"
 [ -n "$RATE_REMAINING" ] && echo "rate:     $RATE_REMAINING requests left this minute"
 echo "response: $(cat "$BODY_FILE")"
-
-if [ "$HTTP_CODE" != "200" ]
-then
-    echo "FAIL: expected HTTP 200 for every reply. A non 200 here means the request never reached the"
-    echo "      app, or httpStatus is disabled. If the body is an IIS error page, that is the custom"
-    echo "      error module and the endpoint path is wrong."
-    exit 1
-fi
 
 GUID="$(json_get guid < "$BODY_FILE")"
 PASSWORD="$(json_get password < "$BODY_FILE")"
 
-case "${APP_STATUS:-200}" in
+case "$HTTP_CODE" in
     200)
         EXISTING="$(json_get existing < "$BODY_FILE")"
         if [ -n "$GUID" ] && [ -n "$PASSWORD" ]
@@ -247,7 +236,7 @@ case "${APP_STATUS:-200}" in
         exit 1
         ;;
     *)
-        echo "NOTE: unexpected app status ${APP_STATUS}. Not a failure on its own; read the body above."
+        echo "NOTE: unexpected app status ${HTTP_CODE}. Not a failure on its own; read the body above."
         ;;
 esac
 

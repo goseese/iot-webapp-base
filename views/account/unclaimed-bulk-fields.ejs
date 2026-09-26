@@ -2,9 +2,9 @@
 <div data-bulk-for="claim">
   <label class="form-label" for="bulkLocation">Add to location</label>
   <select class="form-select mb-2" id="bulkLocation">
-    <% claimTargets.forEach(function (l) { %><option value="<%= fmt.uid(l.uid) %>" <%= preselect && preselect.id === l.id ? "selected" : "" %>><%= l.name %><%= l.membership_mode === "auto_claim" ? " (auto claim)" : "" %></option><% }); %>
+    <% claimTargets.forEach(function (l) { %><option value="<%= fmt.uid(l.uid) %>" <%= preselect && preselect.id === l.id ? "selected" : "" %>><%= l.name %></option><% }); %>
   </select>
   <div class="form-text mb-2">Each device is named by its type and the last four of its MAC; rename it later. A wrong one can be moved afterwards.</div>
 </div>
-<div data-bulk-for="ignore" class="alert alert-secondary py-2 mb-2">Hidden from this account's unclaimed list, and auto claim skips them. Show ignored lists them again.</div>
-<div data-bulk-for="unignore" class="alert alert-secondary py-2 mb-2">Listed again, and auto claim may take them.</div>
+<div data-bulk-for="ignore" class="alert alert-secondary py-2 mb-2">Hidden from this account's unclaimed list. Show ignored lists them again.</div>
+<div data-bulk-for="unignore" class="alert alert-secondary py-2 mb-2">Listed again.</div>

@@ -14,7 +14,9 @@ function monitorItems(loc)
             [
                 { label: "Devices", path: base + "/devices", exact: true },
                 { label: "Gateways", path: base + "/gateways" },
-                { label: "Assets", path: base + "/assets" },
+                // Assets hidden for now (Jeff, Sep 2026); the route and view still exist. Its page also
+                // needs `reasons` passed from routes/locations.js before it renders.
+                // { label: "Assets", path: base + "/assets" },
                 { label: "Unclaimed", path: base + "/unclaimed" }
             ]
         },

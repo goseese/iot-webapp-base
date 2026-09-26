@@ -3,6 +3,8 @@ services:
     env_file: .env.local
     environment:
       DOTENV_CONFIG_PATH: /app/.env.local
+      # Inside the container loopback is unreachable through the port mapping.
+      HOST: 0.0.0.0
     image: node:22-alpine
     working_dir: /app
     command: sh -c "npm install && npm run dev"

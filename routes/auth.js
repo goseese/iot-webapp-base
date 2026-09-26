@@ -93,7 +93,7 @@ router.post("/forgot-password", body("login").trim().isLength({ min: 1, max: 254
             await mail.send(
             {
                 kind: "reset", to: user.email, recipientType: "user", recipientId: user.id,
-                subject: settings.get("SITE_NAME", "DevMon") + " password reset",
+                subject: settings.siteName() + " password reset",
                 text: "Use this link to sign in and set a new password:\n\n" + env.appUrl + "/reset/" + token +
                       "\n\nIt expires in " + minutes + " minutes. If you did not ask for this, ignore this message.\n"
             });

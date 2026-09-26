@@ -1,4 +1,4 @@
-const { knex, T } = require("../knex");
+const { knex, T, isUniqueViolation } = require("../knex");
 
 function insertMany(rows, trx)
 {
@@ -15,7 +15,7 @@ function updateHot(sensorId, value, epoch, readingId, trx)
         .update({ last_value: value, last_epoch: epoch, last_reading_id: readingId });
 }
 
-// Dedup claim: the unique index arbitrates; 2601/2627 = another gateway already won (schema-conventions 4).
+// Dedup claim: the unique index arbitrates; a unique violation = another gateway already won (schema-conventions 4).
 async function claimFrame(deviceId, counter, epoch)
 {
     try
@@ -25,7 +25,7 @@ async function claimFrame(deviceId, counter, epoch)
     }
     catch (err)
     {
-        if (err.number === 2601 || err.number === 2627) { return false; }
+        if (isUniqueViolation(err)) { return false; }
         throw err;
     }
 }
@@ -37,7 +37,7 @@ async function upsertCoverage(deviceId, gatewayId, epoch, rssi)
     if (updated === 0)
     {
         try { await knex(T("device_coverage")).insert({ device_id: deviceId, gateway_id: gatewayId, last_heard_epoch: epoch, last_rssi: rssi === undefined ? null : rssi }); }
-        catch (err) { if (err.number !== 2601 && err.number !== 2627) { throw err; } }
+        catch (err) { if (!isUniqueViolation(err)) { throw err; } }
     }
 }
 

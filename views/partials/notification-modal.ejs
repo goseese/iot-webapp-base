@@ -12,9 +12,7 @@ document.addEventListener("click", async function (e)
     body.innerHTML = '<div class="text-secondary">Loading...</div>';
     bootstrap.Modal.getOrCreateInstance(document.getElementById("notificationModal")).show();
     var res = await fetch("/alarms/notifications/" + row.dataset.notification + ".json");
-    // Refusals arrive as 200 with x-app-status set (middleware/httpStatus.js). !res.ok still covers
-    // the case where that middleware is turned off and real status codes come back.
-    if (!res.ok || res.headers.get("x-app-status")) { body.innerHTML = '<div class="text-danger">Could not load this notification.</div>'; return; }
+    if (!res.ok) { body.innerHTML = '<div class="text-danger">Could not load this notification.</div>'; return; }
     var n = await res.json();
     var esc = function (v) { return String(v == null ? "" : v).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
     var kind = { sent: "online", failed: "alarm", suppressed: "offline" }[n.outcome] || "offline";

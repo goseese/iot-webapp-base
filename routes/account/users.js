@@ -69,9 +69,9 @@ router.get("/users/search", async (req, res, next) =>
         if (!permissions.has(await bits(req), permissions.byName.grant)) { return next(notFoundError()); }
         const text = String(req.query.q || "").trim().slice(0, 100);
         if (text.length < 2) { return res.json({ ok: true, users: [] }); }
-        const like = "%" + text.replace(/[[%_]/g, "[$&]") + "%";   // T-SQL LIKE: bracket the wildcards
+        const like = "%" + text.replace(/[\\%_]/g, "\\$&") + "%";   // escape LIKE wildcards; backslash is the Postgres default escape
         const users = await inPool(knex(T("users") + " as u").whereNull("u.delete_epoch").whereNot("u.id", req.user.id), await poolScope(req))
-            .where(function () { this.where("u.email", "like", like).orWhere("u.username", "like", like).orWhere("u.display_name", "like", like); })
+            .where(function () { this.where("u.email", "ilike", like).orWhere("u.username", "ilike", like).orWhere("u.display_name", "ilike", like); })
             .select("u.id", "u.uid", "u.username", "u.display_name", "u.email").orderBy("u.username").limit(20);
         // What each already holds in this account, so the modal can say so before adding.
         const locations = await knex(T("locations")).where({ account_id: req.account.id }).whereNull("delete_epoch").select("id", "name");

@@ -3,7 +3,7 @@
 <div class="alert alert-success"><strong>New API key, shown once:</strong> <code class="user-select-all"><%= newKey %></code><br><span class="small">Use it as <code>Authorization: Bearer &lt;key&gt;</code> against <code><%= apiBase %></code>.</span></div>
 <% } %>
 <% if (newSecret) { %>
-<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-DevMon-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
+<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-Voltastc-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
 <% } %>
 
 <div class="row g-3">

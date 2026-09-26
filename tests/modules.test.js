@@ -15,7 +15,7 @@ test("pipeline modules load with complete exports", () =>
     const provisioning = require("../services/provisioning");
     const client = require("../mqtt/client");
     assert.equal(typeof identify.handle, "function");
-    assert.equal(typeof provisioning.handleRequest, "function");
+    assert.equal(typeof provisioning.issue, "function");
     assert.equal(typeof client.get, "function");
     assert.equal(typeof require("../jobs/tasks/serverStats").run, "function");
     assert.equal(typeof require("../services/broker").active().createDeviceUser, "function");

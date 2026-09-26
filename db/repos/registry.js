@@ -1,4 +1,4 @@
-const { knex, T } = require("../knex");
+const { knex, T, isUniqueViolation } = require("../knex");
 
 // First contact inserts; every later contact updates. Rows are never deleted (architecture 3.8).
 async function touch(mac, info)
@@ -26,7 +26,7 @@ async function touch(mac, info)
             last_device_uid: info.deviceUid || null
         });
     }
-    catch (err) { if (err.number !== 2601 && err.number !== 2627) { throw err; } }
+    catch (err) { if (!isUniqueViolation(err)) { throw err; } }
     return knex(T("device_registry")).where({ mac: mac }).first();
 }
 
@@ -38,7 +38,7 @@ function findByMac(mac) { return knex(T("device_registry")).where({ mac: mac }).
 function listUnknown(showIgnored)
 {
     const q = knex(T("device_registry") + " as r")
-        .leftJoin(T("devices") + " as d", function () { this.on("d.hardware_id", "r.mac").andOnNull("d.delete_epoch").andOn("d.is_archived", knex.raw("0")); })
+        .leftJoin(T("devices") + " as d", function () { this.on("d.hardware_id", "r.mac").andOnNull("d.delete_epoch").andOn("d.is_archived", knex.raw("false")); })
         .leftJoin(T("unclaimed_ignored") + " as i", function () { this.on("i.mac", "r.mac").andOnNull("i.account_id"); })
         .whereNull("d.id")
         .select("r.*", knex.raw("CASE WHEN i.id IS NULL THEN 0 ELSE 1 END AS is_ignored"))
@@ -56,7 +56,7 @@ async function heardBy(mac, gatewayId, epoch, rssi)
     if (updated === 0)
     {
         try { await knex(T("unclaimed_heard")).insert(Object.assign({ mac: mac, gateway_id: gatewayId }, row)); }
-        catch (err) { if (err.number !== 2601 && err.number !== 2627) { throw err; } }
+        catch (err) { if (!isUniqueViolation(err)) { throw err; } }
     }
 }
 

@@ -1,6 +1,6 @@
 // Bearer credentials for the HTTP API (architecture 4.3, 10). Key format <API_KEY_PREFIX>_<8 hex>_<secret>;
 // only the SHA-256 of the whole key is stored, plus the visible start in key_prefix. Rate limit per credential from settings, in memory
-// per web process (a burst limiter; the IIS box runs one web process).
+// per web process (a burst limiter; pm2 runs one web process).
 const crypto = require("crypto");
 const settings = require("../config/settings");
 const { knex, T, nowEpoch } = require("../db/knex");

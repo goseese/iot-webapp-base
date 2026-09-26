@@ -24,20 +24,12 @@
               <input class="form-control<%= errors.email ? " is-invalid" : "" %>" id="email" name="email" type="email" value="<%= values.email %>">
               <div class="invalid-feedback"><%= errors.email %></div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label" for="phone">Mobile number (SMS)</label>
-              <input class="form-control" id="phone" name="phone" value="<%= values.phone || "" %>" placeholder="+15155551234">
-            </div>
           </div>
 
           <hr class="my-4">
-          <div class="form-check form-switch mb-2">
+          <div class="form-check form-switch mb-4">
             <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" value="1" <%= values.email_enabled ? "checked" : "" %>>
             <label class="form-check-label" for="email_enabled">Send me alarm emails</label>
-          </div>
-          <div class="form-check form-switch mb-4">
-            <input class="form-check-input" type="checkbox" id="sms_enabled" name="sms_enabled" value="1" <%= values.sms_enabled ? "checked" : "" %>>
-            <label class="form-check-label" for="sms_enabled">Send me alarm text messages</label>
           </div>
 
           <button class="btn btn-primary" type="submit">Save changes</button>

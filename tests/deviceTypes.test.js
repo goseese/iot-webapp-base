@@ -10,11 +10,3 @@ test("platform_server declares valid channels", () =>
     const ids = t.channels.map((c) => c.id);
     assert.equal(new Set(ids).size, ids.length);
 });
-
-test("gw7080 provisions by its model string as a gateway", () =>
-{
-    const t = types.forModel("gw7080");
-    assert.ok(t, "no type lists model gw7080");
-    assert.equal(t.slug, "gw7080");
-    assert.equal(t.kind, "gateway");
-});

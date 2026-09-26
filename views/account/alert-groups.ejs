@@ -27,18 +27,17 @@
 
     <div class="iot-panel">
       <div class="iot-panel__header"><strong>Contacts</strong> <span class="text-secondary small ms-2">people who get messages but never log in</span></div>
-      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th></th></tr></thead><tbody>
+      <div class="table-responsive"><table class="table iot-table mb-0"><thead><tr><th>Name</th><th>Email</th><th></th></tr></thead><tbody>
       <% contacts.forEach(function (c) { %>
-        <tr><td><%= c.name %></td><td><%= c.email || "" %></td><td><%= c.phone || "" %></td>
+        <tr><td><%= c.name %></td><td><%= c.email || "" %></td>
           <td class="text-end"><% if (canManage) { %><form method="post" action="<%= acctBase %>/contacts"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="uid" value="<%= fmt.uid(c.uid) %>"><input type="hidden" name="name" value="x"><button class="btn btn-sm btn-outline-secondary" name="action" value="delete" onclick="return confirm('Remove contact?')">Remove</button></form><% } %></td></tr>
       <% }); %>
       <% if (canManage) { %>
-        <tr><td colspan="4">
+        <tr><td colspan="3">
           <form method="post" action="<%= acctBase %>/contacts" class="row g-2">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <div class="col-md-3"><input class="form-control form-control-sm" name="name" placeholder="Name" required></div>
-            <div class="col-md-4"><input class="form-control form-control-sm" name="email" type="email" placeholder="Email"></div>
-            <div class="col-md-3"><input class="form-control form-control-sm" name="phone" placeholder="+1..."></div>
+            <div class="col-md-7"><input class="form-control form-control-sm" name="email" type="email" placeholder="Email" required></div>
             <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary w-100">Add contact</button></div>
           </form>
         </td></tr>

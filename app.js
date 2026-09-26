@@ -14,7 +14,7 @@ const menu = require("./nav/menu");
 const pkg = require("./package.json");
 const os = require("os");
 
-// Readiness gate: HTTP listens first so iisnode/pm2/health checks see a live process; boot
+// Readiness gate: HTTP listens first so pm2 and health checks see a live process; boot
 // (database, migrations, seeds, settings, ingest) runs behind it. Until boot completes every
 // request gets a 503 "starting"; if boot fails the process stays up and /health says why.
 const state = { ready: false, error: null, startedAt: Date.now() };
@@ -43,21 +43,17 @@ async function boot()
     }
     else
     {
-        // Every farm member boots at once; the lock lets one migrate and seed while the others
-        // wait, then find nothing pending. Up to 10 minutes, behind the 503 "starting" page.
-        await require("./db/applock").withLock("devmon-migrate", 600000, async () =>
+        // Only the single ingest process migrates and seeds, behind the 503 "starting" page.
+        const pending = await migrate.pending();
+        if (pending.length > 0)
         {
-            const pending = await migrate.pending();
-            if (pending.length > 0)
+            if (!env.autoMigrate)
             {
-                if (!env.autoMigrate)
-                {
-                    throw new Error("pending migrations: " + pending.join(", ") + " (run npm run migrate)");
-                }
-                await migrate.run(logger);
+                throw new Error("pending migrations: " + pending.join(", ") + " (run npm run migrate)");
             }
-            await require("./seeds").run(logger);     // idempotent; shadows device types, first boot creates superadmin + System account
-        });
+            await migrate.run(logger);
+        }
+        await require("./seeds").run(logger);     // idempotent; shadows device types, first boot creates superadmin + System account
     }
     // Stamp the MQTT settings before loading them, so a change made in between is still picked up.
     await require("./mqtt/watch").start();
@@ -71,7 +67,7 @@ async function boot()
 
     if (env.role === "ingest" || env.role === "all")
     {
-        // Every instance competes for the lock; only the holder runs ingest and jobs.
+        // One ingest process on this server; it runs ingest and jobs.
         require("./services/leader").start(startIngest);
     }
     state.ready = true;
@@ -83,19 +79,10 @@ async function startWeb()
     const app = express();
     const server = http.createServer(app);
 
-    // Behind IIS there can be two hops (ARR in front, iisnode behind), neither reachable from
-    // outside, so trust the whole chain in production.
-    app.set("trust proxy", env.isProd ? true : false);
-    // TLS is terminated before Node sees the request. Recognise every way IIS reports that:
-    // X-Forwarded-Proto (standard), X-ARR-SSL (ARR terminated TLS and forwarded over http),
-    // x-iisnode-https (iisnode promoted the HTTPS server variable). Without this the Secure
-    // session cookie is never set in production and every login loops.
-    app.use((req, res, next) =>
-    {
-        if (req.headers["x-arr-ssl"] || req.headers["x-iisnode-https"] === "on") { req.headers["x-forwarded-proto"] = "https"; }
-        if (req.headers["x-iisnode-remote_addr"] && !req.headers["x-forwarded-for"]) { req.headers["x-forwarded-for"] = req.headers["x-iisnode-remote_addr"]; }
-        next();
-    });
+    // nginx on this server terminates TLS and proxies over loopback. Trust only that hop, so
+    // req.ip and req.secure come from its X-Forwarded-For and X-Forwarded-Proto. Without this the
+    // Secure session cookie is never set in production and every login loops.
+    app.set("trust proxy", env.isProd ? "loopback" : false);
     app.set("view engine", "ejs");
     app.set("views", path.join(__dirname, "views"));
     app.set("layout", "layouts/app");
@@ -108,7 +95,6 @@ async function startWeb()
 
     const { requestId, notFound, errorHandler } = require("./middleware/errors");
     app.use(requestId);
-    app.use(require("./middleware/httpStatus").build());
     app.get("/health", (req, res) =>
     {
         const build = require("./config/build");
@@ -178,9 +164,9 @@ async function startWeb()
     await new Promise((resolve, reject) =>
     {
         server.once("error", reject);
-        server.listen(env.port, resolve);          // TCP port or iisnode named pipe, as given
+        server.listen(env.port, env.host, resolve);
     });
-    logger.info({ port: env.port, url: env.appUrl, iisnode: env.isIisnode }, "web listening");
+    logger.info({ host: env.host, port: env.port, url: env.appUrl }, "web listening");
     return server;
 }
 

@@ -135,7 +135,8 @@ router.post("/unknown-devices/reprovision", async (req, res, next) =>
     catch (err) { req.flash("danger", err.message); res.redirect("/admin/unknown-devices"); }
 });
 
-const GROUPS = [["general", "General"], ["email", "Email"], ["sms", "SMS"], ["mqtt", "MQTT"], ["logging", "Logging and purge"], ["api", "API"]];
+// No "sms" tab: SMS is hidden in this app and SMS_DRIVER stays at its seeded "none".
+const GROUPS = [["general", "General"], ["email", "Email"], ["mqtt", "MQTT"], ["logging", "Logging and purge"], ["api", "API"]];
 
 function settingsTabs(current)
 {
@@ -181,7 +182,7 @@ router.post("/settings/email/test", async (req, res, next) =>
     try
     {
         const mail = require("../services/mail");
-        const r = await mail.send({ kind: "test", to: req.user.email, recipientType: "user", recipientId: req.user.id, subject: settings.get("SITE_NAME", "DevMon") + " test email via " + mail.active().name, text: "Email delivery from " + settings.get("SITE_NAME", "DevMon") + " works (driver " + mail.active().name + ", from " + mail.fromAddress() + ").\n" });
+        const r = await mail.send({ kind: "test", to: req.user.email, recipientType: "user", recipientId: req.user.id, subject: settings.siteName() + " test email via " + mail.active().name, text: "Email delivery from " + settings.siteName() + " works (driver " + mail.active().name + ", from " + mail.fromAddress() + ").\n" });
         await activity.log(req, "test_email", { outcome: r.ok ? "ok" : "failed", detail: r.reason || mail.active().name });
         req.flash(r.ok ? "success" : "danger", r.ok ? "Test email sent to " + req.user.email + " via " + mail.active().name + "." : "Send failed: " + r.reason);
         res.redirect("/admin/settings/email");
@@ -221,8 +222,8 @@ router.get("/activity", async (req, res, next) =>
     try
     {
         const q = knex(T("activity_log")).orderBy("epoch", "desc").limit(300);
-        if (req.query.action) { q.where("action", "like", req.query.action + "%"); }
-        if (req.query.actor) { q.where("actor_name", "like", "%" + req.query.actor + "%"); }
+        if (req.query.action) { q.where("action", "ilike", req.query.action + "%"); }
+        if (req.query.actor) { q.where("actor_name", "ilike", "%" + req.query.actor + "%"); }
         if (req.query.outcome) { q.where("outcome", req.query.outcome); }
         const rows = await q;
         res.render("admin/activity", { title: "Activity", rows: rows, q: req.query });

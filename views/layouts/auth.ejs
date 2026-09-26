@@ -4,22 +4,23 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %> | <%= siteName %></title>
+  <link rel="icon" type="image/png" href="/img/icon.png">
   <link href="/vendor/bootstrap-5.3.3/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/fontawesome-6.7.2/css/all.min.css" rel="stylesheet">
   <link href="/css/iot-theme.css?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>" rel="stylesheet">
   <style>
     .iot-auth { min-height: 100vh; display:grid; place-items:center; padding:1.5rem; background:
-      radial-gradient(circle at 50% -10%, rgba(58,166,255,.10), transparent 38%), var(--iot-bg); }
+      radial-gradient(circle at 50% -10%, rgba(83,176,54,.10), transparent 38%), var(--iot-bg); }
     .iot-auth-card { width:min(430px,100%); background:var(--iot-panel); border:1px solid var(--iot-border); border-radius:var(--iot-radius); }
     .iot-auth-brand { display:flex; align-items:center; gap:.75rem; justify-content:center; margin-bottom:2rem; }
+    .iot-auth-brand img { width:min(280px,100%); height:auto; }
   </style>
 </head>
 <body <% if (flash) { %>data-iot-flash-type="<%= flash.type %>" data-iot-flash="<%= flash.msg %>"<% } %>>
 <main class="iot-auth">
   <div class="iot-auth-card p-4 p-md-5">
     <div class="iot-auth-brand">
-      <span class="iot-logo-mark"><%= siteName.slice(0, 2).toUpperCase() %></span>
-      <strong class="iot-logo-text"><%= siteName %></strong>
+      <img src="/img/site_logo.png" alt="<%= siteName %>">
     </div>
     <%- body %>
   </div>

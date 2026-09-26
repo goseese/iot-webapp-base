@@ -7,7 +7,7 @@ const devicesRepo = require("../../db/repos/devices");
 const pipeline = require("../../pipeline");
 const mqttClient = require("../../mqtt/client");
 
-// Measured through the public URL so it includes IIS; under iisnode there is no local TCP port.
+// Measured through the public URL so it includes nginx and TLS, not just Node.
 async function httpResponseMs()
 {
     const started = process.hrtime.bigint();

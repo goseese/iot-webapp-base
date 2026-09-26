@@ -7,7 +7,7 @@ const permissions = require("../permissions");
 async function loadUser(req, res, next)
 {
     res.locals.currentUser = null;
-    res.locals.siteName = settings.get("SITE_NAME", "DevMon");
+    res.locals.siteName = settings.siteName();
     try
     {
         if (req.session && req.session.userId)

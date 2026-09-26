@@ -1,41 +1,39 @@
-// Creates the database named in .env if it does not exist, via master. Used by boot (so a
-// new DB_NAME is enough for a fresh install) and by scripts/create-db.js. Needs CREATE DATABASE
-// on the login; when that is missing it reports and lets the normal connect show the error.
+// Creates the database named in .env if it does not exist, via the "postgres" maintenance
+// database. Used by boot (so a new DB_NAME is enough for a fresh install) and by
+// scripts/create-db.js. Needs CREATEDB on the login (the RDS master user has it); when that is
+// missing it reports and lets the normal connect show the error.
 const knexLib = require("knex");
 const env = require("../config/env");
+const { connection } = require("./knex");
 
 async function ensureDatabase(log)
 {
-    const master = knexLib(
+    const admin = knexLib(
     {
-        client: "mssql",
-        connection:
-        {
-            host: env.db.host, port: env.db.port, user: env.db.user, password: env.db.password, database: "master",
-            options: { encrypt: env.db.encrypt, trustServerCertificate: env.db.trustCert, connectTimeout: 15000 }
-        },
+        client: "pg",
+        connection: Object.assign({}, connection, { database: "postgres", connectionTimeoutMillis: 15000 }),
         pool: { min: 0, max: 1 }
     });
     try
     {
-        const exists = await master.raw("SELECT DB_ID(?) AS id", [env.db.name]);
-        const row = Array.isArray(exists) ? exists[0] : exists;
-        if (row && row.id !== null && row.id !== undefined)
+        const exists = await admin.raw("SELECT 1 FROM pg_database WHERE datname = ?", [env.db.name]);
+        if (exists.rows.length > 0)
         {
             return { created: false, existed: true };
         }
-        await master.raw("EXEC('CREATE DATABASE [' + REPLACE(?, ']', ']]') + ']')", [env.db.name]);
+        // CREATE DATABASE takes no bind parameters and cannot run inside a transaction.
+        await admin.raw("CREATE DATABASE \"" + env.db.name.replace(/"/g, "\"\"") + "\"");
         if (log) { log.info({ db: env.db.name }, "database created"); }
         return { created: true, existed: false };
     }
     catch (err)
     {
-        if (log) { log.warn({ db: env.db.name, err: err.message }, "could not check or create the database via master; continuing"); }
+        if (log) { log.warn({ db: env.db.name, err: err.message }, "could not check or create the database via postgres; continuing"); }
         return { created: false, existed: null, error: err.message };
     }
     finally
     {
-        await master.destroy();
+        await admin.destroy();
     }
 }
 

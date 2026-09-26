@@ -45,9 +45,9 @@ function ruleForm(r, action, isNew)
     </div>
     <div class="col-md-5">
       <label class="form-label small">Channels per transition</label>
-      <table class="table table-sm mb-0 small"><thead><tr><th></th><th>Email</th><th>SMS</th></tr></thead><tbody>
+      <table class="table table-sm mb-0 small"><thead><tr><th></th><th>Email</th></tr></thead><tbody>
       <% [["raise", "Raise"], ["escalate", "Escalate"], ["de_escalate", "De-escalate"], ["clear", "Clear"]].forEach(function (t) { var p = r && r.policy && r.policy[t[0]]; %>
-        <tr><td><%= t[1] %></td><td><input type="checkbox" name="p_<%= t[0] %>_email" value="1" <%= (!p || p.email !== false) ? "checked" : "" %>></td><td><input type="checkbox" name="p_<%= t[0] %>_sms" value="1" <%= (!p || p.sms !== false) ? "checked" : "" %>></td></tr>
+        <tr><td><%= t[1] %></td><td><input type="checkbox" name="p_<%= t[0] %>_email" value="1" <%= (!p || p.email !== false) ? "checked" : "" %>></td></tr>
       <% }); %>
       </tbody></table>
     </div>

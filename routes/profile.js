@@ -35,7 +35,6 @@ router.post("/",
     body("display_name").trim().isLength({ max: 80 }),
     body("email").trim().isEmail().isLength({ max: 254 }),
     body("username").trim().isLength({ min: 3, max: 40 }).matches(/^[^@\s]+$/),
-    body("phone").trim().isLength({ max: 30 }),
     async (req, res, next) =>
     {
         try
@@ -68,9 +67,8 @@ router.post("/",
             {
                 display_name: req.body.display_name.trim() || null,
                 email: email,
-                phone: req.body.phone.trim() || null,
-                email_enabled: req.body.email_enabled ? 1 : 0,
-                sms_enabled: req.body.sms_enabled ? 1 : 0
+                email_enabled: req.body.email_enabled ? 1 : 0
+                // SMS is hidden in this app: phone and sms_enabled are never taken from a form.
             };
             await knex.transaction(async (trx) =>
             {
@@ -144,8 +142,8 @@ router.post("/test-email", async (req, res, next) =>
         const r = await mail.send(
         {
             kind: "test", to: req.user.email, recipientType: "user", recipientId: req.user.id,
-            subject: settings.get("SITE_NAME", "DevMon") + " test email",
-            text: "This is a test message from " + settings.get("SITE_NAME", "DevMon") + ". If you can read this, email delivery works.\n"
+            subject: settings.siteName() + " test email",
+            text: "This is a test message from " + settings.siteName() + ". If you can read this, email delivery works.\n"
         });
         await activity.log(req, "test_email", { outcome: r.ok ? "ok" : "failed", detail: r.reason || null });
         if (r.ok) { req.flash("success", "Test email sent to " + req.user.email + " via " + mail.active().name + "."); }

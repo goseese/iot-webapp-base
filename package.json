@@ -1,5 +1,5 @@
 {
-  "name": "devmon",
+  "name": "voltastc",
   "version": "0.1.1",
   "private": true,
   "engines": { "node": ">=22 <23" },
@@ -12,7 +12,7 @@
     "test": "node --test tests/**/*.test.js"
   },
   "dependencies": {
-    "@sendgrid/mail": "8.1.6",
+    "@aws-sdk/client-sesv2": "3.1141.0",
     "bcryptjs": "3.0.3",
     "connect-session-knex": "5.0.0",
     "dotenv": "17.4.2",
@@ -24,10 +24,9 @@
     "helmet": "8.3.0",
     "knex": "3.3.0",
     "mqtt": "5.15.2",
-    "nodemailer": "10.0.10",
+    "pg": "8.23.0",
     "pino": "10.3.1",
-    "socket.io": "4.8.3",
-    "tedious": "19.2.2"
+    "socket.io": "4.8.3"
   },
   "devDependencies": {
     "nodemon": "3.1.14"

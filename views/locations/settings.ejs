@@ -40,24 +40,12 @@
           <hr class="my-4">
           <% if (permissions.has(bits, permissions.byName.lock_location)) { %>
           <label class="form-label">Membership mode</label>
-          <% [["normal", "Normal", "Joins and commissioning work; moving devices out needs edit permission here."], ["locked", "Locked", "No automatic joins or first-hear additions ever land here."], ["release", "Release", "Devices here can be taken by any location with add permission (staging)."], ["auto_claim", "Auto claim", "BLE beacons heard by a gateway here that are in no location yet are added here automatically, until the time below. Then the location goes back to normal."]].forEach(function (m) { %>
+          <% [["normal", "Normal", "Joins and commissioning work; moving devices out needs edit permission here."], ["locked", "Locked", "No automatic joins or first-hear additions ever land here."], ["release", "Release", "Devices here can be taken by any location with add permission (staging)."]].forEach(function (m) { %>
           <div class="form-check mb-1">
             <input class="form-check-input" type="radio" name="membership_mode" id="mode_<%= m[0] %>" value="<%= m[0] %>" <%= values.membership_mode === m[0] ? "checked" : "" %>>
             <label class="form-check-label" for="mode_<%= m[0] %>"><strong><%= m[1] %></strong> <span class="text-secondary small">- <%= m[2] %></span></label>
           </div>
           <% }); %>
-          <div class="ms-4 mb-2" style="max-width: 22rem">
-            <label class="form-label small mb-1" for="auto_claim_hours">Auto claim stays on for</label>
-            <select class="form-select form-select-sm<%= errors.auto_claim ? " is-invalid" : "" %>" id="auto_claim_hours" name="auto_claim_hours">
-              <% if (autoClaimActive) { %><option value="">Keep the current end (<%= fmt.epoch(values.auto_claim_until_epoch, values.iana_timezone) %>)</option><% } else { %><option value="">Choose...</option><% } %>
-              <% autoClaimHours.forEach(function (h) { %><option value="<%= h %>" <%= String(values.auto_claim_hours) === String(h) ? "selected" : "" %>><%= h %> <%= h === 1 ? "hour" : "hours" %> from now</option><% }); %>
-            </select>
-            <% if (errors.auto_claim) { %><div class="invalid-feedback"><%= errors.auto_claim %></div><% } %>
-            <% if (autoClaimActive) { %><div class="form-text">On until <%= fmt.epoch(values.auto_claim_until_epoch, values.iana_timezone) %>.</div><% } %>
-          </div>
-          <% if (autoClaimElsewhere.length) { %>
-          <div class="alert alert-warning py-2 small">Auto claim is on at <strong><%= autoClaimElsewhere.map(function (l) { return l.name; }).join(", ") %></strong>. A beacon goes to whichever location hears it first, so devices may land there before they are heard here. For a campus, auto claim into one staging location and move devices to their buildings afterwards.</div>
-          <% } %>
           <% } else { %>
           <p class="text-secondary small">Membership mode: <strong><%= values.membership_mode %></strong> (needs the lock location permission to change).</p>
           <% } %>

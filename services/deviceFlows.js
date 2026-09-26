@@ -107,7 +107,7 @@ async function requestAccess(mac, req, actor, intendedLocation)
         "They want to add it to " + intendedLocation.name + ".\n\nOpen the device: " + env.appUrl + "/devices/" + String(look.conflict.device.uid).toLowerCase() + "\n";
     for (const r of recipients)
     {
-        await mail.send({ kind: "system", to: r.email, recipientType: "user", recipientId: r.id, subject: settings.get("SITE_NAME", "DevMon") + " device access request: " + look.mac, text: text });
+        await mail.send({ kind: "system", to: r.email, recipientType: "user", recipientId: r.id, subject: settings.siteName() + " device access request: " + look.mac, text: text });
     }
     return recipients.length;
 }

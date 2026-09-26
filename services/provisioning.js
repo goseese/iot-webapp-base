@@ -4,10 +4,9 @@
 // mqtt/topics.deviceAcls (publish own uplinks, subscribe own cmd).
 const crypto = require("crypto");
 const logger = require("../config/logger");
-const { knex, T, nowEpoch } = require("../db/knex");
+const { knex, T, nowEpoch, isUniqueViolation } = require("../db/knex");
 const registry = require("../db/repos/registry");
 const broker = require("./broker");
-const mqttClient = require("../mqtt/client");
 const topics = require("../mqtt/topics");
 const activity = require("../db/repos/activity");
 const credentials = require("../db/repos/credentials");
@@ -16,53 +15,6 @@ const deviceTypes = require("../deviceTypes");
 function normalizeMac(mac)
 {
     return String(mac || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
-}
-
-// Legacy MQTT provisioning: provision/request/{hw} -> provision/response/{hw}. Kept for gw7080
-// firmware that has not moved to the HTTPS endpoint yet; delete once that update has shipped. It
-// runs through issue() so it follows the unit model too. Its type comes from the unit's current
-// placement, then from the model, then gateway_generic, and is passed as an override so old
-// firmware is never refused for a model string the server does not list.
-//
-// Answers only when a credential was actually issued (first contact or pending), as it always has:
-// old firmware only asks when it has nothing, and an active unit asking is logged and ignored.
-async function handleRequest(hardwareId, payload)
-{
-    let req;
-    try { req = JSON.parse(payload.toString("utf8")); }
-    catch (err) { logger.warn({ hardwareId: hardwareId }, "provision request is not JSON"); return; }
-    const mac = normalizeMac(req.hw || hardwareId);
-    if (mac.length !== 12) { logger.warn({ hardwareId: hardwareId }, "provision request with bad hardware id"); return; }
-
-    let typeSlug = null;
-    const placement = await credentials.currentPlacement(mac);
-    if (placement)
-    {
-        const row = await knex(T("device_types")).where({ id: placement.device_type_id }).first();
-        typeSlug = row ? row.slug : null;
-    }
-    if (!typeSlug && req.model)
-    {
-        const byModel = deviceTypes.forModel(req.model);
-        typeSlug = byModel ? byModel.slug : null;
-    }
-
-    // Override, not model resolution: fielded firmware may report a model no type module lists, and
-    // it must keep provisioning exactly as before. Only this legacy path may bypass the model rule.
-    const result = await issue({ hw: mac, model: req.model, fw: req.fw }, { typeSlug: typeSlug || "gateway_generic" });
-    if (!result.ok || result.existing)
-    {
-        logger.info({ mac: mac, reason: result.reason || "active" }, "mqtt provision request not answered");
-        return;
-    }
-
-    const response = { guid: result.guid, nonce: req.nonce };
-    if (result.password) { response.password = result.password; }
-    const client = mqttClient.get();
-    if (client && client.connected)
-    {
-        client.publish(topics.provision.response(hardwareId), JSON.stringify(response), { qos: 1 });
-    }
 }
 
 // A claim older than this is treated as abandoned (a process that died mid issue) and can be taken
@@ -130,19 +82,13 @@ async function activate(cred, guid, now)
 // The broker account is always created before the row is activated, so a device is never handed a
 // password for an account that does not exist. Refusals return { ok: false, reason }; only broker
 // and database failures throw, and the route turns those into a 500 the device retries.
-//
-// opts.typeSlug skips model resolution. Only the legacy MQTT path passes it.
-async function issue(req, opts)
+async function issue(req)
 {
     const mac = normalizeMac(req.hw || req.mac);
     if (mac.length !== 12) { return { ok: false, reason: "bad_hardware_id" }; }
-    let typeSlug = opts && opts.typeSlug ? opts.typeSlug : null;
-    if (!typeSlug)
-    {
-        const resolved = resolveType(req.model);
-        if (!resolved.slug) { return { ok: false, reason: resolved.reason }; }
-        typeSlug = resolved.slug;
-    }
+    const resolved = resolveType(req.model);
+    if (!resolved.slug) { return { ok: false, reason: resolved.reason }; }
+    const typeSlug = resolved.slug;
     const now = nowEpoch();
 
     const placement = await credentials.currentPlacement(mac);
@@ -170,7 +116,7 @@ async function issue(req, opts)
         }
         catch (err)
         {
-            if (err.number !== 2601 && err.number !== 2627) { throw err; }
+            if (!isUniqueViolation(err)) { throw err; }
         }
         const mine = await credentials.forMac(mac);
         if (mine && mine.broker_username === guid)
@@ -253,4 +199,4 @@ async function reset(deviceId)
     return resetUnit(cred.mac);
 }
 
-module.exports = { handleRequest, issue, reset, resetUnit, normalizeMac };
+module.exports = { issue, reset, resetUnit, normalizeMac };

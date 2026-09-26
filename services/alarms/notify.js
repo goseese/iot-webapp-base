@@ -172,7 +172,7 @@ function displayValue(ctx, value)
 
 function subjectFor(ctx, eventKind, severity)
 {
-    const site = settings.get("SITE_NAME", "DevMon");
+    const site = settings.siteName();
     const what = { raised: severity.toUpperCase(), escalated: "ESCALATED to " + severity, de_escalated: "lowered to " + severity, cleared: "CLEARED", re_notified: "still " + severity.toUpperCase() }[eventKind] || eventKind;
     return "[" + site + "] " + what + ": " + ctx.sensor_name + " on " + ctx.device_name + " at " + ctx.location_name;
 }

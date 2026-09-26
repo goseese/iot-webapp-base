@@ -13,7 +13,7 @@
 // told { existing: true, guid } and keeps them. See services/provisioning.issue().
 //
 // The answer waits on the broker, because the account is created before it is sent: firmware should
-// allow about 20 s. Codes arrive in x-app-status over HTTP 200 (middleware/httpStatus.js):
+// allow about 20 s. Replies use real HTTP status codes:
 //   200 guid + password: store them. 200 existing: keep what you have. 400: bad request, do not
 //   retry. 409: another attempt is issuing, retry in a few seconds. 429: rate limited, retry after
 //   the minute. 500: transient, retry with backoff.

@@ -15,11 +15,11 @@ function defaultClientId()
 // Firmware is configured with the broker host only, so the web host has to come from this server's
 // own APP_URL. Resolving the configured path against APP_URL, rather than gluing "https://" + host,
 // keeps the scheme and port correct in every environment with no special casing: dev gets
-// http://localhost:3000/provision/v1, IIS gets https://devmon.datatelematics.io/provision/v1.
+// http://localhost:3000/provision/v1, production gets https://<domain>/provision/v1.
 //
 // The real default lives in seeds/0001_site_settings.js; the literal here only covers a database
 // that predates that row. Note a leading-slash path replaces any path in APP_URL, so this assumes
-// the app is served from the site root, which it is on both IIS members.
+// the app is served from the site root, which it is behind nginx.
 function provisionUrl()
 {
     let path = String(settings.get("PROVISION_PATH", "") || "").trim();
