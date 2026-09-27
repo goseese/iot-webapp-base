@@ -1,11 +1,3 @@
-
-<div class="row g-3 mb-4">
-  <%- include("../partials/stat", { label: "Locations", value: totals.locations }) %>
-  <%- include("../partials/stat", { label: "Gateways", value: totals.gateways }) %>
-  <%- include("../partials/stat", { label: "Devices", value: totals.devices, status: totals.offline ? { kind: "offline", label: totals.offline + " offline" } : null }) %>
-  <%- include("../partials/stat", { label: "Active alarms", value: totals.alarms, status: totals.alarms ? { kind: "alarm", label: "Requires attention" } : { kind: "online", label: "All clear" } }) %>
-</div>
-
 <% if (account.notifications_muted) { %>
 <div class="alert alert-warning d-flex justify-content-between align-items-center">
   <span><i class="fa-solid fa-bell-slash me-2"></i>Notifications for this account are muted. Alarms still record.</span>
@@ -27,7 +19,7 @@
   </div>
   <div class="table-responsive">
     <table class="table iot-table align-middle mb-0">
-      <thead><tr><th>Location</th><th>Gateways</th><th>Devices</th><th>Alarms</th><th>Timezone</th></tr></thead>
+      <thead><tr><th>Location</th><th>Account pods</th><th>Controller pods</th><th>Target pods</th><th>Athletes</th><th>Timezone</th></tr></thead>
       <tbody>
       <% locations.forEach(function (l) { %>
         <tr>
@@ -38,14 +30,27 @@
             <% var am = l.alarm_mode || (l.notifications_muted ? "muted" : "active"); %>
             <span class="badge <%= am === "active" ? "text-bg-success" : (am === "muted" ? "text-bg-warning" : "text-bg-danger") %>" title="<%= am === "active" ? "Alarms evaluated and notified" : (am === "muted" ? "Alarms recorded, nobody notified" : "Alarms not evaluated") %>"><i class="fa-solid <%= am === "active" ? "fa-bell" : (am === "muted" ? "fa-bell-slash" : "fa-power-off") %> me-1"></i><%= am %></span>
           </td>
-          <td><%= l.counts.gateways %></td>
-          <td><%= l.counts.devices %><% if (l.counts.offline) { %> <span class="text-secondary small">(<%= l.counts.offline %> offline)</span><% } %></td>
-          <td><% if (l.counts.alarms) { %><span class="iot-status iot-status--alarm"><%= l.counts.alarms %></span><% } else { %><span class="text-secondary">0</span><% } %></td>
+          <td><%= l.pods.account %></td>
+          <td><%= l.pods.controller %></td>
+          <td><%= l.pods.target %></td>
+          <td><% if (l.pods.athletes === null) { %><span class="text-secondary" title="Athletes are not tracked yet">-</span><% } else { %><%= l.pods.athletes %><% } %></td>
           <td class="text-secondary"><%= l.iana_timezone %></td>
         </tr>
       <% }); %>
-      <% if (!locations.length) { %><tr><td colspan="5" class="text-secondary">No locations yet.</td></tr><% } %>
+      <% if (!locations.length) { %><tr><td colspan="6" class="text-secondary">No locations yet.</td></tr><% } %>
       </tbody>
+      <% if (locations.length > 1) { %>
+      <tfoot>
+        <tr class="fw-semibold">
+          <td>Total</td>
+          <td><%= totals.account %></td>
+          <td><%= totals.controller %></td>
+          <td><%= totals.target %></td>
+          <td><% if (totals.athletes === null) { %><span class="text-secondary" title="Athletes are not tracked yet">-</span><% } else { %><%= totals.athletes %><% } %></td>
+          <td></td>
+        </tr>
+      </tfoot>
+      <% } %>
     </table>
   </div>
 </div>

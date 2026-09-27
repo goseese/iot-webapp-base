@@ -18,12 +18,13 @@ router.get("/", async (req, res, next) =>
         const locations = await knex(T("locations")).where({ account_id: req.account.id }).whereNull("delete_epoch").orderBy("name");
         const visible = await grants.visibleLocations(req);
         const mine = locations.filter((l) => visible.some((v) => v.id === l.id));
-        const totals = { locations: mine.length, gateways: 0, devices: 0, offline: 0, alarms: 0 };
+        // Column sums for the table footer, shown only when there is more than one location.
+        const totals = { account: 0, controller: 0, target: 0, athletes: null };
+        const pods = await locationService.podCounts(mine.map((l) => l.id));
         for (const l of mine)
         {
-            const c = await locationService.counts(l.id);
-            l.counts = c;
-            totals.gateways += c.gateways; totals.devices += c.devices; totals.offline += c.offline; totals.alarms += c.alarms;
+            l.pods = pods[l.id];
+            totals.account += l.pods.account; totals.controller += l.pods.controller; totals.target += l.pods.target;
         }
         res.render("account/index", { title: req.account.name, locations: mine, totals: totals, bits: await bits(req), permissions: permissions });
     }

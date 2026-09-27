@@ -1,6 +1,7 @@
 const { knex, T, nowEpoch } = require("../db/knex");
 const locationsRepo = require("../db/repos/locations");
 const { audit } = require("./audit");
+const deviceTypes = require("../deviceTypes");
 
 async function create(accountId, fields, actor)
 {
@@ -79,4 +80,27 @@ async function counts(locationId)
     };
 }
 
-module.exports = { create, update, setAlarmMode, softDelete, counts };
+// Pods per location for the account pages, split by role (DECISIONS.md "Pod stations"): a station type
+// is a controller pod, a type that pairs with a station is a target pod. Athletes are not built yet, so
+// athletes stays null and the pages show a placeholder. Returns { locationId: counts }.
+async function podCounts(locationIds)
+{
+    const out = {};
+    for (const id of locationIds) { out[id] = { account: 0, controller: 0, target: 0, athletes: null }; }
+    if (!locationIds.length) { return out; }
+    const rows = await knex(T("devices") + " as d").join(T("device_types") + " as t", "t.id", "d.device_type_id")
+        .whereIn("d.location_id", locationIds).where("d.is_archived", false).whereNull("d.delete_epoch")
+        .groupBy("d.location_id", "t.slug").select("d.location_id", "t.slug").count("d.id as n");
+    for (const r of rows)
+    {
+        const type = deviceTypes.all[r.slug];
+        const c = out[r.location_id];
+        if (!type || !c) { continue; }
+        if (type.station) { c.controller += Number(r.n); }
+        else if ((type.pairsWith || []).length) { c.target += Number(r.n); }
+        else if (r.slug === "account_pod") { c.account += Number(r.n); }
+    }
+    return out;
+}
+
+module.exports = { create, update, setAlarmMode, softDelete, counts, podCounts };
