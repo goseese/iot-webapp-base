@@ -155,12 +155,20 @@ router.post("/reset/:token", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// A signed in visitor never gets the accept form (the page would carry that session's CSRF token);
+// the invite is only read, so the link still works after signing out.
+function inviteWhileSignedIn(req, res, inv)
+{
+    res.render("auth/invite-signed-in", Object.assign({ title: "You are already signed in", username: req.user.username, invite: Object.assign({ token: req.params.token }, inv) }, AUTH));
+}
+
 router.get("/invite/:token", async (req, res, next) =>
 {
     try
     {
         const inv = await invites.findValid(req.params.token);
         if (!inv) { return res.status(410).render("auth/link-dead", Object.assign({ title: "Invitation expired" }, AUTH)); }
+        if (req.user) { return inviteWhileSignedIn(req, res, inv); }
         res.render("auth/invite", Object.assign({ title: "Accept invitation", invite: Object.assign({ token: req.params.token }, inv), values: { username: inv.username }, errors: {}, policy: passwords.describe() }, AUTH));
     }
     catch (err) { next(err); }
@@ -175,6 +183,7 @@ router.post("/invite/:token",
         {
             const inv = await invites.findValid(req.params.token);
             if (!inv) { return res.status(410).render("auth/link-dead", Object.assign({ title: "Invitation expired" }, AUTH)); }
+            if (req.user) { return inviteWhileSignedIn(req, res, inv); }
             const errors = {};
             if (!validationResult(req).isEmpty()) { errors.username = "3 to 40 characters, no spaces or @."; }
             const pw = passwords.check(req.body.password);
@@ -196,5 +205,13 @@ router.post("/invite/:token",
         }
         catch (err) { next(err); }
     });
+
+// Sign out and continue: ends the current session and reopens the invite, whose GET starts a fresh
+// session and CSRF token. Its own route rather than a return field on /logout, so no open redirect.
+router.post("/invite/:token/sign-out", (req, res) =>
+{
+    activity.log(req, "logout");
+    req.session.destroy(() => res.redirect("/invite/" + encodeURIComponent(req.params.token)));
+});
 
 module.exports = router;

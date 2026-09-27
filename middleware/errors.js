@@ -1,5 +1,7 @@
 const crypto = require("crypto");
 const logger = require("../config/logger");
+const settings = require("../config/settings");
+const pkg = require("../package.json");
 
 function requestId(req, res, next)
 {
@@ -35,6 +37,12 @@ function errorHandler(err, req, res, next)
     {
         return res.status(status).json({ error: status === 500 ? "Internal error" : err.message, reference: req.id });
     }
+
+    // Errors raised before loadUser (a CSRF refusal, a session store failure) arrive without the
+    // locals the layouts need; a failed render falls through to Express's bare status page.
+    if (res.locals.siteName === undefined) { res.locals.siteName = settings.siteName(); }
+    if (res.locals.appVersion === undefined) { res.locals.appVersion = pkg.version; }
+    if (res.locals.flash === undefined) { res.locals.flash = null; }
 
     const view = status === 404 ? "errors/404" : "errors/500";
     const layout = res.locals.currentUser ? "layouts/app" : "layouts/auth";
