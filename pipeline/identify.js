@@ -219,20 +219,65 @@ async function handleGeoscan(gateway, payload)
 }
 
 // dev/{guid}/frame: one relayed LoRa frame (gateway-protocol 4.1).
+// Two frame shapes on dev/{guid}/frame:
+//   JSON (pod stations, DECISIONS.md "Pod stations"): { mac, rssi, model, fw, boot, seq, data: { key: value } }.
+//     The relaying controller sets mac from its ESP-NOW receive callback, so a pod cannot claim
+//     another's MAC; data keys map through the pod type's dataMap. The dedup counter is
+//     boot * 2^32 + seq: seq restarts on reboot, and device_frames keeps counters for
+//     DEVICE_FRAMES_HOURS, so a counter from seq alone would drop a rebooted pod's frames as
+//     duplicates. boot is the pod's boot count from NVS; without it seq alone is used.
+//   Binary (LoRa, architecture 4.2): { frame: base64 packed struct, rssi, seconds_ago }, parsed by
+//     frames.parseHeader and the node type's field list. Kept, unused by the pods.
+function jsonFrameHeader(env)
+{
+    const mac = String(env.mac || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+    if (mac.length !== 12) { return null; }
+    const seq = Number(env.seq);
+    const boot = Number(env.boot);
+    let counter = null;
+    if (Number.isInteger(seq) && seq >= 0 && seq < 4294967296)
+    {
+        // Stays an exact integer while boot < 2^21 (about two million reboots).
+        counter = Number.isInteger(boot) && boot >= 0 && boot < 2097152 ? boot * 4294967296 + seq : seq;
+    }
+    return {
+        mac: mac,
+        model: env.model ? String(env.model).slice(0, 40) : null,
+        firmware: env.fw ? String(env.fw).slice(0, 24) : null,
+        counter: counter,
+        json: true
+    };
+}
+
 async function handleFrame(gateway, payload, receipt)
 {
     let env;
     try { env = JSON.parse(payload.toString("utf8")); }
     catch (err) { logger.warn({ gateway: gateway.uid }, "frame payload is not JSON"); return; }
-    const raw = Buffer.from(env.frame || "", "base64");
-    const header = frames.parseHeader(raw);
-    if (!header) { logger.warn({ gateway: gateway.uid, bytes: raw.length }, "frame too short"); return; }
+    if (!env || typeof env !== "object") { logger.warn({ gateway: gateway.uid }, "frame payload is not an object"); return; }
+    const isJson = env.data !== null && typeof env.data === "object" && !Array.isArray(env.data);
+    let header;
+    if (isJson)
+    {
+        header = jsonFrameHeader(env);
+        if (!header) { logger.warn({ gateway: gateway.uid }, "JSON frame without a 12 hex digit mac"); return; }
+    }
+    else
+    {
+        const raw = Buffer.from(env.frame || "", "base64");
+        header = frames.parseHeader(raw);
+        if (!header) { logger.warn({ gateway: gateway.uid, bytes: raw.length }, "frame too short"); return; }
+    }
 
     const observed = receipt - (Number(env.seconds_ago) || 0);
     const rssi = env.rssi === undefined ? null : Number(env.rssi);
     await knex(T("devices")).where({ id: gateway.id }).where(function () { this.whereNull("last_seen_epoch").orWhere("last_seen_epoch", "<", receipt); }).update({ last_seen_epoch: receipt });
 
-    const device = await devicesRepo.findLiveByHardwareId(header.mac);
+    let device = await devicesRepo.findLiveByHardwareId(header.mac);
+    // Pod stations: a target pod's frame through a controller in pairing mode places it there, or
+    // moves it there from another controller (services/stations.js).
+    const paired = await require("../services/stations").placeFromFrame(gateway, device, header);
+    if (paired) { device = paired; }
     await registry.touch(header.mac, { epoch: observed, model: header.model, firmware: header.firmware, via: "frame", deviceUid: device ? device.uid : null });
     if (!device)
     {
@@ -248,7 +293,7 @@ async function handleFrame(gateway, payload, receipt)
     await pipeline.ingest({ device: device, type: type, epoch: observed, values: deviceTypes.gatewayValues(type, gateway.hardware_id, { rssi: rssi }), gatewayId: gateway.id, rssi: rssi, canonical: true });
 
     let won = true;
-    if (type.dedupMode === "counter") { won = await readingsRepo.claimFrame(device.id, header.counter, observed); }
+    if (type.dedupMode === "counter" && header.counter !== null && header.counter !== undefined) { won = await readingsRepo.claimFrame(device.id, header.counter, observed); }
     else if (type.dedupMode === "window")
     {
         const bucket = Math.floor(observed / Math.max(type.minIntervalSecs || 60, 1));
@@ -256,7 +301,7 @@ async function handleFrame(gateway, payload, receipt)
     }
     if (!won) { return; }
 
-    const values = frames.parseFields(type.fields || [], header);
+    const values = isJson ? mapFields(type.dataMap, env.data) : frames.parseFields(type.fields || [], header);
     delete values.rssi;
     if (header.firmware && header.firmware !== device.firmware)
     {
@@ -265,4 +310,5 @@ async function handleFrame(gateway, payload, receipt)
     await pipeline.ingest({ device: device, type: type, epoch: observed, values: values, gatewayId: gateway.id, rssi: rssi });
 }
 
-module.exports = { handle, typeForDevice };
+// jsonFrameHeader: exported for tests/pods.test.js.
+module.exports = { handle, typeForDevice, jsonFrameHeader };

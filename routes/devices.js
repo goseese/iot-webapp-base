@@ -78,6 +78,33 @@ function trail(req)
     ];
 }
 
+// Pod stations (services/stations.js). A controller's Sensors tab shows its station: the pairing
+// toggle and banner, and the target pods paired with it. A target pod's shows its controller.
+// null for every other device.
+async function stationModel(req)
+{
+    const stations = require("../services/stations");
+    if (req.typeModule && req.typeModule.station)
+    {
+        const cred = await credentials.forDevice(req.device);
+        const pairing = await stations.pairingState(req.device);
+        return {
+            kind: "controller",
+            pairing: pairing,
+            // What the page asks for: a pending write wins over what the pod last reported.
+            wanted: pairing.pending !== null ? pairing.pending : pairing.on,
+            pods: await stations.roster(req.device.id),
+            canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
+            elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id)
+        };
+    }
+    if (req.device.controller_id)
+    {
+        return { kind: "pod", controller: await devicesRepo.findById(req.device.controller_id) };
+    }
+    return null;
+}
+
 router.get("/:uid", loadDevice, async (req, res, next) =>
 {
     try
@@ -108,7 +135,59 @@ router.get("/:uid", loadDevice, async (req, res, next) =>
             const ch = mod && (mod.channels || []).find((x) => x.id === "rssi" && x.signal);
             c.signal_pct = ch ? require("../services/levels").signalPercent(ch.signal, c.last_rssi) : null;
         });
-        res.render("devices/show", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900) });
+        res.render("devices/show", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req) });
+    }
+    catch (err) { next(err); }
+});
+
+// Just the station panel, for the controller page's live refresh (a "config" socket notice for
+// this device: pairing confirmed, or a target pod paired or moved).
+router.get("/:uid/station", loadDevice, async (req, res, next) =>
+{
+    try
+    {
+        const station = await stationModel(req);
+        if (!station || station.kind !== "controller") { return next(notFoundError()); }
+        res.render("devices/station", { layout: false, device: req.device, location: req.location, station: station });
+    }
+    catch (err) { next(err); }
+});
+
+// Pairing mode on or off: the pair_mode config write (services/unitConfig), so the page shows what
+// the controller actually holds. At most one controller per location may be pairing.
+router.post("/:uid/pairing", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        if (!req.typeModule || !req.typeModule.station) { return next(notFoundError()); }
+        const back = "/devices/" + req.params.uid;
+        const stations = require("../services/stations");
+        const on = req.body.action === "on";
+        const cred = await credentials.forDevice(req.device);
+        if (!cred || cred.state !== "active")
+        {
+            req.flash("warning", "This controller has no active broker credentials yet, so it cannot be put in pairing mode.");
+            return res.redirect(back);
+        }
+        if (on)
+        {
+            const other = await stations.pairingElsewhere(req.device.location_id, req.device.id);
+            if (other)
+            {
+                req.flash("warning", other.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
+                return res.redirect(back);
+            }
+        }
+        const r = await require("../services/unitConfig").write(req.device.hardware_id, cred.broker_username, stations.PAIR_KEY, on ? "true" : "false", req.typeModule, req.user.id);
+        if (!r.ok)
+        {
+            req.flash("danger", r.error);
+            return res.redirect(back);
+        }
+        await activity.log(req, on ? "pairing_on" : "pairing_off", { entity_type: "device", entity_uid: req.device.uid });
+        if (!r.sent) { req.flash("warning", "Saved. The broker is not reachable from this server right now; the controller gets it when it next connects."); }
+        else { req.flash("success", on ? "Pairing mode sent to the controller." : "Pairing off sent to the controller."); }
+        res.redirect(back);
     }
     catch (err) { next(err); }
 });
@@ -208,6 +287,17 @@ router.post("/:uid/config", loadDevice, need("edit"), async (req, res, next) =>
             await activity.log(req, "device_config_cancel", { entity_type: "device", entity_uid: req.device.uid, detail: key });
             req.flash("success", "Pending change to " + key + " cancelled. The gateway keeps whatever it already applied.");
             return res.redirect(back);
+        }
+        // Pairing mode from the Config tab keeps the one controller per location rule too.
+        const stations = require("../services/stations");
+        if (key === stations.PAIR_KEY && req.typeModule.station && stations.truthy(req.body.value))
+        {
+            const other = await stations.pairingElsewhere(req.device.location_id, req.device.id);
+            if (other)
+            {
+                req.flash("warning", other.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
+                return res.redirect(back);
+            }
         }
         const r = await unitConfig.write(req.device.hardware_id, cred.broker_username, key, req.body.value, req.typeModule, req.user.id);
         if (!r.ok)

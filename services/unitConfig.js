@@ -101,4 +101,5 @@ async function forPage(mac, typeModule)
     return out;
 }
 
-module.exports = { normalize, validate, report, write, cancel, resendPending, forPage };
+// notifyMac: the same notice, for other changes shown on a unit's pages (a pod station's roster).
+module.exports = { normalize, validate, report, write, cancel, resendPending, forPage, notifyMac: notify };

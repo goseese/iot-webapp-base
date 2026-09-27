@@ -275,6 +275,9 @@ a:hover { color: var(--iot-primary-hover); }
   border-bottom: 1px solid var(--iot-border);
 }
 .iot-panel__body { padding: 1rem; }
+/* A header control pushed right (ms-auto) keeps the table tools' Download button beside it, not
+   split across the free space (views/devices/station.ejs). */
+.iot-panel__header .iot-header-end + .iot-table-dl { margin-left: 0 !important; }
 
 .iot-stat {
   padding: 1rem;
