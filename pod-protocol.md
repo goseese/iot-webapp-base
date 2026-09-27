@@ -92,7 +92,7 @@ raw RSSI.
 ### 3.1 A controller's or account pod's own readings: `dev/{guid}/data`
 
 ```json
-{"vin":12.1,"vbat":4.02,"charge_state":1,"int_temp":24.6,"int_hum":41.2,"run_time":86400,"free_heap":181240,"wifi_rssi":-58}
+{"vin":12.1,"vbat":4.02,"charge_state":1,"int_temp":24.6,"int_hum":41.2,"run_time":86400,"free_heap":181240,"wifi_rssi":-58,"wifi_channel":6}
 ```
 
 | Key | Unit | Meaning | Server sensor |
@@ -105,6 +105,7 @@ raw RSSI.
 | `run_time` | s | seconds since boot | Uptime (`run-time`) |
 | `free_heap` | bytes | free heap | Free heap (`free-heap`) |
 | `wifi_rssi` | dBm | RSSI to the WiFi access point | WiFi RSSI (`wifi-rssi`), and WiFi signal % derived |
+| `wifi_channel` | 1 to 13 | the access point's channel, which ESP-NOW to the target pods uses too | WiFi channel (`wifi-channel`) |
 
 ### 3.2 A target pod's readings, relayed: `dev/{guid}/frame`
 
@@ -122,7 +123,7 @@ publishes each one as it arrives, adding the target's MAC and the RSSI it receiv
 | `model`, `fw` | the target pod's model string and firmware version |
 | `boot` | the target pod's boot count, kept in NVS, incremented at every boot |
 | `seq` | per boot message counter, starting at 1 |
-| `data` | the target pod's readings, same keys as 3.1 without `wifi_rssi` |
+| `data` | the target pod's readings, same keys as 3.1 without `wifi_rssi` and `wifi_channel` |
 
 The server drops duplicates by `boot * 2^32 + seq`, so a message relayed twice counts once. Without
 `boot` the counter is `seq` alone, and after a reboot the pod's messages are dropped as duplicates

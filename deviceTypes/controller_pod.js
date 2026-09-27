@@ -14,12 +14,13 @@ module.exports =
     models: ["vpod-ctl"],   // exact model string the firmware sends when provisioning
     fields: [],
     statusMap: {},
-    dataMap: Object.assign({ wifi_rssi: "wifi-rssi" }, pod.dataMap),
+    dataMap: Object.assign({ wifi_rssi: "wifi-rssi", wifi_channel: "wifi-channel" }, pod.dataMap),
     batteryChemistry: "li_ion",
     channels: pod.channels().concat(
     [
         { id: "signal", name: "WiFi signal", metric: "percent" },
-        { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" }
+        { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" },
+        { id: "wifi-channel", name: "WiFi channel", metric: "count", description: "The access point channel. A controller that hops channels forces its target pods to re-find it." }
     ]),
     // pair_mode is set with the "Pair target pods" toggle on the controller's page, not on the Config
     // tab; it goes through the config write path so the page shows what the pod actually holds and a

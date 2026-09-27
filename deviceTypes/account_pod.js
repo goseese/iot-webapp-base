@@ -13,12 +13,13 @@ module.exports =
     models: ["vpod-acct"],
     fields: [],
     statusMap: {},
-    dataMap: Object.assign({ wifi_rssi: "wifi-rssi" }, pod.dataMap),
+    dataMap: Object.assign({ wifi_rssi: "wifi-rssi", wifi_channel: "wifi-channel" }, pod.dataMap),
     batteryChemistry: "li_ion",
     channels: pod.channels().concat(
     [
         { id: "signal", name: "WiFi signal", metric: "percent" },
-        { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" }
+        { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" },
+        { id: "wifi-channel", name: "WiFi channel", metric: "count", description: "The access point channel. A controller that hops channels forces its target pods to re-find it." }
     ]),
     configKeys: { report_secs: pod.reportSecs, band_rssi_min: pod.bandRssiMin },
     commands: pod.commands,
