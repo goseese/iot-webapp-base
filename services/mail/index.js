@@ -58,10 +58,13 @@ async function send(msg)
     catch (err)
     {
         // AWS SDK errors carry the SES error code in err.name (MessageRejected, AccessDeniedException, ...).
-        const reason = ((err.name && err.name !== "Error" ? err.name + ": " : "") + (err.message || "send failed")).slice(0, 190);
+        // The notification row's reason column holds 200 characters, so the full text also goes in
+        // provider_response (the notification detail view) and back to the caller, which shows it and
+        // puts it in the event log: an AccessDenied message names the refused resource at its end.
+        const full = (err.name && err.name !== "Error" ? err.name + ": " : "") + (err.message || "send failed");
         logger.error({ err: err.message, to: to, driver: driver.name }, "mail send failed");
-        await notifications.update(id, { outcome: "failed", reason: reason });
-        return { ok: false, notificationId: id, reason: reason };
+        await notifications.update(id, { outcome: "failed", reason: full.slice(0, 190), provider_response: full.slice(0, 8000) });
+        return { ok: false, notificationId: id, reason: full.slice(0, 2000) };
     }
 }
 

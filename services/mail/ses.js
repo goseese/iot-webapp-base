@@ -1,6 +1,7 @@
 // Amazon SES through the SESv2 API (SendEmail). No AWS keys are stored: the AWS SDK's default
 // credential chain picks up the EC2 instance role (instance metadata) on the server, or a local
-// ~/.aws profile in development. The role needs ses:SendEmail on the verified sending identity.
+// ~/.aws profile in development. The role needs ses:SendEmail on Resource "*" (DECISIONS.md, "SES on
+// the server": an identity/* resource is not enough when the account has a default configuration set).
 const { SESv2Client, SendEmailCommand } = require("@aws-sdk/client-sesv2");
 const settings = require("../../config/settings");
 

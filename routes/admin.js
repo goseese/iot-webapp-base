@@ -157,6 +157,8 @@ async function settingsPage(req, res, next)
         const mailDrivers = Object.values(mail.drivers).map((d) => ({ name: d.name, label: d.label, keys: (d.settings || []).map((x) => x.key), configured: d.configured() }));
         const smsDrivers = Object.values(sms.drivers).map((d) => ({ name: d.name, label: d.label, keys: (d.settings || []).map((x) => x.key), configured: d.configured() }));
         const driverKeys = new Set(mailDrivers.concat(smsDrivers).flatMap((d) => d.keys));
+        // Keys the provider panels already show (views/admin/settings.ejs), left out of the list below them.
+        const shownAbove = new Set(["MAIL_DRIVER", "SMS_DRIVER", "MAIL_FROM_ADDRESS", "MAIL_FROM_NAME"]);
         const rows = all.filter((s) => s.group === group);
         // The client id help shows the actual default for this install (rows are copies, not the cache).
         const idRow = rows.find((s) => s.key === "MQTT_CLIENT_ID");
@@ -166,7 +168,7 @@ async function settingsPage(req, res, next)
         }
         res.render("admin/settings",
         {
-            title: "Site settings", group: group, rows: rows.filter((s) => !driverKeys.has(s.key) && s.key !== "MAIL_DRIVER" && s.key !== "SMS_DRIVER"),
+            title: "Site settings", group: group, rows: rows.filter((s) => !driverKeys.has(s.key) && !shownAbove.has(s.key)),
             byKey: Object.fromEntries(all.map((s) => [s.key, s])),
             mailDrivers: mailDrivers, mailChosen: mail.chosen().name, mailActive: mail.active().name, mailFrom: mail.fromAddress(),
             smsDrivers: smsDrivers, smsChosen: settings.get("SMS_DRIVER", "none"),

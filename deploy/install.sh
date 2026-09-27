@@ -425,3 +425,13 @@ fi
 echo "Superadmin: the first run of seed.js above printed the sign in name and one time password."
 echo "Site: https://$DOMAIN   Devices: mqtts://$DOMAIN:8883"
 echo "EC2 security group inbound: 22 (your IP), 80, 443, 8883."
+# Email (SES) takes its AWS credentials from the EC2 instance role; say whether one is attached.
+# Setup steps: DECISIONS.md, "SES on the server".
+IMDS_TOKEN="$(curl -fs --max-time 2 -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 60" || true)"
+ROLE="$(curl -fs --max-time 2 -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)"
+if [ -n "$ROLE" ]
+then
+    echo "Email: instance role $ROLE is attached (it needs ses:SendEmail on Resource \"*\")."
+else
+    echo "Email: no EC2 instance role attached, so SES cannot send. See DECISIONS.md, \"SES on the server\"."
+fi
