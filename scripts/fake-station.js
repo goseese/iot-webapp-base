@@ -2,12 +2,17 @@
 // Messages go through the real ingest code (pipeline/identify.js), the same path a controller's
 // MQTT publishes take, so placement, sensors and the pairing rules behave as they will for real.
 //
-//   node scripts/fake-station.js create [--location <location uid>] [--name "Fake station"]
-//   node scripts/fake-station.js pair <controller uid or MAC> on|off
-//   node scripts/fake-station.js pods <controller uid or MAC> <count> [--model vpod-acc|vpod-tof]
+//   node scripts/fake-station.js connect <MAC>
+//   node scripts/fake-station.js pair <MAC> on|off
+//   node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]
 //
-// create   adds a controller pod with a made up, locally administered MAC (02F5...) and an active
-//          credential row with no broker account behind it. Without --location it lists locations.
+// First add the controller in the app: the location's Gateways page, Add gateway, type Controller
+// pod, with the MAC. The page then says it is waiting for first connection.
+// connect  plays that controller's first connection: an active credential row with no broker
+//          account behind it, and the controller's first readings.
+//          A made up MAC is simplest (for example 020000000101). With a real board's MAC, press
+//          Reprovision on the controller's Settings tab before that board goes online, or it is
+//          told it already has credentials and cannot log in.
 // pair     plays the controller confirming pairing mode. Click "Pair target pods" on the page
 //          first (the banner says STARTING), then run this with "on" and refresh.
 // pods     sends one frame from each of <count> target pods (MACs 0A + the controller's last six
@@ -16,7 +21,7 @@
 //
 // No broker connection here, so open pages do not update by themselves: refresh after each step.
 // The daily broker check flags the fake controller (it has no broker account); that is expected.
-// Remove everything with the reset-test-unit.js command that create and pods print.
+// Remove the fake pods with the reset-test-unit.js command that pods prints.
 //
 // Run on the server from /opt/voltastc as the app user, like the other scripts. Acts on the
 // database in .env: from this checkout, that is PRODUCTION.
@@ -29,9 +34,14 @@ const { knex, T, nowEpoch } = require("../db/knex");
 function usage()
 {
     console.log("usage:");
-    console.log("  node scripts/fake-station.js create [--location <location uid>] [--name \"Fake station\"]");
-    console.log("  node scripts/fake-station.js pair <controller uid or MAC> on|off");
-    console.log("  node scripts/fake-station.js pods <controller uid or MAC> <count> [--model vpod-acc|vpod-tof]");
+    console.log("  node scripts/fake-station.js connect <MAC>      (after Add gateway, type Controller pod, in the app)");
+    console.log("  node scripts/fake-station.js pair <MAC> on|off");
+    console.log("  node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]");
+}
+
+function normalize(mac)
+{
+    return String(mac || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
 }
 
 function option(args, name, fallback)
@@ -67,59 +77,64 @@ function controllerData(guid)
     });
 }
 
-// A controller by placement uid or MAC, with its credential (the fake GUID it "logs in" with).
+// The controller placement holding this MAC (added in the app), checked to be a controller pod.
+async function placement(ref)
+{
+    const mac = normalize(ref);
+    if (mac.length !== 12) { throw new Error("give the controller's 12 digit MAC"); }
+    const device = await knex(T("devices")).where({ hardware_id: mac, is_archived: false }).whereNull("delete_epoch").first();
+    if (!device) { throw new Error("no gateway with MAC " + mac + ". Add it in the app first: the location's Gateways page, Add gateway, type Controller pod."); }
+    const type = await knex(T("device_types")).where({ id: device.device_type_id }).first();
+    if (!type || type.slug !== "controller_pod") { throw new Error(device.name + " is a " + (type ? type.display_name : "device") + ", not a Controller pod. Change its type or add another gateway."); }
+    return device;
+}
+
+// The controller and the GUID it "logs in" with, after connect.
 async function findController(ref)
 {
-    const mac = String(ref || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
-    const q = knex(T("devices")).whereNull("delete_epoch");
-    const device = /^[0-9a-f]{8}-/i.test(String(ref || "")) ? await q.where({ uid: String(ref).toLowerCase() }).first() : await q.where({ hardware_id: mac }).first();
-    if (!device) { throw new Error("no controller " + ref); }
-    const type = await knex(T("device_types")).where({ id: device.device_type_id }).first();
-    if (!type || type.slug !== "controller_pod") { throw new Error(device.name + " is not a controller pod"); }
+    const device = await placement(ref);
     const cred = await knex(T("device_credentials")).where({ mac: device.hardware_id, state: "active" }).whereNull("delete_epoch").first();
-    if (!cred) { throw new Error(device.name + " has no active credential row"); }
+    if (!cred) { throw new Error(device.name + " has not connected yet. Run: node scripts/fake-station.js connect " + device.hardware_id); }
     return { device: device, guid: cred.broker_username };
 }
 
-async function listLocations()
+async function connect(args)
 {
-    const rows = await knex(T("locations") + " as l").join(T("accounts") + " as a", "a.id", "l.account_id")
-        .whereNull("l.delete_epoch").select("a.name as account", "l.name", "l.uid").orderBy(["a.name", "l.name"]);
-    console.log("Pass --location with one of these:");
-    rows.forEach((r) => console.log("  " + String(r.uid).toLowerCase() + "  " + r.account + " / " + r.name));
-}
-
-async function create(args)
-{
-    const locUid = option(args, "--location", null);
-    if (!locUid) { return listLocations(); }
-    const location = await knex(T("locations")).where({ uid: String(locUid).toLowerCase() }).whereNull("delete_epoch").first();
-    if (!location) { throw new Error("no location " + locUid); }
-
-    // Next free fake MAC: 02F5 then 8 hex digits.
-    let n = 1;
-    let mac;
-    for (;;)
+    const device = await placement(args[0]);
+    const mac = device.hardware_id;
+    const creds = await knex(T("device_credentials")).where({ mac: mac }).whereNull("delete_epoch");
+    let guid;
+    if (creds.length === 0)
     {
-        mac = "02F5" + n.toString(16).toUpperCase().padStart(8, "0");
-        const used = await knex(T("device_credentials")).where({ mac: mac }).first() || await knex(T("devices")).where({ hardware_id: mac }).whereNull("delete_epoch").first();
-        if (!used) { break; }
-        n++;
+        guid = crypto.randomUUID();
+        await knex(T("device_credentials")).insert({ device_id: device.id, mac: mac, state: "active", broker_username: guid, created_epoch: nowEpoch(), activated_epoch: nowEpoch(), type_slug: "controller_pod" });
+        await send(guid, "config/pair_mode", "false");
+        console.log(device.name + " connected (fake credentials, no broker account).");
     }
-    const name = option(args, "--name", "Fake station " + n);
-    const device = await require("../services/devices").create({ locationId: location.id, typeSlug: "controller_pod", name: name, hardwareId: mac, model: "vpod-ctl", firmware: "0.0.0-fake" });
-    const guid = crypto.randomUUID();
-    await knex(T("device_credentials")).insert({ device_id: device.id, mac: mac, state: "active", broker_username: guid, created_epoch: nowEpoch(), activated_epoch: nowEpoch(), type_slug: "controller_pod" });
+    else if (creds[0].state === "active")
+    {
+        guid = creds[0].broker_username;
+        console.log(device.name + " was already connected; sent new readings.");
+    }
+    else
+    {
+        throw new Error(device.name + " has a credential row in state " + creds[0].state + ": a real unit has started provisioning with this MAC. Not faking over it.");
+    }
     await controllerData(guid);
-    await send(guid, "config/pair_mode", "false");
 
-    console.log("Created " + name + " in " + location.name);
-    console.log("  MAC:  " + mac);
     console.log("  page: " + pageUrl(device));
     console.log("Next:  click Pair target pods on the page, then");
     console.log("       node scripts/fake-station.js pair " + mac + " on");
     console.log("       node scripts/fake-station.js pods " + mac + " 5");
-    console.log("Remove: node scripts/reset-test-unit.js " + mac + " --yes");
+    if (!["2", "6", "A", "E"].includes(mac.charAt(1)))
+    {
+        console.log("This looks like a real board's MAC. Before that board goes online, press Reprovision on the");
+        console.log("controller's Settings tab, or the board is told it already has credentials and cannot log in.");
+    }
+    else
+    {
+        console.log("Remove: node scripts/reset-test-unit.js " + mac + " --yes");
+    }
 }
 
 async function pair(args)
@@ -168,7 +183,7 @@ async function pods(args)
 async function main()
 {
     const [cmd, ...args] = process.argv.slice(2);
-    const run = { create: create, pair: pair, pods: pods }[cmd];
+    const run = { connect: connect, pair: pair, pods: pods }[cmd];
     if (!run) { usage(); process.exit(1); }
     await settings.reload();
     await require("../db/shadow").syncDeviceTypes();
