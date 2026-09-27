@@ -351,6 +351,13 @@ router.post("/:uid/settings", loadSensor, need("edit"), body("name").trim().isLe
     catch (err) { next(err); }
 });
 
+// Where the device's sensor list is: its page, or its Sensors tab for a station type (controller pod).
+function devicePage(sensor)
+{
+    const type = deviceTypes.all[sensor.device_type_slug];
+    return "/devices/" + String(sensor.device_uid).toLowerCase() + (type && type.station ? "/sensors" : "");
+}
+
 // Hide or unhide one sensor (DECISIONS "Sensor delete and hide"). Hidden: readings still stored,
 // no alarms (active ones cleared here), left out of the device's sensor list and chart pickers.
 // from=device returns to the device page's hidden list (its Unhide button), otherwise Settings.
@@ -358,7 +365,7 @@ router.post("/:uid/hide", loadSensor, need("edit"), async (req, res, next) =>
 {
     const hide = req.body.action !== "unhide";
     const back = req.body.from === "device"
-        ? "/devices/" + String(req.sensor.device_uid).toLowerCase() + "?hidden=1"
+        ? devicePage(req.sensor) + "?hidden=1"
         : "/sensors/" + String(req.sensor.uid).toLowerCase() + "/settings";
     try
     {
@@ -392,7 +399,7 @@ router.post("/:uid/hide", loadSensor, need("edit"), async (req, res, next) =>
 // its next value (DECISIONS "Sensor delete and hide"); that is how test and startup data is cleared.
 router.post("/:uid/delete", loadSensor, need("delete"), async (req, res, next) =>
 {
-    const back = "/devices/" + String(req.sensor.device_uid).toLowerCase();
+    const back = devicePage(req.sensor);
     try
     {
         const now = nowEpoch();

@@ -37,15 +37,23 @@ async function loadDevice(req, res, next)
     catch (err) { next(err); }
 }
 
-// Config shows only for unit hardware whose type declares configKeys.
+// Config shows only for unit hardware whose type declares configKeys. A station type (controller
+// pod) opens on its Station tab, with its sensors on a tab of their own.
 function tabs(req, current)
 {
     const base = "/devices/" + String(req.device.uid).toLowerCase();
-    const list = [{ label: "Sensors", path: base }, { label: "Tags", path: base + "/tags" }];
+    const list = isStation(req)
+        ? [{ label: "Station", path: base }, { label: "Sensors", path: base + "/sensors" }, { label: "Tags", path: base + "/tags" }]
+        : [{ label: "Sensors", path: base }, { label: "Tags", path: base + "/tags" }];
     if (hasConfig(req)) { list.push({ label: "Config", path: base + "/config" }); }
     if (allowedCommands(req).length > 0) { list.push({ label: "Commands", path: base + "/commands" }); }
     list.push({ label: "Settings", path: base + "/settings" });
     return list.map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
+}
+
+function isStation(req)
+{
+    return !!(req.typeModule && req.typeModule.station);
 }
 
 function hasConfig(req)
@@ -105,25 +113,35 @@ async function stationModel(req)
     return null;
 }
 
+// The device's sensors table. Hidden sensors (DECISIONS "Sensor delete and hide") are listed only
+// with ?hidden=1.
+async function sensorRows(req)
+{
+    const showHidden = req.query.hidden === "1";
+    const allSensors = await knex(T("sensors")).where({ device_id: req.device.id }).whereNull("delete_epoch").orderBy("sort_order");
+    const hiddenCount = allSensors.filter((s) => s.is_hidden).length;
+    const sensors = showHidden ? allSensors : allSensors.filter((s) => !s.is_hidden);
+    for (const s of sensors)
+    {
+        s.display = await display.format(s, s.last_value, req.location);
+        // Sort value for the sensors table (iot-sort.js): the value in its display unit, as live.js sends it.
+        s.sort_value = s.last_value === null || s.last_value === undefined ? "" : Number(require("../metrics").fromCanonical(s.metric, s.last_value, await display.resolveUnit(s, req.location)).toFixed(4));
+        s.alarm = await knex(T("alarms")).where({ sensor_id: s.id }).whereNull("cleared_epoch").first();
+        s.tags = await require("../services/tags").effectiveForSensor(s);
+    }
+    return { sensors: sensors, hiddenCount: hiddenCount, showHidden: showHidden };
+}
+
+// view "all": status cards, sensors and coverage (every type but a station). "station": a station
+// type's Station tab, status cards and the station panel. "sensors": its Sensors tab, the table only.
 router.get("/:uid", loadDevice, async (req, res, next) =>
 {
     try
     {
-        // Hidden sensors (DECISIONS "Sensor delete and hide") are listed only with ?hidden=1.
-        const showHidden = req.query.hidden === "1";
-        const allSensors = await knex(T("sensors")).where({ device_id: req.device.id }).whereNull("delete_epoch").orderBy("sort_order");
-        const hiddenCount = allSensors.filter((s) => s.is_hidden).length;
-        const sensors = showHidden ? allSensors : allSensors.filter((s) => !s.is_hidden);
-        for (const s of sensors)
-        {
-            s.display = await display.format(s, s.last_value, req.location);
-            // Sort value for the sensors table (iot-sort.js): the value in its display unit, as live.js sends it.
-            s.sort_value = s.last_value === null || s.last_value === undefined ? "" : Number(require("../metrics").fromCanonical(s.metric, s.last_value, await display.resolveUnit(s, req.location)).toFixed(4));
-            s.alarm = await knex(T("alarms")).where({ sensor_id: s.id }).whereNull("cleared_epoch").first();
-            s.tags = await require("../services/tags").effectiveForSensor(s);
-        }
+        const station = isStation(req);
+        const { sensors, hiddenCount, showHidden } = station ? { sensors: [], hiddenCount: 0, showHidden: false } : await sensorRows(req);
         const cred = await credentials.forDevice(req.device);
-        const coverage = req.device.kind === "gateway"
+        const coverage = station ? [] : req.device.kind === "gateway"
             ? await knex(T("device_coverage") + " as c").join(T("devices") + " as d", "d.id", "c.device_id").leftJoin(T("device_types") + " as dt", "dt.id", "d.device_type_id").where("c.gateway_id", req.device.id).whereNull("d.delete_epoch").select("c.*", "d.name", "d.uid", "dt.slug as type_slug").orderBy("c.last_heard_epoch", "desc")
             : await knex(T("device_coverage") + " as c").join(T("devices") + " as d", "d.id", "c.gateway_id").where("c.device_id", req.device.id).whereNull("d.delete_epoch").select("c.*", "d.name", "d.uid").orderBy("c.last_heard_epoch", "desc");
         // Signal percent of each coverage RSSI: the radio is the heard device's own type (its rssi
@@ -135,7 +153,19 @@ router.get("/:uid", loadDevice, async (req, res, next) =>
             const ch = mod && (mod.channels || []).find((x) => x.id === "rssi" && x.signal);
             c.signal_pct = ch ? require("../services/levels").signalPercent(ch.signal, c.last_rssi) : null;
         });
-        res.render("devices/show", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req) });
+        res.render("devices/show", { title: req.device.name, view: station ? "station" : "all", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, station ? "Station" : "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req) });
+    }
+    catch (err) { next(err); }
+});
+
+// A station type's Sensors tab: the sensors table only.
+router.get("/:uid/sensors", loadDevice, async (req, res, next) =>
+{
+    try
+    {
+        if (!isStation(req)) { return next(notFoundError()); }
+        const { sensors, hiddenCount, showHidden } = await sensorRows(req);
+        res.render("devices/show", { title: req.device.name, view: "sensors", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: null, awaiting: false, coverage: [], showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: null });
     }
     catch (err) { next(err); }
 });

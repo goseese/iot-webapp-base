@@ -1,4 +1,8 @@
 <% var uid = fmt.uid(device.uid); var isGw = device.kind === "gateway" || device.kind === "direct"; %>
+<%# view (routes/devices.js): "all" for most types; a station type has "station" (cards and the
+    station panel) and "sensors" (the sensors table only) on separate tabs. %>
+<% var view = locals.view || "all"; %>
+<% if (view !== "sensors") { %>
 <div class="row g-3 mb-4">
   <%- include("../partials/stat", { label: "Status", value: device.is_offline ? "Offline" : (awaiting ? "Pending" : (!device.last_seen_epoch ? "No data" : (now - device.last_seen_epoch > threshold ? "Silent" : "Online"))),
       status: device.is_offline ? { kind: "offline", label: "Set offline manually" } : (awaiting ? { kind: "warning", label: "Waiting for first connection" } : (!device.last_seen_epoch ? { kind: "warning", label: "Waiting for first data" } : (now - device.last_seen_epoch > threshold ? { kind: "offline", label: "No recent data" } : { kind: "online", label: "Reporting" }))) }) %>
@@ -28,9 +32,12 @@
 <% } else if (station && station.kind === "pod") { %>
 <div class="alert alert-secondary mb-3">Paired with <% if (station.controller && !station.controller.delete_epoch) { %><a href="/devices/<%= fmt.uid(station.controller.uid) %>"><%= station.controller.name %></a><% } else { %>a controller that has been deleted<% } %>. Its readings arrive through that controller.</div>
 <% } %>
+<% } %>
+
+<% if (view !== "station") { %>
 
 <div class="iot-panel mb-3">
-  <div class="iot-panel__header"><strong>Sensors</strong><% if (hiddenCount > 0) { %> <a class="small ms-3" href="/devices/<%= fmt.uid(device.uid) %><%= showHidden ? "" : "?hidden=1" %>"><%= showHidden ? "Hide hidden" : "Show hidden (" + hiddenCount + ")" %></a><% } %></div>
+  <div class="iot-panel__header"><strong>Sensors</strong><% if (hiddenCount > 0) { %> <a class="small ms-3" href="/devices/<%= fmt.uid(device.uid) %><%= view === "sensors" ? "/sensors" : "" %><%= showHidden ? "" : "?hidden=1" %>"><%= showHidden ? "Hide hidden" : "Show hidden (" + hiddenCount + ")" %></a><% } %></div>
   <div class="table-responsive">
     <table class="table iot-table is-sortable align-middle mb-0">
       <thead><tr><th class="sort-alpha">Sensor</th><th class="sort-numeric">Value</th><th class="sort-numeric">Updated</th><th class="sort-custom">Alarm</th><th>Tags</th></tr></thead>
@@ -49,6 +56,9 @@
   </div>
 </div>
 
+<% } %>
+
+<% if (view === "all") { %>
 <div class="iot-panel">
   <div class="iot-panel__header"><strong><%= isGw ? "Devices heard by this gateway" : "Gateways hearing this device" %></strong> <span class="text-secondary small ms-2">coverage</span></div>
   <div class="table-responsive">
@@ -63,6 +73,7 @@
     </table>
   </div>
 </div>
+<% } %>
 
 <% if (station && station.kind === "controller") { %>
 <script>

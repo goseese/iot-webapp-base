@@ -26,7 +26,7 @@ module.exports =
     // pod that reconnects mid session gets it again. It stays on until someone turns it off.
     configKeys:
     {
-        pair_mode: { label: "Pairing mode", kind: "bool", writable: true, description: "While on, a target pod whose button is held pairs with this controller. Use the Pair target pods button on the Sensors tab." }
+        pair_mode: { label: "Pairing mode", kind: "bool", writable: true, description: "While on, a target pod whose button is held pairs with this controller. Use the Pair target pods button on the Station tab." }
     },
     commands:
     {
