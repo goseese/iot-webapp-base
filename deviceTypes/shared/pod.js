@@ -45,8 +45,10 @@ const bandRssiMin = { label: "Wristband minimum signal", kind: "int", min: -100,
 const commands =
 {
     led:         { label: "LED color", permission: "edit", confirm: false, value: "color", description: "Sets the whole LED grid to one color." },
-    publish_now: { label: "Get data", permission: "view", confirm: false, cooldownSecs: 60, description: "The pod sends its current readings." },
-    reboot:      { label: "Reboot", permission: "edit", confirm: true, cooldownSecs: 120, description: "The pod restarts." }
+    // No cooldownSecs (Jeff, Sep 2026): a person may press these as often as needed; each press is
+    // queued and goes out when the pod has answered the one before.
+    publish_now: { label: "Get data", permission: "view", confirm: false, description: "The pod sends its current readings." },
+    reboot:      { label: "Reboot", permission: "edit", confirm: true, description: "The pod restarts." }
 };
 
 const LED_COLORS = [["FF0000", "Red"], ["00FF00", "Green"], ["0000FF", "Blue"], ["FFFF00", "Yellow"], ["FFFFFF", "White"], ["off", "Off"]];
