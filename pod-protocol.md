@@ -55,7 +55,7 @@ All under the pod's own `dev/{guid}/`. The broker allows nothing else.
 | up | `frame` | no | one relayed target pod message, section 3.2 |
 | up | `config/{key}` | no | one config value, bare, section 4 |
 | up | `cmd_ack` | no | the answer to a queued command, section 5 |
-| up | `event` | no | wristband reads (section 8); game events later |
+| up | `event` | no | wristband reads (section 8), the pairing button (6.3); game events later |
 | down | `cmd/q` | no | a queued command, section 5 |
 | down | `cmd/set_config/{key}` | no | a config write, bare value, section 4 |
 
@@ -64,6 +64,22 @@ Subscribe to `dev/{guid}/cmd/#` at QoS 1 and nothing else. Publish uplinks at Qo
 On every connect, in this order: subscribe, publish the connect message (retained), publish every
 config value, then publish `data` once. The server sends pending config writes and the next queued
 command when it sees the connect message.
+
+### Going offline: always say so
+
+The server shows a pod online or offline from `status`, and ends a controller's pairing mode when it
+goes offline (section 6.3), so `{"online":false}` must arrive however the connection ends:
+
+- **Unexpected loss** (battery dead, unplugged, WiFi gone, crash): the broker publishes the last
+  will, `{"online":false}`, retained, after the connection drops or after about 1.5 times the
+  keepalive (90 s at 60 s) of silence. Nothing to do in firmware beyond setting the will.
+- **Deliberate disconnect** (reboot command, firmware update, shutdown): a normal MQTT DISCONNECT
+  makes the broker **discard** the will, so do one of these first:
+  - publish `{"online":false}` to `dev/{guid}/status` yourself, **retained**, QoS 1, and wait for
+    its PUBACK before disconnecting (works with MQTT 3.1.1 and 5); or
+  - with MQTT 5, disconnect with reason code **0x04, "Disconnect with Will Message"**, which tells
+    the broker to publish the will anyway (ESP-IDF: set `disconnect_reason` with
+    `esp_mqtt5_client_set_disconnect_property` before `esp_mqtt_client_disconnect`).
 
 ## 3. Readings
 
@@ -122,7 +138,7 @@ server until that reply arrives.
 
 | Key | Pods | Kind | Default | Meaning |
 |---|---|---|---|---|
-| `pair_mode` | controller | `true` / `false` | `false` | Accept join requests (section 6). Stays on until the server turns it off, across reboots. LEDs blue while on |
+| `pair_mode` | controller | `true` / `false` | `false` | Accept join requests (section 6). **Never saved: `false` at every boot**, and published as `false` on connect, so a pod that loses power cannot come back pairing. Otherwise it stays on until the server turns it off; the server also ends it when the controller goes offline (6.3). LEDs blue while on |
 | `report_secs` | all | integer, 60 to 86400 | 600 | Seconds between readings |
 | `band_rssi_min` | controller, account | integer dBm, -100 to -20 | -50 | Weakest wristband signal to accept (section 8) |
 
@@ -178,7 +194,7 @@ MAC is not one of this controller's target pods); `"error"` (the target answered
 3. **Same id, do it once.** A pod that receives an id it has already carried out acks it again
    without carrying it out again. Keep at least the last 16 ids.
 4. **Ack when done, except reboot.** Ack after the command has been applied. For `reboot`, ack
-   first, wait about 1 s for the ack to go out, then reboot; otherwise the resend on connect reboots
+   first, wait about 1 s for the ack to go out, say you are going offline (section 2), then reboot; otherwise the resend on connect reboots
    the pod again, forever.
 5. **Unknown command:** ack with `"ok":false,"error":"unknown command"`. Never leave a command
    unacked: it blocks the pod's queue.
@@ -232,6 +248,33 @@ an answer only from its saved controller.
 3. While `pair_mode` is off, it ignores join requests entirely and sends nothing back.
 4. **At most 19 target pods** (the ESP-NOW peer table holds 20, one of them the broadcast entry).
    A join request beyond that gets no answer.
+
+### 6.3 Pairing mode from the controller's button
+
+Someone at the station can start pairing without the web app, by holding the controller's function
+button (Jeff, September 2026):
+
+1. The controller publishes `dev/{guid}/event` with `{"event":"pair_request"}` and waits: LEDs
+   breathing blue, **not** accepting joins yet.
+2. The server answers with a plain `pair_mode` config write, the same as the web page's toggle
+   (`dev/{guid}/cmd/set_config/pair_mode`):
+   - `true` when no other controller at the same location is pairing or has pairing pending. The
+     controller applies it, confirms on `config/pair_mode`, and pairs as in 6.2.
+   - `false` when another controller at the location is pairing, or when this controller is not
+     placed at any location. Because the controller is waiting, `false` is the refusal: red for
+     1 second, back to idle, then it confirms `config/pair_mode` `false`.
+3. No answer within 10 seconds: red for 1 second, back to idle. The server has no timeout of its own.
+
+There is no new downlink message: grant and refusal are both ordinary `set_config` writes. The
+server records each request in its event log (granted, or refused and why), and the controller's
+Station tab shows a refusal from the last 30 minutes, so a button press that did nothing can be
+explained. Turning pairing off works as before: from the web page, or by the controller
+itself publishing `config/pair_mode` `false`, which the server takes as the new state.
+
+Pairing also ends when the controller goes offline: on `{"online":false}` (its last will, or its own
+publish before a clean disconnect, section 2) the server marks it not pairing, so the banner goes
+and the location is free for another controller, and queues `pair_mode` `false` for when it
+reconnects. A controller always boots with pairing off in any case (section 4).
 
 ## 7. ESP-NOW messages
 

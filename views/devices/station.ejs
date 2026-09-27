@@ -44,7 +44,9 @@
     <a class="small ms-2" href="/devices/<%= uid %>/commands">Queue</a>
   </form>
   <% } %></div>
-  <div data-part="note"><% if (st.elsewhere && !st.wanted) { %>
+  <div data-part="note"><% if (st.buttonRefused && !st.pairing.on) { %>
+  <div class="px-3 pt-2 small text-warning">The pairing button on this controller was pressed <span data-epoch="<%= st.buttonRefused.epoch %>"><%= fmt.ago(st.buttonRefused.epoch, now) %></span> and <%= st.buttonRefused.detail %>.</div>
+  <% } %><% if (st.elsewhere && !st.wanted) { %>
   <div class="px-3 pt-2 small text-secondary"><a href="/devices/<%= fmt.uid(st.elsewhere.uid) %>"><%= st.elsewhere.name %></a> at this location is in pairing mode. Only one controller per location can pair at a time.</div>
   <% } %></div>
   <div class="table-responsive">

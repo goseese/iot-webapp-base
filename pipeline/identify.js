@@ -111,6 +111,9 @@ async function handle(topic, payload, meta)
     {
         if (unit)
         {
+            // A controller with no placement pressing its pairing button still gets its answer (a
+            // refusal), or it would wait for its own timeout.
+            if (t.channel === "event") { await unplacedPairRequest(unit, t.guid, payload); }
             // Unclaimed, or its placement was removed: expected, so debug rather than warn. Adding
             // its MAC to a location starts delivery with no action on the device.
             await touchUnclaimed(unit, t.channel, payload, receipt, retained);
@@ -124,7 +127,7 @@ async function handle(topic, payload, meta)
     if (t.channel === "data") { return handleData(gateway, payload, receipt); }
     if (t.channel === "geoscan") { return handleGeoscan(gateway, payload); }
     if (t.channel === "cmd_ack") { return handleCmdAck(gateway, payload); }
-    if (t.channel === "event") { return handleEvent(gateway, payload, receipt); }
+    if (t.channel === "event") { return handleEvent(gateway, payload, receipt, t.guid); }
     if (t.channel === "frame") { return handleFrame(gateway, payload, receipt); }
 }
 
@@ -138,6 +141,14 @@ async function handleStatus(gateway, payload, receipt, retained, guid)
     try { status = JSON.parse(payload.toString("utf8")); }
     catch (err) { logger.warn({ gateway: gateway.uid }, "status payload is not JSON"); return; }
     const fw = firmwareOf(status);
+    // Offline (last will, or the pod's own publish before a clean disconnect): a controller's pairing
+    // ends (services/stations.wentOffline), also for a retained replay, which is the current state.
+    // Nothing else: an offline message must not stamp the unit as heard now.
+    if (status && status.online === false)
+    {
+        await require("../services/stations").wentOffline(gateway, await typeForDevice(gateway));
+        return;
+    }
     if (retained)
     {
         if (fw) { await knex(T("devices")).where({ id: gateway.id }).update({ firmware: fw.slice(0, 24) }); }
@@ -220,7 +231,7 @@ async function handleCmdAck(gateway, payload)
 // controller checks its athlete in at that station, and to an account pod shows it for enrollment
 // (services/athletes.js); the pod's open pages are told through its config notice. Anything else
 // (game events later) is recorded in the event log for now.
-async function handleEvent(gateway, payload, receipt)
+async function handleEvent(gateway, payload, receipt, guid)
 {
     const text = payload.toString("utf8").slice(0, 1000);
     let kind = null;
@@ -240,8 +251,27 @@ async function handleEvent(gateway, payload, receipt)
             return;
         }
     }
+    if (kind === "pair_request")
+    {
+        // A controller's function button (services/stations.buttonRequest, pod-protocol.md 6.3).
+        const type = await typeForDevice(gateway);
+        if (type && type.station) { await require("../services/stations").buttonRequest(gateway, gateway.hardware_id, guid, type); return; }
+    }
     const activity = require("../services/activity");
     await activity.record("pod_event", { entity_type: "device", entity_uid: gateway.uid, detail: (kind ? kind + ": " : "") + text }, { channel: "mqtt", correlationId: activity.newCorrelationId() });
+}
+
+// A pair_request from a unit with no placement: refused (services/stations.buttonRequest).
+async function unplacedPairRequest(unit, guid, payload)
+{
+    let e = null;
+    try { e = JSON.parse(payload.toString("utf8")); }
+    catch (err) { return; }
+    if (!e || e.event !== "pair_request" || !unit.type_slug) { return; }
+    let type = null;
+    try { type = deviceTypes.get(unit.type_slug); }
+    catch (err) { return; }
+    if (type.station) { await require("../services/stations").buttonRequest(null, unit.mac, guid, type); }
 }
 
 // dev/{guid}/geoscan: wifi and cell scan for location. Accepted and logged only; the location

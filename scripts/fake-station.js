@@ -7,6 +7,7 @@
 //   node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]
 //   node scripts/fake-station.js ack <MAC> [--all] [--fail]
 //   node scripts/fake-station.js band <MAC> <band id> [--rssi -40]
+//   node scripts/fake-station.js button <MAC>
 //
 // First add the controller in the app: the location's Gateways page, Add gateway, type Controller
 // pod, with the MAC. The page then says it is waiting for first connection.
@@ -27,6 +28,8 @@
 // band     presents a wristband (12 hex digits) to the pod: at a controller it checks the band's
 //          athlete in; at an account pod the page shows whose band it is, or offers to enroll it.
 //          connect, ack and band also work for an Account pod added the same way.
+// button   holds the controller's pairing button: the server grants pairing or refuses it (another
+//          controller at the location is pairing); then "pair <MAC> on" plays the pod confirming.
 //
 // The script opens a broker connection of its own when the MQTT site settings allow, so the next
 // queued command goes out after an ack and open pages update by themselves. Without one, commands
@@ -50,6 +53,7 @@ function usage()
     console.log("  node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]");
     console.log("  node scripts/fake-station.js ack <MAC> [--all] [--fail]");
     console.log("  node scripts/fake-station.js band <MAC> <band id> [--rssi -40]");
+    console.log("  node scripts/fake-station.js button <MAC>");
 }
 
 function normalize(mac)
@@ -203,6 +207,18 @@ async function pods(args)
     console.log("Remove the pods: node scripts/reset-test-unit.js " + macs.join(" ") + " --yes");
 }
 
+// The controller's function button held (pod-protocol.md 6.3): the server grants pairing (pair_mode
+// true) or refuses it (false). The real pod then confirms; here, "pair <MAC> on|off" plays that.
+async function button(args)
+{
+    const { device, guid } = await findController(args[0]);
+    await send(guid, "event", { event: "pair_request" });
+    const st = await require("../services/stations").pairingState(device);
+    const ev = await knex(T("event_log")).where({ event: "pair_request" }).whereRaw("details->>'entity_uid' = ?", [String(device.uid)]).orderBy("id", "desc").first();
+    console.log(device.name + ": " + (ev ? ev.details.outcome + " (" + ev.details.detail + ")" : "no answer recorded") + ". pair_mode now pending " + st.pending + ".");
+    if (st.pending === true) { console.log("The pod would now confirm: node scripts/fake-station.js pair " + device.hardware_id + " on"); }
+}
+
 // A wristband presented to the pod (pod-protocol.md section 8): check in at a controller, enroll
 // at an account pod.
 async function band(args)
@@ -278,7 +294,7 @@ async function openBroker()
 async function main()
 {
     const [cmd, ...args] = process.argv.slice(2);
-    const run = { connect: connect, pair: pair, pods: pods, ack: ack, band: band }[cmd];
+    const run = { connect: connect, pair: pair, pods: pods, ack: ack, band: band, button: button }[cmd];
     if (!run) { usage(); process.exit(1); }
     await settings.reload();
     await require("../db/shadow").syncDeviceTypes();

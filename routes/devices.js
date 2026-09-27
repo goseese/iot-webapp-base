@@ -114,6 +114,7 @@ async function stationModel(req)
             canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
             colors: require("../deviceTypes/shared/pod").LED_COLORS,
             elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id),
+            buttonRefused: await stations.lastButtonRefusal(req.device, 1800),
             checkin: await bandModel(req, "checkin")
         };
     }
@@ -278,16 +279,22 @@ router.post("/:uid/pairing", loadDevice, need("edit"), async (req, res, next) =>
             req.flash("warning", "This controller has no active broker credentials yet, so it cannot be put in pairing mode.");
             return res.redirect(back);
         }
+        // On: the check and the write under the location's pairing lock (stations.pairIfFree).
+        let r;
         if (on)
         {
-            const other = await stations.pairingElsewhere(req.device.location_id, req.device.id);
-            if (other)
+            const p = await stations.pairIfFree(req.device, cred.broker_username, req.typeModule, req.user.id);
+            if (p.blocker)
             {
-                req.flash("warning", other.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
+                req.flash("warning", p.blocker.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
                 return res.redirect(back);
             }
+            r = p.result;
         }
-        const r = await require("../services/unitConfig").write(req.device.hardware_id, cred.broker_username, stations.PAIR_KEY, on ? "true" : "false", req.typeModule, req.user.id);
+        else
+        {
+            r = await require("../services/unitConfig").write(req.device.hardware_id, cred.broker_username, stations.PAIR_KEY, "false", req.typeModule, req.user.id);
+        }
         if (!r.ok)
         {
             req.flash("danger", r.error);
@@ -406,18 +413,24 @@ router.post("/:uid/config", loadDevice, need("edit"), async (req, res, next) =>
             req.flash("success", "Pending change to " + key + " cancelled. The gateway keeps whatever it already applied.");
             return res.redirect(back);
         }
-        // Pairing mode from the Config tab keeps the one controller per location rule too.
+        // Pairing mode from the Config tab keeps the one controller per location rule too, under the
+        // same lock as the toggle and the button (stations.pairIfFree).
         const stations = require("../services/stations");
+        let r;
         if (key === stations.PAIR_KEY && req.typeModule.station && stations.truthy(req.body.value))
         {
-            const other = await stations.pairingElsewhere(req.device.location_id, req.device.id);
-            if (other)
+            const p = await stations.pairIfFree(req.device, cred.broker_username, req.typeModule, req.user.id);
+            if (p.blocker)
             {
-                req.flash("warning", other.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
+                req.flash("warning", p.blocker.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
                 return res.redirect(back);
             }
+            r = p.result;
         }
-        const r = await unitConfig.write(req.device.hardware_id, cred.broker_username, key, req.body.value, req.typeModule, req.user.id);
+        else
+        {
+            r = await unitConfig.write(req.device.hardware_id, cred.broker_username, key, req.body.value, req.typeModule, req.user.id);
+        }
         if (!r.ok)
         {
             req.flash("danger", key + ": " + r.error);

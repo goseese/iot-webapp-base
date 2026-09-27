@@ -94,7 +94,7 @@ Write GUID and password to flash together, and only after a complete 200 answer 
 | Password | the password |
 | Client id | `{model}-{mac}`, lower case MAC. The same on every boot and unique per unit; two connections with the same id evict each other |
 | Keepalive | 60 s |
-| Last will | topic `dev/{guid}/status`, payload `{"online":false}`, retained, QoS 1 |
+| Last will | topic `dev/{guid}/status`, payload `{"online":false}`, retained, QoS 1. A clean DISCONNECT discards it, so publish the same yourself first, or use MQTT 5 reason 0x04 (`pod-protocol.md` section 2) |
 
 Once connected:
 
