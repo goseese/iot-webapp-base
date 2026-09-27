@@ -8,7 +8,7 @@ const { knex, T, nowEpoch, isUniqueViolation } = require("../db/knex");
 const registry = require("../db/repos/registry");
 const broker = require("./broker");
 const topics = require("../mqtt/topics");
-const activity = require("../db/repos/activity");
+const activity = require("./activity");
 const credentials = require("../db/repos/credentials");
 const deviceTypes = require("../deviceTypes");
 
@@ -122,7 +122,7 @@ async function issue(req)
         if (mine && mine.broker_username === guid)
         {
             const password = await activate(mine, guid, now);
-            await activity.insert({ actor_type: "anonymous", actor_name: mac, action: "unit_provisioned", entity_type: "unit", entity_uid: guid, outcome: "ok", detail: "first contact, type " + typeSlug + ", driver " + broker.active().name });
+            await activity.record("unit_provisioned", { actor_type: "anonymous", actor_name: mac, entity_type: "unit", entity_uid: guid, detail: "first contact, type " + typeSlug + ", driver " + broker.active().name }, { channel: "device", correlationId: req.correlationId });
             logger.info({ mac: mac, unit: guid, type: typeSlug, placed: !!placement }, "unit provisioned, first contact");
             return { ok: true, guid: guid, password: password };
         }
@@ -168,7 +168,7 @@ async function issue(req)
             firmware: req.fw ? String(req.fw).slice(0, 24) : placement.firmware
         });
     }
-    await activity.insert({ actor_type: "anonymous", actor_name: mac, action: "unit_provisioned", entity_type: "unit", entity_uid: guid, outcome: "ok", detail: "reissued, type " + typeSlug + ", driver " + broker.active().name });
+    await activity.record("unit_provisioned", { actor_type: "anonymous", actor_name: mac, entity_type: "unit", entity_uid: guid, detail: "reissued, type " + typeSlug + ", driver " + broker.active().name }, { channel: "device", correlationId: req.correlationId });
     logger.info({ mac: mac, unit: guid, placed: !!placement }, "unit reissued");
     return { ok: true, guid: guid, password: password };
 }

@@ -2,6 +2,7 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { knex, T, nowEpoch, insertId } = require("../../db/knex");
 const { notFoundError } = require("../../middleware/errors");
+const { isUuid } = require("../../middleware/account");
 const permissions = require("../../permissions");
 const activity = require("../../services/activity");
 const { bits } = require("./shared");
@@ -89,6 +90,7 @@ router.post("/alert-groups", body("name").trim().isLength({ min: 1, max: 80 }), 
         const b = await bits(req);
         if (!permissions.has(b, permissions.byName.manage_alarms)) { return next(notFoundError()); }
         if (!validationResult(req).isEmpty()) { req.flash("danger", "Name is required."); return res.redirect(req.acctBase + "/alert-groups"); }
+        if (req.body.uid && !isUuid(req.body.uid)) { return next(notFoundError()); }
         const existing = req.body.uid ? await knex(T("alert_groups")).where({ uid: req.body.uid, account_id: req.account.id }).whereNull("delete_epoch").first() : null;
         if (req.body.action === "delete" && existing)
         {
@@ -111,6 +113,7 @@ router.post("/contacts", body("name").trim().isLength({ min: 1, max: 80 }), asyn
     {
         const b = await bits(req);
         if (!permissions.has(b, permissions.byName.manage_alarms)) { return next(notFoundError()); }
+        if (req.body.uid && !isUuid(req.body.uid)) { return next(notFoundError()); }
         if (req.body.action === "delete" && req.body.uid)
         {
             await knex(T("contacts")).where({ uid: req.body.uid, account_id: req.account.id }).update({ delete_epoch: nowEpoch() });

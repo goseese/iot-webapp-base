@@ -1,4 +1,4 @@
-// The only writer of DTM_audit_log; called inside the same transaction as the change.
+// The only writer of audit_log; called inside the same transaction as the change.
 const { T, nowEpoch } = require("../db/knex");
 
 function audit(trx, entry)

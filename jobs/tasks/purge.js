@@ -1,5 +1,5 @@
 // Daily batched purge (architecture 13). Readings by effective retention (sensor -> account ->
-// site, -1 = forever); device frames, raw publish log, activity log, expired sessions and tokens,
+// site, -1 = forever); device frames, raw publish log, event log, expired sessions and tokens,
 // old report files, unclaimed hearing rows. Never audit_log, never device_registry.
 const fs = require("fs");
 const path = require("path");
@@ -57,7 +57,7 @@ async function run()
     await readings();
     await deleteBatched(() => knex(T("device_frames")).where("epoch", "<", now - settings.get("DEVICE_FRAMES_HOURS", 24) * 3600), "device_frames");
     await deleteBatched(() => knex(T("raw_publish_log")).where("epoch", "<", now - Math.max(1, settings.get("RAW_PUBLISH_LOG_DAYS", 0)) * 86400), "raw_publish_log");
-    await deleteBatched(() => knex(T("activity_log")).where("epoch", "<", now - settings.get("ACTIVITY_LOG_DAYS", 30) * 86400), "activity_log");
+    await deleteBatched(() => knex(T("event_log")).where("time", "<", (now - settings.get("EVENT_LOG_DAYS", 30) * 86400) * 1000), "event_log");
     // Where unclaimed devices were heard (DECISIONS "Unclaimed devices, per account"): a MAC no
     // gateway has heard for 30 days drops off the Unclaimed devices pages.
     await deleteBatched(() => knex(T("unclaimed_heard")).where("last_heard_epoch", "<", now - settings.get("UNCLAIMED_HEARD_DAYS", 30) * 86400), "unclaimed_heard");

@@ -33,7 +33,7 @@ async function touch(mac, info)
 function findByMac(mac) { return knex(T("device_registry")).where({ mac: mac }).first(); }
 
 // MACs heard that belong to no live device: the superadmin unknown devices list. A superadmin
-// ignore (DTM_unclaimed_ignored, account_id NULL) hides a MAC unless showIgnored; rows carry
+// ignore (unclaimed_ignored, account_id NULL) hides a MAC unless showIgnored; rows carry
 // is_ignored either way.
 function listUnknown(showIgnored)
 {

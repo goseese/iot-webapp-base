@@ -13,6 +13,8 @@ const settings = require("../config/settings");
 const activity = require("../services/activity");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
 router.use(requireLogin);
 
 // Device detail: resolves permissions at the device's location; denied = 404.
@@ -276,7 +278,7 @@ router.post("/:uid/commands", loadDevice, async (req, res, next) =>
         if (cmd.cooldownSecs)
         {
             const now = nowEpoch();
-            const last = await require("../db/repos/activity").lastEpoch("device_command", req.device.uid, name, now - cmd.cooldownSecs);
+            const last = await require("../db/repos/events").lastEpoch("device_command", req.device.uid, name, now - cmd.cooldownSecs);
             if (last)
             {
                 req.flash("warning", cmd.label + " was requested " + (now - last) + " seconds ago. Try again in " + (last + cmd.cooldownSecs - now) + " seconds.");

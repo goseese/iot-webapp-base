@@ -2,6 +2,7 @@ const express = require("express");
 const { body, validationResult } = require("express-validator");
 const { knex, T, nowEpoch, insertId } = require("../../db/knex");
 const { notFoundError } = require("../../middleware/errors");
+const { isUuid } = require("../../middleware/account");
 const permissions = require("../../permissions");
 const grants = require("../../services/grants");
 const activity = require("../../services/activity");
@@ -35,6 +36,7 @@ router.post("/api", body("name").trim().isLength({ min: 1, max: 80 }), async (re
     {
         const b = await bits(req);
         if (!permissions.has(b, permissions.byName.grant)) { return next(notFoundError()); }
+        if (req.body.uid && !isUuid(req.body.uid)) { return next(notFoundError()); }
         if (req.body.action === "revoke" && req.body.uid)
         {
             const c = await knex(T("api_credentials")).where({ uid: req.body.uid, account_id: req.account.id }).first();
@@ -65,6 +67,7 @@ router.post("/webhooks", body("name").trim().isLength({ min: 1, max: 80 }), asyn
     {
         const b = await bits(req);
         if (!permissions.has(b, permissions.byName.edit)) { return next(notFoundError()); }
+        if (req.body.uid && !isUuid(req.body.uid)) { return next(notFoundError()); }
         if (req.body.action === "delete" && req.body.uid)
         {
             await knex(T("webhooks")).where({ uid: req.body.uid, account_id: req.account.id }).update({ delete_epoch: nowEpoch(), is_enabled: 0 });

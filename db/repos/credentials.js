@@ -20,7 +20,7 @@ function forMac(mac)
 }
 
 // Live credential by broker username. Stored lowercase, which is what mqtt/topics.parse returns,
-// and indexed (ux_DTM_device_credentials_broker_username) because ingest calls this per message.
+// and indexed (ux_device_credentials_broker_username) because ingest calls this per message.
 function forGuid(guid)
 {
     return knex(T("device_credentials")).where({ broker_username: String(guid).toLowerCase() }).whereNull("delete_epoch").first();
@@ -34,7 +34,7 @@ async function forDevice(device)
 }
 
 // A unit's current placement: the one live, unarchived device row holding its MAC. The unique index
-// ux_DTM_devices_hardware_id allows at most one. null means the unit is unclaimed: its credentials
+// ux_devices_hardware_id allows at most one. null means the unit is unclaimed: its credentials
 // work and it can be sent commands, but its data has nowhere to go.
 async function currentPlacement(mac)
 {

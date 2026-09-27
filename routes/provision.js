@@ -70,7 +70,7 @@ router.post("/", async (req, res, next) =>
 
     try
     {
-        const result = await provisioning.issue({ hw: hw, model: body.model, fw: body.fw });
+        const result = await provisioning.issue({ hw: hw, model: body.model, fw: body.fw, correlationId: req.id });
         if (result.ok)
         {
             // existing: the unit already holds working credentials; no password is sent.

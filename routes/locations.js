@@ -11,6 +11,8 @@ const display = require("../services/display");
 const activity = require("../services/activity");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
 
 // The location's own account uid, for redirects back to that account's pages.
 function accountUid(req)

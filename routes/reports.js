@@ -12,6 +12,9 @@ const activity = require("../services/activity");
 const { useAccount } = require("../middleware/account");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
+router.param("runId", require("../middleware/account").intParam);
 router.use(requireLogin);
 
 // The list and create pages belong to an account: mounted under /account/<uid>/reports. At the bare

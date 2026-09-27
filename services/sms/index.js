@@ -1,5 +1,5 @@
 // SMS drivers: twilio (REST, no SDK) and none. Same contract as mail: the caller has already
-// written the DTM_notifications row; this returns { ok, messageId, reason }.
+// written the notifications row; this returns { ok, messageId, reason }.
 const settings = require("../../config/settings");
 const logger = require("../../config/logger");
 

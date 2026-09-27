@@ -1,4 +1,4 @@
-// One module per device type slug; the DTM_device_types table is a shadow (architecture 3.2).
+// One module per device type slug; the device_types table is a shadow (architecture 3.2).
 const fs = require("fs");
 const path = require("path");
 const metrics = require("../metrics");

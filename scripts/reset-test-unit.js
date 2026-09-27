@@ -20,8 +20,9 @@
 //
 // Step 4 overrides architecture 3.8 (the registry is never deleted), on purpose and only here: that
 // rule protects the birth records of real hardware, and a made up test MAC has none worth keeping.
-// The devmon_app login is denied DELETE on the registry (deploy/create-app-login.sql); if this runs
-// as that login, step 4 is refused and the script prints the statement to run as an admin.
+// If the database login is not allowed to DELETE from the registry, step 4 is refused and the
+// script prints the statement to run as a login that is. (The app connects as the RDS master user
+// today, which is allowed.)
 const env = require("../config/env");
 const settings = require("../config/settings");
 const { knex, T } = require("../db/knex");
@@ -129,7 +130,7 @@ async function main()
         catch (err)
         {
             console.log("  registry row NOT deleted: " + err.message);
-            console.log("  run as an admin login:  DELETE FROM DTM_device_registry WHERE mac = '" + mac + "';");
+            console.log("  run as an admin login:  DELETE FROM device_registry WHERE mac = '" + mac + "';");
         }
     }
 

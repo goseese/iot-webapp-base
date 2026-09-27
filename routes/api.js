@@ -11,9 +11,11 @@ const deviceTypes = require("../deviceTypes");
 const pipeline = require("../pipeline");
 const actions = require("../services/alarms/actions");
 const alarmsRepo = require("../db/repos/alarms");
-const activity = require("../db/repos/activity");
+const activity = require("../services/activity");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
 router.use(express.json({ limit: "2mb" }));
 router.use((req, res, next) => apiAuth.authenticate(req, res, next).catch(next));
 
@@ -75,7 +77,8 @@ router.get("/readings", async (req, res, next) =>
 {
     try
     {
-        const s = await knex(T("sensors")).where({ uid: String(req.query.sensor || "") }).whereNull("delete_epoch").first();
+        const sensorUid = String(req.query.sensor || "");
+        const s = require("../middleware/account").isUuid(sensorUid) ? await knex(T("sensors")).where({ uid: sensorUid }).whereNull("delete_epoch").first() : null;
         const d = s ? await knex(T("devices")).where({ id: s.device_id }).first() : null;
         const l = d ? await knex(T("locations")).where({ id: d.location_id }).first() : null;
         if (!l || !permissions.has(apiAuth.bitsAt(req, l), permissions.byName.view)) { return res.status(404).json({ error: "Sensor not found" }); }
@@ -105,7 +108,7 @@ router.post("/readings", async (req, res, next) =>
         for (let i = 0; i < items.length; i++)
         {
             const it = items[i] || {};
-            const s = it.sensor ? await knex(T("sensors")).where({ uid: String(it.sensor) }).whereNull("delete_epoch").first() : null;
+            const s = it.sensor && require("../middleware/account").isUuid(String(it.sensor)) ? await knex(T("sensors")).where({ uid: String(it.sensor) }).whereNull("delete_epoch").first() : null;
             const d = s ? await knex(T("devices")).where({ id: s.device_id }).whereNull("delete_epoch").first() : null;
             const l = d ? await knex(T("locations")).where({ id: d.location_id }).first() : null;
             if (!l || !permissions.has(apiAuth.bitsAt(req, l), permissions.byName.api_write)) { rejected.push({ index: i, error: "sensor not found or not writable" }); continue; }
@@ -127,7 +130,7 @@ router.post("/readings", async (req, res, next) =>
             const r = await pipeline.ingest({ device: g.device, type: deviceTypes.get(typeRow.slug), epoch: g.epoch, values: g.values, canonical: true, gatewayId: g.device.id });
             accepted += r.accepted.length;
         }
-        await activity.insert({ actor_type: "api_credential", actor_id: req.apiCredential.id, actor_name: req.apiCredential.name, action: "api_readings", outcome: "ok", detail: accepted + " accepted, " + rejected.length + " rejected", ip: req.ip });
+        await activity.log(req, "api_readings", { detail: accepted + " accepted, " + rejected.length + " rejected" });
         res.status(rejected.length && !accepted ? 422 : 200).json({ accepted: accepted, rejected: rejected });
     }
     catch (err) { next(err); }

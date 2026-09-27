@@ -15,6 +15,9 @@ const tagsSvc = require("../services/tags");
 const tagsRepo = require("../db/repos/tags");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
+router.param("ruleUid", require("../middleware/account").uidParam);
 router.use(requireLogin);
 
 async function loadSensor(req, res, next)

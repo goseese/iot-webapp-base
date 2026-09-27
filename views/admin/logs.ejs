@@ -1,0 +1,182 @@
+<%
+// One line per row; the full details open under it. request: method and path; request_end: status
+// and time taken; any other event: its outcome, detail and entity.
+function summary(r)
+{
+    var d = r.details || {};
+    if (r.event === "request")
+    {
+        var qs = d.query && !d.query.truncated ? Object.keys(d.query).map(function (k) { return k + "=" + (typeof d.query[k] === "string" ? d.query[k] : JSON.stringify(d.query[k])); }).join("&") : "";
+        return (d.method || "") + " " + (d.path || "") + (qs ? "?" + qs : "");
+    }
+    if (r.event === "request_end") { return (d.status || "") + " in " + (d.duration_ms !== undefined ? d.duration_ms : "?") + " ms" + (d.aborted ? ", client went away" : ""); }
+    var parts = [];
+    if (d.outcome && d.outcome !== "ok") { parts.push(d.outcome); }
+    if (d.detail) { parts.push(d.detail); }
+    if (d.entity_type) { parts.push(d.entity_type + (d.entity_uid ? " " + String(d.entity_uid).slice(0, 8) : "")); }
+    return parts.join(" · ");
+}
+function who(r)
+{
+    if (r.user_id) { return names.users[r.user_id] || ("user " + r.user_id); }
+    if (r.api_credential_id) { return names.keys[r.api_credential_id] || ("key " + r.api_credential_id); }
+    return r.details && r.details.actor_name ? r.details.actor_name : "";
+}
+function statusClass(r)
+{
+    var s = r.event === "request_end" && r.details ? Number(r.details.status) : 0;
+    if (s >= 500) { return "text-danger"; }
+    if (s >= 400) { return "text-warning"; }
+    if (r.details && r.details.outcome && r.details.outcome !== "ok") { return "text-warning"; }
+    return "";
+}
+%>
+<form class="row g-2 mb-3 align-items-end" method="get" action="/admin/logs">
+  <div class="col-6 col-md-2"><label class="form-label small">Period</label><select class="form-select form-select-sm" name="range"><% ranges.forEach(function (x) { %><option value="<%= x %>" <%= f.range === x ? "selected" : "" %>>Last <%= x %></option><% }); %></select></div>
+  <div class="col-6 col-md-2"><label class="form-label small">User or API key</label><select class="form-select form-select-sm" name="who"><option value="">anyone</option>
+    <optgroup label="Users"><% users.forEach(function (u) { %><option value="u<%= u.id %>" <%= f.who === "u" + u.id ? "selected" : "" %>><%= u.username %><%= u.delete_epoch ? " (deleted)" : "" %></option><% }); %></optgroup>
+    <% if (keys.length) { %><optgroup label="API keys"><% keys.forEach(function (k) { %><option value="k<%= k.id %>" <%= f.who === "k" + k.id ? "selected" : "" %>><%= k.name %> (<%= k.key_prefix %>)<%= k.delete_epoch ? " (deleted)" : "" %></option><% }); %></optgroup><% } %>
+  </select></div>
+  <div class="col-6 col-md-2"><label class="form-label small">Account</label><select class="form-select form-select-sm" name="account"><option value="">any</option><% accounts.forEach(function (a) { %><option value="<%= a.id %>" <%= f.account === String(a.id) ? "selected" : "" %>><%= a.name %><%= a.delete_epoch ? " (deleted)" : "" %></option><% }); %></select></div>
+  <div class="col-6 col-md-2"><label class="form-label small">Event</label><input class="form-control form-control-sm" name="event" list="eventNames" value="<%= f.event %>" placeholder="any"><datalist id="eventNames"><% eventNames.forEach(function (e) { %><option value="<%= e %>"><% }); %></datalist></div>
+  <div class="col-6 col-md-1"><label class="form-label small">Channel</label><select class="form-select form-select-sm" name="channel"><option value="">any</option><% channels.forEach(function (c) { %><option <%= f.channel === c ? "selected" : "" %>><%= c %></option><% }); %></select></div>
+  <div class="col-6 col-md-1"><label class="form-label small">Request id</label><input class="form-control form-control-sm font-monospace" name="cid" value="<%= f.cid %>" placeholder="any"></div>
+  <div class="col-6 col-md-1"><div class="form-check mb-1"><input class="form-check-input" type="checkbox" name="errors" value="1" id="errorsOnly" <%= f.errors ? "checked" : "" %>><label class="form-check-label small" for="errorsOnly">Errors only</label></div></div>
+  <div class="col-6 col-md-1 d-flex gap-1"><button class="btn btn-sm btn-primary flex-fill">Filter</button><a class="btn btn-sm btn-outline-secondary" href="/admin/logs" title="Clear filters">Clear</a></div>
+</form>
+<% var live = !f.cid && !f.before; %>
+<% if (live) { %><div class="d-flex justify-content-end mb-2"><div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" id="liveToggle" checked><label class="form-check-label small" for="liveToggle">Live <span class="text-secondary" id="liveState">(connecting)</span></label></div></div><% } %>
+<% if (f.cid) { %><p class="small text-secondary">Every row of request <span class="font-monospace"><%= f.cid %></span>, oldest first. The other filters do not apply to a single request.</p><% } %>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0 small" id="eventLog"><thead><tr><th>Time</th><th>Event</th><th>Channel</th><th>Who</th><th>Account</th><th>Summary</th><th>Request</th></tr></thead><tbody>
+  <% rows.forEach(function (r) { %>
+    <tr>
+      <td class="text-nowrap font-monospace"><span class="ev-time" data-ms="<%= r.time %>"><%= new Date(Number(r.time)).toISOString().replace("T", " ").slice(0, 23) %> UTC</span></td>
+      <td class="<%= statusClass(r) %>"><%= r.event %></td>
+      <td><%= r.channel || "" %></td>
+      <td><%= who(r) %></td>
+      <td><%= r.account_id ? (names.accounts[r.account_id] || r.account_id) : "" %></td>
+      <td class="<%= statusClass(r) %>"><details><summary class="text-break"><%= summary(r) || "(details)" %></summary><pre class="small mb-0 mt-1"><%= JSON.stringify(r.details || {}, null, 2) %></pre></details></td>
+      <td><% if (r.correlation_id) { %><a class="font-monospace" href="<%= link({ cid: r.correlation_id, before: null }) %>" title="Every row of this request"><%= r.correlation_id %></a><% } %></td>
+    </tr>
+  <% }); %>
+  <% if (!rows.length) { %><tr><td colspan="7" class="text-secondary">Nothing matches.</td></tr><% } %>
+  </tbody></table></div>
+</div>
+<div class="d-flex justify-content-between align-items-center mt-2 small text-secondary">
+  <span><%= rows.length %> row<%= rows.length === 1 ? "" : "s" %><%= !f.cid && rows.length === 500 ? " (newest 500)" : "" %>. Times are shown in your browser's time zone.</span>
+  <% if (olderLink) { %><a class="btn btn-sm btn-outline-secondary" href="<%= olderLink %>">Older</a><% } %>
+</div>
+<script>
+var EV_NAMES = <%- JSON.stringify(names).replace(/</g, "\\u003c") %>;
+var EV_FILTER = <%- JSON.stringify({ live: live, who: f.who, account: f.account, event: f.event, channel: f.channel, errors: f.errors }).replace(/</g, "\\u003c") %>;
+document.addEventListener("DOMContentLoaded", function ()
+{
+    // Local time with milliseconds, so the rows of one request read in order.
+    function localTime(ms)
+    {
+        var d = new Date(Number(ms));
+        var p = function (n, w) { return String(n).padStart(w || 2, "0"); };
+        return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds()) + "." + p(d.getMilliseconds(), 3);
+    }
+    document.querySelectorAll(".ev-time").forEach(function (el) { el.textContent = localTime(el.dataset.ms); });
+    if (!EV_FILTER.live || typeof io !== "function") { return; }
+
+    // Live rows: the same filters as the table (the period does not apply to new rows), built with
+    // DOM calls so nothing in a row can inject markup. The same summaries as the server side view.
+    function summary(r)
+    {
+        var d = r.details || {};
+        if (r.event === "request")
+        {
+            var qs = d.query && !d.query.truncated ? Object.keys(d.query).map(function (k) { return k + "=" + (typeof d.query[k] === "string" ? d.query[k] : JSON.stringify(d.query[k])); }).join("&") : "";
+            return (d.method || "") + " " + (d.path || "") + (qs ? "?" + qs : "");
+        }
+        if (r.event === "request_end") { return (d.status || "") + " in " + (d.duration_ms !== undefined ? d.duration_ms : "?") + " ms" + (d.aborted ? ", client went away" : ""); }
+        var parts = [];
+        if (d.outcome && d.outcome !== "ok") { parts.push(d.outcome); }
+        if (d.detail) { parts.push(d.detail); }
+        if (d.entity_type) { parts.push(d.entity_type + (d.entity_uid ? " " + String(d.entity_uid).slice(0, 8) : "")); }
+        return parts.join(" · ");
+    }
+    function who(r)
+    {
+        if (r.user_id) { return EV_NAMES.users[r.user_id] || ("user " + r.user_id); }
+        if (r.api_credential_id) { return EV_NAMES.keys[r.api_credential_id] || ("key " + r.api_credential_id); }
+        return r.details && r.details.actor_name ? r.details.actor_name : "";
+    }
+    function statusClass(r)
+    {
+        var s = r.event === "request_end" && r.details ? Number(r.details.status) : 0;
+        if (s >= 500) { return "text-danger"; }
+        if (s >= 400) { return "text-warning"; }
+        if (r.details && r.details.outcome && r.details.outcome !== "ok") { return "text-warning"; }
+        return "";
+    }
+    function matches(r)
+    {
+        if (EV_FILTER.who && EV_FILTER.who !== (r.user_id ? "u" + r.user_id : "") && EV_FILTER.who !== (r.api_credential_id ? "k" + r.api_credential_id : "")) { return false; }
+        if (EV_FILTER.account && String(r.account_id || "") !== EV_FILTER.account) { return false; }
+        if (EV_FILTER.event && r.event !== EV_FILTER.event) { return false; }
+        if (EV_FILTER.channel && r.channel !== EV_FILTER.channel) { return false; }
+        if (EV_FILTER.errors && !(r.event === "request_end" && r.details && Number(r.details.status) >= 400)) { return false; }
+        return true;
+    }
+    function cell(text, cls)
+    {
+        var td = document.createElement("td");
+        if (cls) { td.className = cls; }
+        td.textContent = text;
+        return td;
+    }
+    function rowFor(r)
+    {
+        var tr = document.createElement("tr");
+        tr.appendChild(cell(localTime(r.time), "text-nowrap font-monospace"));
+        tr.appendChild(cell(r.event, statusClass(r)));
+        tr.appendChild(cell(r.channel || ""));
+        tr.appendChild(cell(who(r)));
+        tr.appendChild(cell(r.account_id ? (EV_NAMES.accounts[r.account_id] || String(r.account_id)) : ""));
+        var td = cell("", statusClass(r));
+        var det = document.createElement("details");
+        var sum = document.createElement("summary");
+        sum.className = "text-break";
+        sum.textContent = summary(r) || "(details)";
+        var pre = document.createElement("pre");
+        pre.className = "small mb-0 mt-1";
+        pre.textContent = JSON.stringify(r.details || {}, null, 2);
+        det.appendChild(sum);
+        det.appendChild(pre);
+        td.appendChild(det);
+        tr.appendChild(td);
+        var link = document.createElement("td");
+        if (r.correlation_id)
+        {
+            var a = document.createElement("a");
+            a.className = "font-monospace";
+            a.href = "/admin/logs?cid=" + encodeURIComponent(r.correlation_id);
+            a.title = "Every row of this request";
+            a.textContent = r.correlation_id;
+            link.appendChild(a);
+        }
+        tr.appendChild(link);
+        return tr;
+    }
+
+    var body = document.querySelector("#eventLog tbody");
+    var toggle = document.getElementById("liveToggle");
+    var state = document.getElementById("liveState");
+    var socket = io("/admin-logs");
+    socket.on("connect", function () { state.textContent = ""; });
+    socket.on("disconnect", function () { state.textContent = "(disconnected)"; });
+    socket.on("connect_error", function (err) { state.textContent = "(" + (err && err.message === "forbidden" ? "not allowed" : "cannot connect") + ")"; });
+    socket.on("log", function (r)
+    {
+        if (!toggle.checked || !matches(r)) { return; }
+        var empty = body.querySelector("td[colspan]");
+        if (empty) { empty.parentNode.remove(); }
+        body.insertBefore(rowFor(r), body.firstChild);
+        while (body.rows.length > 1000) { body.deleteRow(body.rows.length - 1); }
+    });
+});
+</script>

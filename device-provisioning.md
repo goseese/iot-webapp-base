@@ -1,9 +1,10 @@
 # Device provisioning: firmware guide
 
-How a gateway (or a direct device) gets its MQTT credentials from devmon, and what it does when it
-is connected, when a connection fails, and when its credentials stop working. Written for firmware
-work; the server side is in `DECISIONS.md` and `dynsec-broker-summary.md`. Verified end to end
-against the live broker on 2026-09-21 with `scripts/provision-test.sh`.
+How a pod (a controller pod, an account pod, or any device that holds its own MQTT login) gets its
+credentials from the Voltastc server, and what it does when it is connected, when a connection
+fails, and when its credentials stop working. Written for firmware work; the server side is in
+`dynsec-broker-summary.md` and `DECISIONS.md`. Target pods do not provision: they talk ESP-NOW to
+their controller pod, which relays their data under its own login.
 
 ## The model in one paragraph
 
@@ -19,11 +20,11 @@ within 30 days. When they stop working, the device provisions again.
 
 | Item | Value |
 |---|---|
-| Broker | `iot.datatelematics.io`, port 8883, TLS |
-| Broker root CA | ISRG Root X1 (pin the root, never an intermediate) |
+| Broker | `app.voltastc.com`, port 8883, TLS |
+| Root CA | ISRG Root X1, for both the broker and HTTPS (pin the root, never an intermediate) |
 | First contact login | username `announce`, password: the shared value, the same in every image |
 | Its own MAC | 12 hex digits |
-| Its model string | e.g. `gw-cell-1`. Must exactly match a model the server lists; it decides the device type |
+| Its model string | must exactly match a model a device type on the server lists; it decides the device type |
 | Its firmware version | free text, e.g. `1.4.2` |
 
 Stored in flash after provisioning: **GUID and password**. Nothing else is needed. Do not store the
@@ -36,7 +37,7 @@ provisioning URL permanently; read it fresh each time (step 1), because the serv
 3. Parse the JSON, disconnect.
 
 ```json
-{"url":"https://devmon.datatelematics.io/provision/v1","published":"2026-09-21T03:17:41Z"}
+{"url":"https://app.voltastc.com/provision/v1","published":"2026-09-26T23:13:15Z"}
 ```
 
 Use `url`. Ignore every other field (`published` is for humans; more fields may be added later).
@@ -48,32 +49,29 @@ If no message arrives within about 10 seconds, retry with backoff (see Timing).
 server creates the broker account before it answers, which takes a few round trips):
 
 ```json
-{ "hw": "A4CF12345678", "model": "gw-cell-1", "fw": "1.4.2" }
+{ "hw": "A4CF12345678", "model": "<model string>", "fw": "1.4.2" }
 ```
 
 - `hw`: the MAC. Separators and lower case are accepted; 12 hex digits after cleanup.
-- `model`: required, exact match. The server finds the device type whose module lists this model;
-  a model no type lists is refused with 400. A new product needs its model added on the server first.
+- `model`: required, exact match. A model no device type lists is refused with 400. A new product
+  needs its model added on the server first.
 - `fw`: optional but send it. It shows on the server's device and unknown devices pages.
 
-### Reading the answer: the code is in a header, not the status line
+### Reading the answer
 
-**The HTTP status is always 200** (the IIS servers replace the body of any error response, so the
-app never sends one). The real result is the **`x-app-status`** response header. No header means
-200. The body is JSON, with one exception: for a few seconds while the site is starting, the answer
-is `x-app-status: 503` with a short HTML page. Treat that like any 503.
+The HTTP status code is the result. Bodies are JSON.
 
-| `x-app-status` | Body | Do this |
+| Status | Body | Do this |
 |---|---|---|
-| (none) with `password` | `{"ok":true,"guid":"...","password":"..."}` | Store GUID and password, go to step 3 |
-| (none) with `existing` | `{"ok":true,"guid":"...","existing":true}` | You already hold active credentials. Keep yours and go to step 3. See "Existing" below |
-| 400 | `{"ok":false,"status":400,"error":"..."}` | Bad request (bad MAC, missing `model`, or a model the server does not list). Do not retry the same request; log `error` |
-| 409 | `{"ok":false,"status":409,"error":"...","guid":"..."}` | Another request for this unit is being processed. Retry in 5 seconds |
-| 429 | `{"ok":false,"status":429,"retry_after_secs":N}` | Rate limited. Wait `retry_after_secs`, then retry |
-| 500, 503 | `{"ok":false,"status":500,...}` | Temporary server problem. Retry with backoff |
+| 200 with `password` | `{"ok":true,"guid":"...","password":"..."}` | Store GUID and password, go to step 3 |
+| 200 with `existing` | `{"ok":true,"guid":"...","existing":true}` | You already hold active credentials. Keep yours and go to step 3. See "Existing" below |
+| 400 | `{"error":"..."}` | Bad request (bad MAC, missing `model`, or a model the server does not list). Do not retry the same request; log `error` |
+| 409 | `{"error":"...","guid":"..."}` | Another request for this unit is being processed. Retry in 5 seconds |
+| 429 | `{"error":"...","retry_after_secs":N}` | Rate limited. Wait `retry_after_secs`, then retry |
+| 500, 502, 503 | JSON or a short HTML page | Temporary server problem (503 while the site is starting, 502 if the app is restarting). Retry with backoff |
 
-If the HTTP status itself is not 200, or the body is not JSON, the request never reached the app
-(the site is down or restarting, or a proxy answered). Treat it as temporary and retry with backoff.
+Anything else, or a body that is not JSON on a 200, means the request did not reach the app as
+expected. Treat it as temporary and retry with backoff.
 
 The password is sent **once**, in the answer to the request that created it. It is never re-sent.
 Write GUID and password to flash together, and only after a complete 200 answer with a password.
@@ -94,7 +92,7 @@ Write GUID and password to flash together, and only after a complete 200 answer 
 |---|---|
 | Username | the GUID |
 | Password | the password |
-| Client id | `{model}-{mac}`, e.g. `gw7080-7c4fad842518`. The same on every boot and unique per unit; two connections with the same id evict each other |
+| Client id | `{model}-{mac}`, lower case MAC. The same on every boot and unique per unit; two connections with the same id evict each other |
 | Keepalive | 60 s |
 | Last will | topic `dev/{guid}/status`, payload `{"online":false}`, retained, QoS 1 |
 
@@ -103,62 +101,47 @@ Once connected:
 1. Subscribe to **`dev/{guid}/cmd/#`**, QoS 1. Only that. The broker refuses any other subscription,
    and subscribing to your whole `dev/{guid}/#` tree would echo your own uplinks back to you.
 2. Publish `dev/{guid}/status`, **retained**, with the connect message (connect event, `firmware`,
-   csq, ipa, model, board, method, is_secure). Then publish nwinfo and the radio mode to the same
-   `dev/{guid}/status` topic, **not retained**. A non-retained publish does not replace the stored
-   retained connect message, so the broker keeps the connect message as the unit's current state.
-3. Publish the reboot reason (`reboot_reason`, `reboot_desc`, `reboot_count`, `is_secure`) to
-   `dev/{guid}/data`, not retained.
-4. Publish each config value to `dev/{guid}/config/{key}`, one value per publish, **not retained**.
-5. Publish the geoscan to `dev/{guid}/geoscan`, not retained.
-6. From then on, publish your own readings to `dev/{guid}/data` (not retained) and relayed traffic
-   to `dev/{guid}/frame` and `dev/{guid}/ble`, all QoS 1.
-7. Handle commands arriving on `dev/{guid}/cmd` and anything under it (`gateway-protocol.md` 5).
+   and whatever connectivity details the type defines). Any later status publish is **not
+   retained**, so the broker keeps the connect message as the unit's current state.
+3. Publish each config value to `dev/{guid}/config/{key}`, one value per publish, **not retained**.
+4. From then on, publish your own readings to `dev/{guid}/data` and relayed target pod traffic to
+   `dev/{guid}/frame`, not retained, QoS 1.
+5. Handle commands arriving on `dev/{guid}/cmd` and anything under it, and publish
+   `dev/{guid}/cmd_ack` when a command is heard.
 
 ### Uplink topics
 
 | Topic | Retained | Payload |
 |---|---|---|
-| `dev/{guid}/status` | connect message only | connect message (retained), nwinfo and radio mode (not retained). Firmware version as `firmware`. LWT `{"online":false}` |
-| `dev/{guid}/data` | no | flat JSON of the unit's own readings (keys below), and the reboot reason message |
+| `dev/{guid}/status` | connect message only | connect message (retained), other status (not retained). Firmware version as `firmware`. LWT `{"online":false}` |
+| `dev/{guid}/data` | no | flat JSON of the unit's own readings; the keys are mapped by the device type's `dataMap` on the server |
 | `dev/{guid}/config/{key}` | no | the bare value, e.g. topic `.../config/rf_channel`, payload `11` |
-| `dev/{guid}/cmd_ack` | no | `{"event":"cmd_ack","value":...,"response"|"result":...}` when a command was heard |
-| `dev/{guid}/geoscan` | no | `{"event":"geoscan","wifi":[{bssid,ssid,rssi,ch}],"cell":{mcc,mnc,tac,cid}}` |
-| `dev/{guid}/frame` | no | one relayed LoRa frame (`gateway-protocol.md` 4.1) |
-| `dev/{guid}/ble` | no | one beacon per publish, the existing keys: `{"dmac":"bc57291ec984","rssi":-100,"count":16,"data":"<hex>"}`, optional `seconds_ago`. Not the 4.3 batch (see DECISIONS) |
+| `dev/{guid}/frame` | no | one relayed frame from a device this unit hears (a target pod) |
+| `dev/{guid}/cmd_ack` | no | `{"event":"cmd_ack","value":...}` when a command was heard |
+| `dev/{guid}/geoscan` | no | `{"event":"geoscan","wifi":[{bssid,ssid,rssi,ch}]}` if the product ever reports it |
 
-gw7080 `data` keys are the existing `publishStatus()` payload, unchanged: only the topic moves from
-`data/json/node/1` to `data`. Every key is optional, `null` is skipped, and extra keys are ignored.
+Payload keys for `data` are the firmware's own; the server's device type maps them to its channel
+names, so firmware never renames a key to suit the server. `null` values are skipped and unknown
+keys ignored. Do not send percentages the server derives (battery percent from the battery voltage,
+signal percent from the raw RSSI).
 
-| Key | Unit | Notes |
-|---|---|---|
-| `cycles` | count | publish cycles since boot |
-| `vin`, `vbat` | V | |
-| `int_temp` | degrees C | `null` without an SHTC3 |
-| `int_hum` | %RH | `null` without an SHTC3 |
-| `modem_csq` | CSQ 0 to 31 | raw index, 99 = unknown; on cellular |
-| `wifi_rssi` | dBm | on WiFi, in place of `modem_csq` |
-| `run_time` | minutes | |
-| `free_heap` | bytes | |
-| `charge_state`, `charge_adc`, `charge_disable`, `charge_disable_remaining_m` (minutes), `charge_disable_src` | | `null` on board 1.1 |
-| `wifiap_clients` | count | only while the WiFi AP is running |
-
-Do not send `batt_pct`: battery percentage will be derived on the server from `vbat` by a battery
-chemistry helper. A signal percentage will be derived from `modem_csq` the same way.
+Publishing anywhere outside your own `dev/{guid}/` uplinks is refused by the broker. Only the
+connect message on `status` may be retained: a retained message is replayed to the server on every
+reconnect and after a broker restart.
 
 ### Config writes from the server
 
 The server writes one key at a time to `dev/{guid}/cmd/set_config/{key}`, payload the bare value,
-QoS 1, **not retained** (the existing `cmd/set_config/` handler). After applying it, publish
-`dev/{guid}/config/{key}` with the value now held; that reply is what confirms the write on the
-server, which shows the key as pending until it arrives. Writes the unit has not confirmed are sent
-again each time the unit publishes its connect message, so a unit that was offline gets them on
-its next connect. `publishConfig()` on connect also confirms anything applied during a reboot
-(`ble_relay_mode` reboots without replying).
+QoS 1, **not retained**. After applying it, publish `dev/{guid}/config/{key}` with the value now held;
+that reply is what confirms the write on the server, which shows the key as pending until it arrives.
+Writes the unit has not confirmed are sent again each time the unit publishes its connect message.
+Publishing every config value on connect also confirms anything applied during a reboot.
 
-Only retain the connect message on `status`. Nothing else may be retained: a retained message is replayed to the server on
-every reconnect of its ingest client and after a broker restart.
+### Commands
 
-Publishing anywhere outside your own `dev/{guid}/` tree is refused by the broker.
+Commands arrive on `dev/{guid}/cmd/{name}` (and the bare `dev/{guid}/cmd`), with the firmware's own
+command names as declared in the device type's `commands` list. They are never retained or queued by
+the server: a command sent while the unit is offline is not delivered later.
 
 ## When the MQTT connection fails
 
@@ -208,31 +191,32 @@ CONNECT
   mqtt connect as guid, client id {model}-{mac}, LWT on dev/{guid}/status
     auth refused     -> goto PROVISION
     other failure    -> backoff, retry CONNECT
-    connected        -> subscribe dev/{guid}/cmd/#, publish status online:true, run
+    connected        -> subscribe dev/{guid}/cmd/#, publish retained connect message, run
   connection lost    -> backoff, retry CONNECT
 ```
 
 ## Testing a unit by hand
 
-From the repository, with a made up MAC (keep the second hex digit 2, 6, A or E, for example
-`020000000001`, so it can never collide with real hardware):
+From any machine with mosquitto-clients, curl and python3, with a made up MAC (keep the second hex
+digit 2, 6, A or E, for example `020000000001`, so it can never collide with real hardware) and a
+model string a device type on the server lists:
 
 ```
-ANNOUNCE_PASSWORD='...' ./scripts/provision-test.sh --broker iot.datatelematics.io --mac 020000000001
-node scripts/reset-test-unit.js 020000000001 --yes     # remove it completely, to test first contact again
+ANNOUNCE_PASSWORD='...' ./scripts/provision-test.sh --broker app.voltastc.com --mac 020000000001 --model <model>
+```
+
+On the server, to remove the test unit completely and test first contact again:
+
+```
+cd /opt/voltastc && sudo runuser -u voltastc -- node scripts/reset-test-unit.js 020000000001 --yes
 ```
 
 ## Open items for firmware
 
-- **HTTPS chain.** The site uses a Let's Encrypt certificate, the same hierarchy as the broker, so the
-  pinned ISRG Root X1 covers both, provided the server sends the full chain up to the root. TLS is
-  terminated in front of IIS (ARR), so check what devices actually receive before building firmware:
-  `openssl s_client -connect devmon.datatelematics.io:443 -servername devmon.datatelematics.io -showcerts </dev/null | grep -E " s:| i:"`
-  Expect the leaf, the intermediate, and a certificate issued by ISRG Root X1.
-- **Clean session.** `gateway-protocol.md` says clean session. With QoS 1 commands, a persistent
-  session would also deliver commands sent while the device was offline. Decide which is wanted.
-- **gw7080 topics (settled Sep 2026).** Status, data, config and geoscan as in "Uplink topics" above.
-  The legacy `data/json/node/1` and `nwinfo` topics are gone from the `dev/` tree. The server logs
-  config and geoscan but does not store them yet.
-- **Legacy MQTT provisioning** (`provision/request/{hw}` with the old bootstrap user) still works for
-  fielded firmware and goes away once the HTTPS flow has shipped.
+- **Model strings:** no pod type exists on the server yet, so every request gets 400 until the
+  controller and account pod types list their models.
+- **Certificate chain:** check what a device actually receives on 443 and 8883 before building
+  firmware (see `dynsec-broker-summary.md`, Open items). Expect the leaf, the intermediate, and an
+  issuer chaining to ISRG Root X1.
+- **Clean session:** with QoS 1 commands, a persistent session would also deliver commands sent
+  while the device was offline. Decide which is wanted per product.

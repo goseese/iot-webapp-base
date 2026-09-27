@@ -53,6 +53,31 @@ function start(httpServer, sessionMiddleware)
         }
         catch (err) { logger.warn({ err: err.message }, "socket auth failed"); socket.disconnect(true); }
     });
+
+    // Admin > Event log live view (DECISIONS.md "Event log"): superadmins only, checked against the
+    // session at the handshake, so anyone else is refused before joining. Rows arrive through
+    // emitLog() from db/repos/events.js, for writes made in this process only (the ingest process
+    // has no socket server; its rows show on the next page load).
+    io.of("/admin-logs").use(async (socket, next) =>
+    {
+        try
+        {
+            const sess = socket.request.session;
+            const user = sess && sess.userId ? await users.findById(sess.userId) : null;
+            if (!user || user.delete_epoch !== null || !user.is_superadmin || user.must_set_password || sess.mustSetPassword) { return next(new Error("forbidden")); }
+            next();
+        }
+        catch (err)
+        {
+            logger.warn({ err: err.message }, "admin-logs auth failed");
+            next(new Error("forbidden"));
+        }
+    });
+}
+
+function emitLog(row)
+{
+    if (io) { io.of("/admin-logs").emit("log", row); }
 }
 
 function connectFeed()
@@ -119,4 +144,4 @@ function reconnect()
 // on any farm server can publish a command without going through the leader.
 function feedClient() { return feed; }
 
-module.exports = { start, connectFeed, reconnect, feedClient };
+module.exports = { start, connectFeed, reconnect, feedClient, emitLog };

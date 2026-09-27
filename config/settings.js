@@ -1,4 +1,4 @@
-// Settings cache with resolution env -> DTM_settings -> caller fallback.
+// Settings cache with resolution env -> settings table -> caller fallback.
 // A key present in .env wins and is reported read only so the UI can grey it out.
 // Secrets (kind = secret) are AES-256-GCM encrypted at rest with SETTINGS_KEY.
 const crypto = require("crypto");

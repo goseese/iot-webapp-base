@@ -8,6 +8,9 @@ const activity = require("../../services/activity");
 const { bits, ceilingAt } = require("./shared");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../../middleware/account").uidParam);
+router.param("grantId", require("../../middleware/account").intParam);
 const invitesSvc = require("../../services/invites");
 const invitesRepo = require("../../db/repos/invites");
 

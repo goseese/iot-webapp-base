@@ -12,6 +12,8 @@ const sensorsExt = require("../db/repos/sensorsExt");
 const { useAccount } = require("../middleware/account");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
 router.use(requireLogin);
 
 // The list and create pages belong to an account: mounted under /account/<uid>/analytics. At the bare
@@ -129,7 +131,7 @@ router.get("/charts/:uid/data", loadChart, async (req, res, next) =>
 
 function defFromBody(req)
 {
-    const sensors = [].concat(req.body.sensors || []).map((s) => String(s).toLowerCase()).slice(0, 12);
+    const sensors = [].concat(req.body.sensors || []).map((s) => String(s).toLowerCase()).filter(require("../middleware/account").isUuid).slice(0, 12);
     return { sensors: sensors, range: ["1h", "6h", "24h", "7d", "30d", "90d"].includes(req.body.range) ? req.body.range : "24h" };
 }
 
@@ -200,7 +202,7 @@ router.get("/dashboards/:uid", loadDashboard, async (req, res, next) =>
         const tab = req.tabs[tabIndex] || null;
         let chart = null;
         let sensors = [];
-        if (tab && tab.chart_uid) { chart = await knex(T("charts")).where({ uid: tab.chart_uid }).whereNull("delete_epoch").first(); if (chart && !canSee(chart, req)) { chart = null; } }
+        if (tab && tab.chart_uid && require("../middleware/account").isUuid(tab.chart_uid)) { chart = await knex(T("charts")).where({ uid: tab.chart_uid }).whereNull("delete_epoch").first(); if (chart && !canSee(chart, req)) { chart = null; } }
         if (tab && tab.tag_query)
         {
             const q = tagsSvc.parseQuery(tab.tag_query);
@@ -242,7 +244,7 @@ function tabsFromBody(req)
         const name = (req.body["tab_" + i + "_name"] || "").trim();
         if (!name) { continue; }
         const kind = req.body["tab_" + i + "_kind"];
-        if (kind === "chart" && req.body["tab_" + i + "_chart"]) { tabs.push({ name: name, chart_uid: String(req.body["tab_" + i + "_chart"]).toLowerCase() }); }
+        if (kind === "chart" && require("../middleware/account").isUuid(String(req.body["tab_" + i + "_chart"] || ""))) { tabs.push({ name: name, chart_uid: String(req.body["tab_" + i + "_chart"]).toLowerCase() }); }
         else if (kind === "tags") { tabs.push({ name: name, tag_query: { any: (req.body["tab_" + i + "_any"] || "").split(",").map((s) => s.trim()).filter(Boolean), all: [], none: [], text: (req.body["tab_" + i + "_text"] || "").trim() } }); }
     }
     return tabs;

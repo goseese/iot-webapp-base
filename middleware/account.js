@@ -7,6 +7,25 @@ const { notFoundError } = require("./errors");
 
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Postgres refuses to compare a UUID or integer column with text that is not one (22P02), which
+// ended the request as a 500 (DECISIONS.md "Malformed ids are not found"). Ids from URLs, queries
+// and bodies are checked first, so a malformed id is the same plain 404 as a missing row.
+function isUuid(v)
+{
+    return typeof v === "string" && GUID_RE.test(v);
+}
+
+// router.param handlers: router.param("uid", uidParam), router.param("grantId", intParam).
+function uidParam(req, res, next, value)
+{
+    return isUuid(value) ? next() : next(notFoundError());
+}
+
+function intParam(req, res, next, value)
+{
+    return /^\d{1,9}$/.test(String(value)) ? next() : next(notFoundError());
+}
+
 function base(account) { return "/account/" + String(account.uid).toLowerCase(); }
 
 // Loads the accounts the user can view. The page's own account is set later, by loadAccount for
@@ -80,4 +99,4 @@ function requireLocation(req, res, next)
     next();
 }
 
-module.exports = { currentAccount, loadAccount, useAccount, enterLocation, requireLocation, base, GUID_RE };
+module.exports = { currentAccount, loadAccount, useAccount, enterLocation, requireLocation, base, GUID_RE, isUuid, uidParam, intParam };

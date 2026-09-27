@@ -38,7 +38,7 @@ async function createMissingSensors(input, type, byChannel, defOf)
         }
         catch (err)
         {
-            // Another writer created it first (ux_DTM_sensors_channel); the re-read below picks it up.
+            // Another writer created it first (ux_sensors_channel); the re-read below picks it up.
             logger.warn({ err: err.message, device: input.device.uid, channel: channel }, "sensor create failed");
         }
     }

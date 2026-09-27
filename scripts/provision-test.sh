@@ -8,15 +8,15 @@
 #   Stage 3  if credentials come back, log in to the broker as that device and subscribe to its
 #            own command topic
 #
-# Stage 3 is skipped until issuing is implemented; the endpoint refuses with 503 today, which is a
-# correct pass for stages 1 and 2.
+# Stage 3 needs a model string that a device type on the server lists; otherwise stage 2 ends with
+# a 400, which is still a correct pass for stages 1 and 2.
 #
 # Needs: mosquitto_sub (mosquitto-clients), curl, python3.
 #   Ubuntu: apt install mosquitto-clients
 #   macOS:  brew install mosquitto
 #
 # Usage:
-#   ANNOUNCE_PASSWORD=... scripts/provision-test.sh --broker iot.datatelematics.io --mac AABBCCDDEEFF
+#   ANNOUNCE_PASSWORD=... scripts/provision-test.sh --broker app.voltastc.com --mac 020000000001 --model M
 #
 set -u -o pipefail
 

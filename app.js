@@ -127,11 +127,16 @@ async function startWeb()
         res.status(503).type("html").send("<!doctype html><meta charset='utf-8'><title>Starting</title><p style='font-family:system-ui;margin:2rem'>" + (state.error ? "The site could not start. See /health for the reason." : "The site is starting; try again in a few seconds.") + "</p>");
     });
 
+    // Event log request rows (middleware/eventLog.js): device and API requests here, ahead of their
+    // routers; everything else right after the session, so the start row knows the user.
+    const eventLog = require("./middleware/eventLog");
+    app.use(eventLog.early());
     app.use("/provision/v1", require("./routes/provision")); // unauthenticated device first contact; must precede /api/v1
     app.use("/api/v1", require("./routes/api"));            // bearer only, before session and CSRF
 
     const sessionMiddleware = require("./middleware/session").build();
     app.use(sessionMiddleware);
+    app.use(eventLog.web());
     app.use(require("./middleware/flash"));
     app.use(require("./middleware/csrf"));
     const auth = require("./middleware/auth");

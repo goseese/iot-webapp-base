@@ -1,6 +1,6 @@
 // Notification resolution (architecture 8.5, 8.6, 8.7). For an alarm event: find the attached
 // alert groups, take recipients at the ladder's current levels (cumulative 1..N), run the
-// ordered gates (each may only remove), write a DTM_notifications row per decision, send.
+// ordered gates (each may only remove), write a notifications row per decision, send.
 const env = require("../../config/env");
 const settings = require("../../config/settings");
 const logger = require("../../config/logger");

@@ -22,7 +22,7 @@ const DEFAULTS =
     { key: "RENOTIFY_MINUTES", value: "60", kind: "int", group: "general", description: "Minutes between repeat notifications for an unacknowledged active alarm.", min: 5, max: 1440 },
     { key: "REPORT_FILE_DAYS", value: "30", kind: "int", group: "general", description: "Days generated report files are kept.", min: 1, max: 365 },
 
-    { key: "ACTIVITY_LOG_DAYS", value: "30", kind: "int", group: "logging", description: "Days of activity log kept.", min: 1, max: 365 },
+    { key: "EVENT_LOG_DAYS", value: "30", kind: "int", group: "logging", description: "Days of event log kept (every request and the events it records).", min: 1, max: 365 },
     { key: "DEVICE_FRAMES_HOURS", value: "24", kind: "int", group: "logging", description: "Hours dedup frame claims are kept.", min: 1, max: 168 },
     { key: "RAW_PUBLISH_LOG_DAYS", value: "0", kind: "int", group: "logging", description: "Days of raw MQTT payloads kept for parser debugging. 0 = off.", min: 0, max: 30 },
     { key: "PURGE_BATCH_ROWS", value: "2000", kind: "int", group: "logging", description: "Rows deleted per purge batch.", min: 100, max: 20000 },

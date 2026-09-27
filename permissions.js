@@ -1,5 +1,5 @@
 // Permission bits, defined once (architecture 4.3). Adding one is one line here; the grant
-// editor renders from this list. Never renumber: bits are stored in DTM_grants.
+// editor renders from this list. Never renumber: bits are stored in grants.
 const BITS =
 [
     { name: "view",          bit: 1n << 0n,  label: "View",               description: "See locations, devices, sensors, charts and alarms." },

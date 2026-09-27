@@ -76,7 +76,7 @@ function manageItems(user, account)
                     { label: "Accounts", path: "/admin/accounts" },
                     { label: "Unknown devices", path: "/admin/unknown-devices" },
                     { label: "Site settings", path: "/admin/settings" },
-                    { label: "Activity", path: "/admin/activity" }
+                    { label: "Event log", path: "/admin/logs" }
                 ]
             });
     }

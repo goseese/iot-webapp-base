@@ -1,4 +1,4 @@
-// Superadmin only: accounts, unknown devices, site settings, activity (architecture 12, 13).
+// Superadmin only: accounts, unknown devices, site settings, event log (architecture 12, 13).
 const express = require("express");
 const { notFoundError } = require("../middleware/errors");
 const { body, validationResult } = require("express-validator");
@@ -13,6 +13,8 @@ const deviceTypes = require("../deviceTypes");
 const deviceFlows = require("../services/deviceFlows");
 
 const router = express.Router();
+// Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
+router.param("uid", require("../middleware/account").uidParam);
 router.use(requireSuperadmin);
 
 router.get("/", (req, res) => res.redirect("/admin/accounts"));
@@ -217,16 +219,84 @@ router.post("/settings/:key", async (req, res, next) =>
     catch (err) { req.flash("danger", err.message); res.redirect("/admin/settings"); }
 });
 
-router.get("/activity", async (req, res, next) =>
+// Event log viewer (DECISIONS.md "Event log"). Filters are GET parameters, so a filtered view is a
+// shareable link; `who` is u<user id> or k<API key id>. Names come from three small tables loaded
+// once per page, not per row.
+const LOG_RANGES = { "1h": 3600000, "24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000 };
+const LOG_CHANNELS = ["web", "ajax", "api", "device", "job", "mqtt"];
+const LOG_PAGE = 500;
+
+router.get("/logs", async (req, res, next) =>
 {
     try
     {
-        const q = knex(T("activity_log")).orderBy("epoch", "desc").limit(300);
-        if (req.query.action) { q.where("action", "ilike", req.query.action + "%"); }
-        if (req.query.actor) { q.where("actor_name", "ilike", "%" + req.query.actor + "%"); }
-        if (req.query.outcome) { q.where("outcome", req.query.outcome); }
-        const rows = await q;
-        res.render("admin/activity", { title: "Activity", rows: rows, q: req.query });
+        const events = require("../db/repos/events");
+        const q = req.query;
+        const str = (v) => (typeof v === "string" ? v.trim() : "");
+        const f =
+        {
+            range: LOG_RANGES[q.range] ? q.range : "24h",
+            who: /^[uk]\d+$/.test(str(q.who)) ? str(q.who) : "",
+            account: /^\d+$/.test(str(q.account)) ? str(q.account) : "",
+            event: str(q.event).slice(0, 50),
+            channel: LOG_CHANNELS.includes(q.channel) ? q.channel : "",
+            cid: /^[0-9a-f]{1,24}$/i.test(str(q.cid)) ? str(q.cid).toLowerCase() : "",
+            errors: q.errors === "1",
+            before: /^\d+-\d+$/.test(str(q.before)) ? str(q.before) : ""
+        };
+        const now = Date.now();
+        const [beforeTime, beforeId] = f.before ? f.before.split("-").map(Number) : [null, null];
+        const rows = await events.list(
+        {
+            cid: f.cid,
+            since: now - LOG_RANGES[f.range],
+            beforeTime: beforeTime,
+            beforeId: beforeId,
+            userId: f.who.startsWith("u") ? Number(f.who.slice(1)) : null,
+            apiCredentialId: f.who.startsWith("k") ? Number(f.who.slice(1)) : null,
+            accountId: f.account ? Number(f.account) : null,
+            event: f.event,
+            channel: f.channel,
+            errors: f.errors
+        }, LOG_PAGE);
+
+        const users = await knex(T("users")).select("id", "username", "delete_epoch").orderBy("username");
+        const keys = await knex(T("api_credentials")).select("id", "name", "key_prefix", "delete_epoch").orderBy("name");
+        const accounts = await knex(T("accounts")).select("id", "name", "delete_epoch").orderBy("name");
+        const names =
+        {
+            users: Object.fromEntries(users.map((u) => [u.id, u.username])),
+            keys: Object.fromEntries(keys.map((k) => [k.id, k.name + " (" + k.key_prefix + ")"])),
+            accounts: Object.fromEntries(accounts.map((a) => [a.id, a.name]))
+        };
+        const eventNames = await events.eventNames(now - LOG_RANGES["7d"]);
+
+        // The next page starts after the last row shown (newest first only; a request's own rows fit one page).
+        const last = rows.length === LOG_PAGE && !f.cid ? rows[rows.length - 1] : null;
+        const link = (extra) =>
+        {
+            const p = new URLSearchParams();
+            for (const k of ["range", "who", "account", "event", "channel", "cid"]) { if (f[k] && !(k === "range" && f[k] === "24h")) { p.set(k, f[k]); } }
+            if (f.errors) { p.set("errors", "1"); }
+            for (const [k, v] of Object.entries(extra || {})) { if (v === null) { p.delete(k); } else { p.set(k, v); } }
+            const s = p.toString();
+            return "/admin/logs" + (s ? "?" + s : "");
+        };
+        res.render("admin/logs",
+        {
+            title: "Event log",
+            rows: rows,
+            f: f,
+            users: users,
+            keys: keys,
+            accounts: accounts,
+            names: names,
+            eventNames: eventNames,
+            channels: LOG_CHANNELS,
+            ranges: Object.keys(LOG_RANGES),
+            olderLink: last ? link({ before: last.time + "-" + last.id }) : null,
+            link: link
+        });
     }
     catch (err) { next(err); }
 });

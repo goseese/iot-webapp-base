@@ -15,7 +15,7 @@
 const { knex, T, nowEpoch } = require("../../db/knex");
 const logger = require("../../config/logger");
 const broker = require("../../services/broker");
-const activity = require("../../db/repos/activity");
+const activity = require("../../services/activity");
 
 const CLEANUP_DAYS = 30;
 const BATCH = 200;              // a runaway backlog finishes over the following days
@@ -47,6 +47,7 @@ async function run()
     }
 
     let revoked = 0;
+    const correlationId = activity.newCorrelationId();   // one per run, shared by every unit it revokes
     for (const r of rows)
     {
         const guid = String(r.broker_username).toLowerCase();
@@ -54,7 +55,7 @@ async function run()
         {
             if (r.broker_password_enc) { await driver.removeDeviceUser(guid); }
             await knex(T("device_credentials")).where({ id: r.id }).whereNull("delete_epoch").update({ delete_epoch: now });
-            await activity.insert({ actor_type: "anonymous", actor_name: "system", action: "unit_cleanup", entity_type: "unit", entity_uid: guid, outcome: "ok", detail: r.mac + " issued and never connected in " + CLEANUP_DAYS + " days" });
+            await activity.record("unit_cleanup", { entity_type: "unit", entity_uid: guid, detail: r.mac + " issued and never connected in " + CLEANUP_DAYS + " days" }, { channel: "job", correlationId: correlationId });
             revoked++;
         }
         catch (err)

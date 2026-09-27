@@ -1,13 +1,18 @@
-# devmon (DTM IoT monitoring platform)
+# Voltastc (Volta Pods training app)
 
-Multi tenant IoT monitoring platform for datatelematics: Node/Express/EJS, SQL Server,
-Mosquitto MQTT. Production is an IIS farm (iisnode) behind the customer's ARR.
+Web app and device platform for Volta Pods, the reaction time training pods used at the Voltastc
+soccer training center. Node 22 / Express / EJS, PostgreSQL on RDS, Mosquitto with dynamic security,
+one Ubuntu 26.04 EC2 server (nginx in front, pm2 running a `web` and an `ingest` process). Started
+as a copy of the devmon (DTM) IoT platform; the port is recorded in `DECISIONS.md`.
 
 ## Read before changing anything
 
 1. `DECISIONS.md`: settled decisions and their reasons. Do not reverse one silently.
 2. `STRUCTURE.md`: one line per folder, where things live.
-3. `.claude/skills/iot-platform/`: the architecture reference the code follows.
+3. The iot-platform skill: the architecture reference the code follows. Where this app deviates,
+   `DECISIONS.md` says so and wins.
+4. `dynsec-broker-summary.md` (broker and provisioning, server side) and `device-provisioning.md`
+   (the same from the firmware side).
 
 If a request conflicts with a decision or the skill, stop, name the entry, and ask before
 deviating. When a change alters or adds a decision, add an entry to `DECISIONS.md`. When a
@@ -29,36 +34,54 @@ folder's role changes, update its line in `STRUCTURE.md`.
 ## Hard rules (details in DECISIONS.md)
 
 - MQTT topics live only in `mqtt/topics.js`.
-- The `DTM_` table prefix lives only in `T()` in `db/knex.js`.
+- Tables have no prefix; `T()` in `db/knex.js` is a pass through kept so every query goes through
+  one place.
 - Deny access only with `notFoundError()` (denied and missing look identical).
-- Use `insertId()` to read `.returning()` results.
-- `PORT` is a named pipe under iisnode: pass it to `listen()` untouched, never
-  `Number(PORT)`, never bind a host.
-- Migrations are forward only T-SQL. Never edit an applied migration; add a new one.
+- Ids from URLs, queries and bodies are checked before they reach a query: a router with ids in its
+  paths has `router.param("uid", uidParam)` (or `intParam`) from `middleware/account.js`, and posted ids
+  go through `isUuid()`. Postgres turns a malformed id into a 500 otherwise.
+- Use `insertId()` to read `.returning()` results; use `isUniqueViolation()` to catch a duplicate.
+- Postgres aborts a transaction on any error: inside `knex.transaction` never run another statement
+  after a caught error; use a savepoint (`trx.transaction`) if one is ever needed.
+- Migrations are plain `NNNN_name.sql` files, forward only once production has them. A literal `?`
+  in a migration is written `\?` (knex rewrites `?` to `$n`). No `CREATE INDEX CONCURRENTLY`.
+- Real HTTP status codes everywhere; firmware reads the status line.
 - Inline page scripts run on `DOMContentLoaded` (vendor libraries load at end of body).
 - Use theme variables for colors; no hard coded light backgrounds.
-- Ingest and jobs run only on the leader (`services/leader.js`). Anything that notifies,
-  writes alarms, or runs on a schedule must stay behind that gate.
+- Ingest and jobs run only in the `ingest` process (`services/leader.js`). Anything that
+  notifies, writes alarms, or runs on a schedule must stay behind that gate.
+- The site name comes only from `config/settings.siteName()` (the `SITE_NAME` setting).
 - Never rotate `SETTINGS_KEY`.
 - MQTT connection settings come from site settings through `mqtt/broker.js` only.
+- Passwords never go on a command line (ps shows argv); pass them in the environment or on stdin.
 
 ## Environment and secrets
 
-- `.env` holds production values. Do not read, edit, or print it.
-- Dev uses `.env.local`. After changing it:
-  `docker compose up -d --force-recreate app` (restart does not reread it).
-- Never point dev at the production database (`dtmprod`) or reuse production's MQTT
-  client id.
-- Do not touch the broker host, IIS servers, or `deploy/web.config` unless asked.
+- `.env` and `.env.*` are gitignored; `.env.example` is the committed template. On the server
+  `deploy/install.sh` creates `/opt/voltastc/.env` (root:voltastc, mode 640). Do not read, edit, or
+  print a real `.env`.
+- Broker passwords live in `/etc/voltastc/broker.env` on the server (root only).
+- Dev setup is an open question (a Postgres container in docker-compose, or a dev database on
+  RDS). `docker-compose.yml` runs the app and a Mosquitto but no Postgres yet. Never point dev at the
+  production database or reuse production's MQTT client id.
 
-## Git
+## Git and deploy
 
-- Deploy is by push: pushing is a production deploy.
-- Do not commit, push, or change branches. Jeff reviews and commits.
+- Do not commit, push, or change branches. Jeff reviews and commits. Read only git commands only
+  (`git --no-optional-locks ...`); never touch the index.
+- Deploy: push, then on the server
+  `cd /opt/voltastc && sudo git pull && sudo bash deploy/install.sh`
+  (safe to repeat: npm ci, migrate, seed, broker check, pm2 reload; secrets and data are kept).
+  A bare `pm2 reload` is fine only when the pull brings no migration: a web process that finds a
+  pending migration stays on the 503 page until restarted.
 
-## Commands
+## Commands (on the server)
 
-- Start dev: `docker compose up -d`
-- Logs: `docker compose logs -f app`
-- Unit tests (node:test): `node --test tests/*.test.js`
-- Health check: `curl http://localhost:<port>/health`
+- pm2 as the app user must run from a folder that user can enter:
+  `cd /opt/voltastc && sudo runuser -u voltastc -- pm2 list` (also `pm2 logs`, `pm2 reload all`).
+  From your home folder pm2 fails with `spawn /usr/bin/node EACCES`.
+- Health: `curl -s http://127.0.0.1:3000/health`
+- Operator scripts: `cd /opt/voltastc && sudo runuser -u voltastc -- node scripts/<name>.js`
+- Database: `psql "host=<RDS endpoint> port=5432 dbname=voltastc user=<user> sslmode=require"`
+- Broker log: `sudo tail -f /var/log/mosquitto/mosquitto.log`
+- Unit tests (node:test): `npm test`
