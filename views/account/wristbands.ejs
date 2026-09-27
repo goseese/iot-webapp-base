@@ -1,0 +1,68 @@
+<%# Account > Wristbands (routes/account/athletes.js). %>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <% if (canManage) { %><button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBand"><i class="fa-solid fa-plus me-1"></i>Add wristband</button><% } else { %><span></span><% } %>
+  <a class="small" href="<%= acctBase %>/athletes">Athletes</a>
+</div>
+<p class="text-secondary small">A band presented to an account pod is added here by itself when it is enrolled. Add one by hand with the id printed on it or read from it (its BLE address).</p>
+
+<div class="iot-panel">
+  <div class="table-responsive">
+    <table class="table iot-table is-sortable align-middle mb-0">
+      <thead><tr><th class="sort-alpha">Band</th><th class="sort-alpha">Id</th><th class="sort-alpha">Status</th><th class="sort-alpha">With</th><th class="sort-numeric">Last presented</th><th data-export="skip"></th></tr></thead>
+      <tbody>
+      <% rows.forEach(function (b) { var bUid = fmt.uid(b.uid); %>
+        <tr>
+          <td>
+            <% if (canManage) { %>
+            <form method="post" action="<%= acctBase %>/wristbands/<%= bUid %>/label" class="d-flex gap-1" style="max-width: 16rem">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input class="form-control form-control-sm" name="label" value="<%= b.label || "" %>" maxlength="40" placeholder="label" aria-label="Label">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Save</button>
+            </form>
+            <% } else { %><%= b.label || "" %><% } %>
+          </td>
+          <td class="small"><code><%= fmt.hardwareId(b.band_mac) %></code></td>
+          <td class="small"><span class="iot-status iot-status--<%= b.status === "active" ? "online" : (b.status === "lost" ? "alarm" : "offline") %>"><%= b.status %></span></td>
+          <td class="small">
+            <% if (b.athlete_uid) { %><a href="<%= acctBase %>/athletes/<%= fmt.uid(b.athlete_uid) %>"><%= b.athlete_name %></a><%= b.expires_epoch ? (b.expires_epoch <= now ? " (loan expired)" : " (loaner until " + fmt.epoch(b.expires_epoch, tz) + ")") : "" %><% } else { %><span class="text-secondary">nobody</span><% } %>
+          </td>
+          <td class="text-secondary small" data-sort="<%= b.last_seen || "" %>"><%= b.last_seen ? fmt.ago(b.last_seen, now) : "never" %></td>
+          <td class="text-end text-nowrap">
+            <% if (canManage) { %>
+            <form method="post" action="<%= acctBase %>/wristbands/<%= bUid %>/status" class="d-inline">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <% if (b.status === "active") { %>
+                <% if (b.athlete_uid) { %><button class="btn btn-sm btn-outline-secondary" name="status" value="returned" type="submit">Returned</button><% } %>
+                <button class="btn btn-sm btn-outline-danger" name="status" value="lost" type="submit">Lost</button>
+                <button class="btn btn-sm btn-outline-secondary" name="status" value="retired" type="submit">Retire</button>
+              <% } else { %>
+                <button class="btn btn-sm btn-outline-primary" name="status" value="active" type="submit"><%= b.status === "lost" ? "Found" : "Back in use" %></button>
+              <% } %>
+            </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }); %>
+      <% if (!rows.length) { %><tr><td colspan="6" class="text-secondary">No wristbands yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<% if (canManage) { %>
+<div class="modal fade" id="addBand" tabindex="-1">
+  <div class="modal-dialog"><div class="modal-content">
+    <form method="post" action="<%= acctBase %>/wristbands">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><h5 class="modal-title">Add wristband</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label" for="band_mac">Band id</label>
+        <input class="form-control font-monospace mb-3" id="band_mac" name="band_mac" required placeholder="C0:FF:EE:12:34:56" autocomplete="off">
+        <label class="form-label" for="label">Label</label>
+        <input class="form-control" id="label" name="label" maxlength="40" placeholder="optional, for example Loaner 3" autocomplete="off">
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Add wristband</button></div>
+    </form>
+  </div></div>
+</div>
+<% } %>

@@ -6,6 +6,7 @@
 //   node scripts/fake-station.js pair <MAC> on|off
 //   node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]
 //   node scripts/fake-station.js ack <MAC> [--all] [--fail]
+//   node scripts/fake-station.js band <MAC> <band id> [--rssi -40]
 //
 // First add the controller in the app: the location's Gateways page, Add gateway, type Controller
 // pod, with the MAC. The page then says it is waiting for first connection.
@@ -23,6 +24,9 @@
 //          the controller would: ok for itself, and ok per target pod paired with it ("not_paired"
 //          for any other MAC). --fail answers ok false (no_ack per target). --all keeps answering
 //          until nothing is waiting.
+// band     presents a wristband (12 hex digits) to the pod: at a controller it checks the band's
+//          athlete in; at an account pod the page shows whose band it is, or offers to enroll it.
+//          connect, ack and band also work for an Account pod added the same way.
 //
 // The script opens a broker connection of its own when the MQTT site settings allow, so the next
 // queued command goes out after an ack and open pages update by themselves. Without one, commands
@@ -45,6 +49,7 @@ function usage()
     console.log("  node scripts/fake-station.js pair <MAC> on|off");
     console.log("  node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]");
     console.log("  node scripts/fake-station.js ack <MAC> [--all] [--fail]");
+    console.log("  node scripts/fake-station.js band <MAC> <band id> [--rssi -40]");
 }
 
 function normalize(mac)
@@ -85,22 +90,25 @@ function controllerData(guid)
     });
 }
 
-// The controller placement holding this MAC (added in the app), checked to be a controller pod.
-async function placement(ref)
+// The pod placement holding this MAC (added in the app): a controller pod, or an account pod
+// where anyPod allows it (connect, band, ack).
+async function placement(ref, anyPod)
 {
     const mac = normalize(ref);
-    if (mac.length !== 12) { throw new Error("give the controller's 12 digit MAC"); }
+    if (mac.length !== 12) { throw new Error("give the pod's 12 digit MAC"); }
     const device = await knex(T("devices")).where({ hardware_id: mac, is_archived: false }).whereNull("delete_epoch").first();
-    if (!device) { throw new Error("no gateway with MAC " + mac + ". Add it in the app first: the location's Gateways page, Add gateway, type Controller pod."); }
+    if (!device) { throw new Error("no gateway with MAC " + mac + ". Add it in the app first: the location's Gateways page, Add gateway, type Controller pod (or Account pod)."); }
     const type = await knex(T("device_types")).where({ id: device.device_type_id }).first();
-    if (!type || type.slug !== "controller_pod") { throw new Error(device.name + " is a " + (type ? type.display_name : "device") + ", not a Controller pod. Change its type or add another gateway."); }
+    const ok = type && (type.slug === "controller_pod" || (anyPod && type.slug === "account_pod"));
+    if (!ok) { throw new Error(device.name + " is a " + (type ? type.display_name : "device") + ", not a " + (anyPod ? "Controller or Account pod" : "Controller pod") + "."); }
+    device.type_slug = type.slug;
     return device;
 }
 
-// The controller and the GUID it "logs in" with, after connect.
-async function findController(ref)
+// The pod and the GUID it "logs in" with, after connect.
+async function findController(ref, anyPod)
 {
-    const device = await placement(ref);
+    const device = await placement(ref, anyPod);
     const cred = await knex(T("device_credentials")).where({ mac: device.hardware_id, state: "active" }).whereNull("delete_epoch").first();
     if (!cred) { throw new Error(device.name + " has not connected yet. Run: node scripts/fake-station.js connect " + device.hardware_id); }
     return { device: device, guid: cred.broker_username };
@@ -108,15 +116,15 @@ async function findController(ref)
 
 async function connect(args)
 {
-    const device = await placement(args[0]);
+    const device = await placement(args[0], true);
     const mac = device.hardware_id;
     const creds = await knex(T("device_credentials")).where({ mac: mac }).whereNull("delete_epoch");
     let guid;
     if (creds.length === 0)
     {
         guid = crypto.randomUUID();
-        await knex(T("device_credentials")).insert({ device_id: device.id, mac: mac, state: "active", broker_username: guid, created_epoch: nowEpoch(), activated_epoch: nowEpoch(), type_slug: "controller_pod" });
-        await send(guid, "config/pair_mode", "false");
+        await knex(T("device_credentials")).insert({ device_id: device.id, mac: mac, state: "active", broker_username: guid, created_epoch: nowEpoch(), activated_epoch: nowEpoch(), type_slug: device.type_slug });
+        if (device.type_slug === "controller_pod") { await send(guid, "config/pair_mode", "false"); }
         await send(guid, "config/report_secs", "600");
         console.log(device.name + " connected (fake credentials, no broker account).");
     }
@@ -134,9 +142,13 @@ async function connect(args)
     await controllerData(guid);
 
     console.log("  page: " + pageUrl(device));
-    console.log("Next:  click Pair target pods on the page, then");
-    console.log("       node scripts/fake-station.js pair " + mac + " on");
-    console.log("       node scripts/fake-station.js pods " + mac + " 5");
+    if (device.type_slug === "controller_pod")
+    {
+        console.log("Next:  click Pair target pods on the page, then");
+        console.log("       node scripts/fake-station.js pair " + mac + " on");
+        console.log("       node scripts/fake-station.js pods " + mac + " 5");
+    }
+    console.log("Wristband: node scripts/fake-station.js band " + mac + " C0FFEE000001");
     if (!["2", "6", "A", "E"].includes(mac.charAt(1)))
     {
         console.log("This looks like a real board's MAC. Before that board goes online, press Reprovision on the");
@@ -191,10 +203,23 @@ async function pods(args)
     console.log("Remove the pods: node scripts/reset-test-unit.js " + macs.join(" ") + " --yes");
 }
 
+// A wristband presented to the pod (pod-protocol.md section 8): check in at a controller, enroll
+// at an account pod.
+async function band(args)
+{
+    const { device, guid } = await findController(args[0], true);
+    const id = normalize(args[1]);
+    if (id.length !== 12) { throw new Error("give the band id: 12 hex digits, for example C0FFEE000001"); }
+    const rssi = Number(option(args, "--rssi", -40));
+    await send(guid, "event", { event: "band", band: id, rssi: rssi });
+    const p = await knex(T("band_presentations")).where({ device_id: device.id }).orderBy("id", "desc").first();
+    console.log("Band " + id + " presented to " + device.name + ": " + (p ? p.outcome : "not recorded") + ". " + pageUrl(device));
+}
+
 // Answers the command in flight like the controller would (pod-protocol.md 5.2).
 async function ack(args)
 {
-    const { device, guid } = await findController(args[0]);
+    const { device, guid } = await findController(args[0], true);
     const fail = args.includes("--fail");
     const all = args.includes("--all");
     const queue = require("../services/commandQueue");
@@ -253,7 +278,7 @@ async function openBroker()
 async function main()
 {
     const [cmd, ...args] = process.argv.slice(2);
-    const run = { connect: connect, pair: pair, pods: pods, ack: ack }[cmd];
+    const run = { connect: connect, pair: pair, pods: pods, ack: ack, band: band }[cmd];
     if (!run) { usage(); process.exit(1); }
     await settings.reload();
     await require("../db/shadow").syncDeviceTypes();

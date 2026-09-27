@@ -53,6 +53,8 @@ function manageItems(user, account)
                     { label: "Overview", path: base, exact: true },
                     { label: "Locations", path: base + "/locations" },
                     { label: "Users", path: base + "/users" },
+                    { label: "Athletes", path: base + "/athletes" },
+                    { label: "Wristbands", path: base + "/wristbands" },
                     { label: "Alert groups", path: base + "/alert-groups" },
                     { label: "API and webhooks", path: base + "/api" },
                     { label: "Unclaimed devices", path: base + "/unclaimed" },

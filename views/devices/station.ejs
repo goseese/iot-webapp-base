@@ -1,9 +1,10 @@
-<%# Pod station panel (services/stations.js), rendered on a controller's Sensors tab and by
+<%# Pod station panel (services/stations.js), rendered on a controller's Station tab and by
     GET /devices/:uid/station, which the page fetches when a config notice arrives over the socket.
     station.pairing.on is what the controller reported; station.wanted is what the page asked for.
     The refresh swaps each data-part element's content, so the table tools (iot-table-tools.js)
     added to the panel header when the page loaded stay in place. %>
 <% var st = station; var uid = fmt.uid(device.uid); %>
+<div data-part="checkin"><%- include("band", { band: st.checkin }) %></div>
 <div data-part="banner">
 <% if (st.pairing.on || st.wanted) { %>
 <div class="alert alert-primary py-3 mb-3" role="status">

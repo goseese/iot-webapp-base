@@ -124,7 +124,7 @@ async function handle(topic, payload, meta)
     if (t.channel === "data") { return handleData(gateway, payload, receipt); }
     if (t.channel === "geoscan") { return handleGeoscan(gateway, payload); }
     if (t.channel === "cmd_ack") { return handleCmdAck(gateway, payload); }
-    if (t.channel === "event") { return handleEvent(gateway, payload); }
+    if (t.channel === "event") { return handleEvent(gateway, payload, receipt); }
     if (t.channel === "frame") { return handleFrame(gateway, payload, receipt); }
 }
 
@@ -216,14 +216,30 @@ async function handleCmdAck(gateway, payload)
     logger.info({ gateway: gateway.uid, ack: payload.toString("utf8").slice(0, 200) }, "gateway cmd_ack");
 }
 
-// dev/{guid}/event: pod events (pod-protocol.md section 8): wristband reads now, game events later.
-// Recorded in the event log only until check in is built.
-async function handleEvent(gateway, payload)
+// dev/{guid}/event: pod events (pod-protocol.md section 8). A wristband ("band") presented to a
+// controller checks its athlete in at that station, and to an account pod shows it for enrollment
+// (services/athletes.js); the pod's open pages are told through its config notice. Anything else
+// (game events later) is recorded in the event log for now.
+async function handleEvent(gateway, payload, receipt)
 {
     const text = payload.toString("utf8").slice(0, 1000);
     let kind = null;
-    try { const e = JSON.parse(text); kind = e && typeof e.event === "string" ? e.event.slice(0, 30) : null; }
+    let e = null;
+    try { e = JSON.parse(text); kind = e && typeof e.event === "string" ? e.event.slice(0, 30) : null; }
     catch (err) { }
+    if (kind === "band")
+    {
+        const type = await typeForDevice(gateway);
+        const athletes = require("../services/athletes");
+        const band = athletes.normalizeBand(e.band);
+        if (type && (type.station || type.enrolls) && band)
+        {
+            const r = await athletes.present(gateway, band, Number(e.rssi), receipt);
+            logger.info({ pod: gateway.uid, band: band, outcome: r.outcome }, "wristband presented");
+            await require("../services/unitConfig").notifyMac(gateway.hardware_id);
+            return;
+        }
+    }
     const activity = require("../services/activity");
     await activity.record("pod_event", { entity_type: "device", entity_uid: gateway.uid, detail: (kind ? kind + ": " : "") + text }, { channel: "mqtt", correlationId: activity.newCorrelationId() });
 }

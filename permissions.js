@@ -13,7 +13,8 @@ const BITS =
     { name: "lock_location", bit: 1n << 8n,  label: "Lock location",      description: "Change a location's membership mode." },
     { name: "manage_reports",bit: 1n << 9n,  label: "Manage reports",     description: "Create, edit and run reports." },
     { name: "api_write",     bit: 1n << 10n, label: "API write",          description: "Post readings and updates through the API." },
-    { name: "grant",         bit: 1n << 11n, label: "Manage users",       description: "Invite users and edit grants, limited to bits the grantor holds." }
+    { name: "grant",         bit: 1n << 11n, label: "Manage users",       description: "Invite users and edit grants, limited to bits the grantor holds." },
+    { name: "manage_athletes", bit: 1n << 12n, label: "Manage athletes",  description: "Add and rename athletes, enroll wristbands, assign bands and loaners." }
 ];
 
 const byName = Object.fromEntries(BITS.map((b) => [b.name, b.bit]));

@@ -24,9 +24,9 @@ Related documents:
 ```
 
 - **Controller pod** (`vpod-ctl`): runs one training station. Logs in to the broker, relays its
-  target pods' traffic, and later reads wristbands at check in.
+  target pods' traffic, and reads wristbands at check in (section 8).
 - **Account pod** (`vpod-acct`): logs in to the broker like a controller. Has no target pods.
-  Later it enrolls wristbands.
+  Wristbands presented to it are enrolled (section 8).
 - **Target pods** (`vpod-acc` impact, `vpod-tof` laser): never use MQTT. They talk only to the
   controller they joined, over ESP-NOW. The server refuses to provision their models.
 - **Tablets** talk to the server over HTTPS and websockets only. No pod talks to a tablet.
@@ -55,7 +55,7 @@ All under the pod's own `dev/{guid}/`. The broker allows nothing else.
 | up | `frame` | no | one relayed target pod message, section 3.2 |
 | up | `config/{key}` | no | one config value, bare, section 4 |
 | up | `cmd_ack` | no | the answer to a queued command, section 5 |
-| up | `event` | no | **Later**: wristband reads and game events, section 8 |
+| up | `event` | no | wristband reads (section 8); game events later |
 | down | `cmd/q` | no | a queued command, section 5 |
 | down | `cmd/set_config/{key}` | no | a config write, bare value, section 4 |
 
@@ -124,7 +124,7 @@ server until that reply arrives.
 |---|---|---|---|---|
 | `pair_mode` | controller | `true` / `false` | `false` | Accept join requests (section 6). Stays on until the server turns it off, across reboots. LEDs blue while on |
 | `report_secs` | all | integer, 60 to 86400 | 600 | Seconds between readings |
-| `band_rssi_min` | controller, account | integer dBm | -50 | **Later**: weakest wristband signal to accept (section 8) |
+| `band_rssi_min` | controller, account | integer dBm, -100 to -20 | -50 | Weakest wristband signal to accept (section 8) |
 
 A **target pod's** config is set with the queued `set_config` command (section 5) through its
 controller. The target applies and saves it, and acks. The ack is the confirmation.
@@ -280,7 +280,7 @@ acks again without repeating the command (rule 5.3.3).
 | `data` | as 3.2, `d` becomes `data` |
 | `ack` | nothing on `frame`: the controller collects acks into the `cmd_ack` for that command (5.2) |
 
-## 8. Wristbands (Later)
+## 8. Wristbands
 
 The bands are BLE 5.0 beacons advertising an iBeacon payload on the **Coded PHY** (long range),
 and can be set to advertise only while their button is pressed.
@@ -304,8 +304,11 @@ Controller or account pod to server, `dev/{guid}/event`:
 {"event":"band","band":"C0FFEE123456","rssi":-38,"ibeacon":{"uuid":"FDA50693-A4E2-4FB1-AFCF-C6EB07647825","major":1,"minor":42}}
 ```
 
-On a controller, the server shows the band's owner at that station until the next band. On an
-account pod, the band is being enrolled: the server asks on the paired tablet whose band it is.
+What the server does with it (built, September 2026): on a controller, the band's athlete shows as
+checked in at that station until the next band or Check out; on an account pod, the page shows
+whose band it is, or offers to enroll it to a new athlete (the tablet screens come later).
+`band_rssi_min` and the 5 s repeat rule are still for the firmware to apply: the server takes every
+band it is sent.
 
 ## 9. Target pod firmware updates (Later)
 

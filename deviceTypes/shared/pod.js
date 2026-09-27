@@ -35,6 +35,10 @@ function channels()
 // set_config command (services/commandQueue.js), confirmed by the ack.
 const reportSecs = { label: "Report interval", kind: "int", min: 60, max: 86400, writable: true, description: "Seconds between readings. The pod's default is 600 (10 minutes)." };
 
+// band_rssi_min on controllers and account pods (pod-protocol.md sections 4 and 8): the firmware
+// ignores wristbands heard weaker than this, so only a band held up to the pod checks in.
+const bandRssiMin = { label: "Wristband minimum signal", kind: "int", min: -100, max: -20, writable: true, description: "dBm. Bands heard weaker than this are ignored. The pod's default is -50." };
+
 // Commands (pod-protocol.md section 5.4). Every pod type sets commandQueue: true, so these are
 // queued and acked rather than published straight to the pod. value "color" makes the Commands tab
 // offer the LED colors below.
@@ -47,4 +51,4 @@ const commands =
 
 const LED_COLORS = [["FF0000", "Red"], ["00FF00", "Green"], ["0000FF", "Blue"], ["FFFF00", "Yellow"], ["FFFFFF", "White"], ["off", "Off"]];
 
-module.exports = { dataMap, channels, reportSecs, commands, LED_COLORS };
+module.exports = { dataMap, channels, reportSecs, bandRssiMin, commands, LED_COLORS };

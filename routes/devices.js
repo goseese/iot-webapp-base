@@ -113,10 +113,37 @@ async function stationModel(req)
             pods: await stations.roster(req.device.id),
             canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
             colors: require("../deviceTypes/shared/pod").LED_COLORS,
-            elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id)
+            elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id),
+            checkin: await bandModel(req, "checkin")
         };
     }
     return null;
+}
+
+// The band last presented to a controller (who is checked in) or an account pod (enrollment),
+// for views/devices/band.ejs. The athlete link and rename follow the permissions at the athlete's
+// own account, which need not be this pod's.
+async function bandModel(req, mode)
+{
+    const cur = await require("../services/athletes").current(req.device.id);
+    let athleteUrl = null;
+    let canRename = false;
+    if (cur && cur.athlete && cur.athleteAccount)
+    {
+        const there = await grants.effectiveAtAccount(req, cur.athlete.account_id);
+        if (permissions.has(there, permissions.byName.view)) { athleteUrl = "/account/" + String(cur.athleteAccount.uid).toLowerCase() + "/athletes/" + String(cur.athlete.uid).toLowerCase(); }
+        canRename = !!athleteUrl && permissions.has(there, permissions.byName.manage_athletes);
+    }
+    return {
+        mode: mode, current: cur, accountId: req.location.account_id, athleteUrl: athleteUrl, canRename: canRename,
+        canCheckout: permissions.has(req.deviceBits, permissions.byName.edit),
+        canEnroll: permissions.has(req.deviceBits, permissions.byName.manage_athletes)
+    };
+}
+
+function readsBands(req)
+{
+    return !!(req.typeModule && (req.typeModule.station || req.typeModule.enrolls));
 }
 
 // The device's sensors table. Hidden sensors (DECISIONS "Sensor delete and hide") are listed only
@@ -159,7 +186,8 @@ router.get("/:uid", loadDevice, async (req, res, next) =>
             const ch = mod && (mod.channels || []).find((x) => x.id === "rssi" && x.signal);
             c.signal_pct = ch ? require("../services/levels").signalPercent(ch.signal, c.last_rssi) : null;
         });
-        res.render("devices/show", { title: req.device.name, view: station ? "station" : "all", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, station ? "Station" : "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req) });
+        const enroll = req.typeModule && req.typeModule.enrolls ? await bandModel(req, "enroll") : null;
+        res.render("devices/show", { title: req.device.name, view: station ? "station" : "all", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, station ? "Station" : "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req), enroll: enroll });
     }
     catch (err) { next(err); }
 });
@@ -185,6 +213,51 @@ router.get("/:uid/station", loadDevice, async (req, res, next) =>
         const station = await stationModel(req);
         if (!station || station.kind !== "controller") { return next(notFoundError()); }
         res.render("devices/station", { layout: false, device: req.device, location: req.location, station: station });
+    }
+    catch (err) { next(err); }
+});
+
+// Just an account pod's band panel, for its page's live refresh.
+router.get("/:uid/band", loadDevice, async (req, res, next) =>
+{
+    try
+    {
+        if (!req.typeModule || !req.typeModule.enrolls) { return next(notFoundError()); }
+        res.render("devices/band", { layout: false, device: req.device, location: req.location, band: await bandModel(req, "enroll") });
+    }
+    catch (err) { next(err); }
+});
+
+// Check out (a controller) or clear (an account pod) the band last presented.
+router.post("/:uid/checkout", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        if (!readsBands(req)) { return next(notFoundError()); }
+        const n = await require("../services/athletes").checkout(req.device.id);
+        if (n > 0)
+        {
+            await activity.log(req, "band_checkout", { entity_type: "device", entity_uid: req.device.uid });
+            await require("../services/unitConfig").notifyMac(req.device.hardware_id);
+        }
+        res.redirect("/devices/" + req.params.uid);
+    }
+    catch (err) { next(err); }
+});
+
+// Account pod: enroll the band last presented, as a new athlete of this pod's account.
+router.post("/:uid/enroll", loadDevice, need("manage_athletes"), async (req, res, next) =>
+{
+    try
+    {
+        if (!req.typeModule || !req.typeModule.enrolls) { return next(notFoundError()); }
+        const back = "/devices/" + req.params.uid;
+        const r = await require("../services/athletes").enroll(req.device, req.location.account_id, req.body.band, req.body.name, req.user);
+        if (!r.ok) { req.flash("danger", r.error); return res.redirect(back); }
+        await activity.log(req, "band_enrolled", { entity_type: "athlete", entity_uid: r.athlete.uid, detail: r.band.band_mac });
+        await require("../services/unitConfig").notifyMac(req.device.hardware_id);
+        req.flash("success", r.athlete.display_name + " enrolled with band " + r.band.band_mac + ".");
+        res.redirect(back);
     }
     catch (err) { next(err); }
 });

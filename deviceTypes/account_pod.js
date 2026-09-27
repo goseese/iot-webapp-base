@@ -20,8 +20,10 @@ module.exports =
         { id: "signal", name: "WiFi signal", metric: "percent" },
         { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" }
     ]),
-    configKeys: { report_secs: pod.reportSecs },
+    configKeys: { report_secs: pod.reportSecs, band_rssi_min: pod.bandRssiMin },
     commands: pod.commands,
     commandQueue: true,
+    // Wristbands presented to it are being enrolled (services/athletes.js); its page shows the last one.
+    enrolls: true,
     hooks: {}
 };

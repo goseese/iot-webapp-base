@@ -27,7 +27,8 @@ module.exports =
     configKeys:
     {
         pair_mode: { label: "Pairing mode", kind: "bool", writable: true, description: "While on, a target pod whose button is held pairs with this controller. Use the Pair target pods button on the Station tab." },
-        report_secs: pod.reportSecs
+        report_secs: pod.reportSecs,
+        band_rssi_min: pod.bandRssiMin
     },
     commands: Object.assign({}, pod.commands,
     {

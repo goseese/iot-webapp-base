@@ -29,6 +29,10 @@
 <div id="station" data-device="<%= uid %>">
 <%- include("station") %>
 </div>
+<% } else if (locals.enroll) { %>
+<div id="enroll" data-device="<%= uid %>">
+<%- include("band", { band: enroll }) %>
+</div>
 <% } %>
 <% } %>
 
@@ -109,6 +113,51 @@ document.addEventListener("DOMContentLoaded", function ()
         if (!msg || msg.device !== device) { return; }
         if (timer) { clearTimeout(timer); }
         timer = setTimeout(refresh, 500);
+    });
+    window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
+});
+</script>
+<% } %>
+
+<% if (locals.enroll) { %>
+<script>
+// Live band panel on an account pod: a "config" notice for this pod (a band presented, an
+// enrollment) refetches it. A name being typed is kept unless a different band was presented.
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var box = document.getElementById("enroll");
+    if (!box || !window.iotSocket) { return; }
+    var device = box.getAttribute("data-device");
+    var timer = null;
+
+    function pid(el) { var p = el.querySelector("[data-pid]"); return p ? p.getAttribute("data-pid") : null; }
+    function typing()
+    {
+        var input = box.querySelector("input[name=name]");
+        return !!input && (input === document.activeElement || input.value !== input.defaultValue);
+    }
+
+    async function refresh()
+    {
+        timer = null;
+        try
+        {
+            var res = await fetch("/devices/" + device + "/band", { credentials: "same-origin", headers: { "Accept": "text/html" } });
+            if (!res.ok) { return; }
+            var next = document.createElement("div");
+            next.innerHTML = await res.text();
+            if (pid(next) === null) { return; }      // not the panel (e.g. the session expired and this is the login page)
+            if (pid(next) === pid(box) && typing()) { return; }
+            if (box.innerHTML !== next.innerHTML) { box.innerHTML = next.innerHTML; }
+        }
+        catch (err) { }
+    }
+
+    window.iotSocket.on("config", function (msg)
+    {
+        if (!msg || msg.device !== device) { return; }
+        if (timer) { clearTimeout(timer); }
+        timer = setTimeout(refresh, 300);
     });
     window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
 });
