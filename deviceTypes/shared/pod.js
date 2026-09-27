@@ -30,4 +30,21 @@ function channels()
     ];
 }
 
-module.exports = { dataMap, channels };
+// report_secs on every pod (pod-protocol.md section 4). A controller or account pod takes it on
+// the Config tab like any gateway key; a target pod's goes through its controller as a queued
+// set_config command (services/commandQueue.js), confirmed by the ack.
+const reportSecs = { label: "Report interval", kind: "int", min: 60, max: 86400, writable: true, description: "Seconds between readings. The pod's default is 600 (10 minutes)." };
+
+// Commands (pod-protocol.md section 5.4). Every pod type sets commandQueue: true, so these are
+// queued and acked rather than published straight to the pod. value "color" makes the Commands tab
+// offer the LED colors below.
+const commands =
+{
+    led:         { label: "LED color", permission: "edit", confirm: false, value: "color", description: "Sets the whole LED grid to one color." },
+    publish_now: { label: "Get data", permission: "view", confirm: false, cooldownSecs: 60, description: "The pod sends its current readings." },
+    reboot:      { label: "Reboot", permission: "edit", confirm: true, cooldownSecs: 120, description: "The pod restarts." }
+};
+
+const LED_COLORS = [["FF0000", "Red"], ["00FF00", "Green"], ["0000FF", "Blue"], ["FFFF00", "Yellow"], ["FFFFFF", "White"], ["off", "Off"]];
+
+module.exports = { dataMap, channels, reportSecs, commands, LED_COLORS };

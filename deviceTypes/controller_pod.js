@@ -26,13 +26,14 @@ module.exports =
     // pod that reconnects mid session gets it again. It stays on until someone turns it off.
     configKeys:
     {
-        pair_mode: { label: "Pairing mode", kind: "bool", writable: true, description: "While on, a target pod whose button is held pairs with this controller. Use the Pair target pods button on the Station tab." }
+        pair_mode: { label: "Pairing mode", kind: "bool", writable: true, description: "While on, a target pod whose button is held pairs with this controller. Use the Pair target pods button on the Station tab." },
+        report_secs: pod.reportSecs
     },
-    commands:
+    commands: Object.assign({}, pod.commands,
     {
-        publish_now: { label: "Get data", permission: "view", confirm: false, cooldownSecs: 60, description: "The controller publishes its current readings." },
-        reboot:      { label: "Reboot", permission: "edit", confirm: true, cooldownSecs: 120, description: "The controller restarts. Its station is offline until it reconnects." }
-    },
+        reboot: Object.assign({}, pod.commands.reboot, { description: "The controller restarts. Its station is offline until it reconnects." })
+    }),
+    commandQueue: true,
     // This type runs stations: target pods pair with it (the target types list it in pairsWith).
     station: true,
     hooks: {}

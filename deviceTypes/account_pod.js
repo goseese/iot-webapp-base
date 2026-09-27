@@ -20,10 +20,8 @@ module.exports =
         { id: "signal", name: "WiFi signal", metric: "percent" },
         { id: "wifi-rssi", name: "WiFi RSSI", metric: "rssi", inboundUnit: "dBm", signal: "wifi" }
     ]),
-    commands:
-    {
-        publish_now: { label: "Get data", permission: "view", confirm: false, cooldownSecs: 60, description: "The pod publishes its current readings." },
-        reboot:      { label: "Reboot", permission: "edit", confirm: true, cooldownSecs: 120, description: "The pod restarts." }
-    },
+    configKeys: { report_secs: pod.reportSecs },
+    commands: pod.commands,
+    commandQueue: true,
     hooks: {}
 };

@@ -29,6 +29,20 @@
     </form>
     <% } %></span>
   </div>
+  <div data-part="all"><% if (st.canPair && st.pods.length) { %>
+  <form method="post" action="/devices/<%= uid %>/commands" class="d-flex align-items-center gap-2 px-3 pt-3">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <input type="hidden" name="command" value="led">
+    <input type="hidden" name="to" value="all">
+    <input type="hidden" name="from" value="station">
+    <span class="small text-secondary">Every target pod's LEDs:</span>
+    <select class="form-select form-select-sm w-auto" name="value" aria-label="Color">
+      <% st.colors.forEach(function (col) { %><option value="<%= col[0] %>"><%= col[1] %></option><% }); %>
+    </select>
+    <button class="btn btn-sm btn-outline-primary" type="submit">Send</button>
+    <a class="small ms-2" href="/devices/<%= uid %>/commands">Queue</a>
+  </form>
+  <% } %></div>
   <div data-part="note"><% if (st.elsewhere && !st.wanted) { %>
   <div class="px-3 pt-2 small text-secondary"><a href="/devices/<%= fmt.uid(st.elsewhere.uid) %>"><%= st.elsewhere.name %></a> at this location is in pairing mode. Only one controller per location can pair at a time.</div>
   <% } %></div>

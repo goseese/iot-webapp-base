@@ -5,6 +5,7 @@
 //   node scripts/fake-station.js connect <MAC>
 //   node scripts/fake-station.js pair <MAC> on|off
 //   node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]
+//   node scripts/fake-station.js ack <MAC> [--all] [--fail]
 //
 // First add the controller in the app: the location's Gateways page, Add gateway, type Controller
 // pod, with the MAC. The page then says it is waiting for first connection.
@@ -18,8 +19,14 @@
 // pods     sends one frame from each of <count> target pods (MACs 0A + the controller's last six
 //          digits + a number), and new controller readings. While pairing is on, new pods pair;
 //          with it off they are only recorded as heard. Run it again for new readings.
+// ack      answers the controller's command in flight (Commands tab, pod-protocol.md 5.2), the way
+//          the controller would: ok for itself, and ok per target pod paired with it ("not_paired"
+//          for any other MAC). --fail answers ok false (no_ack per target). --all keeps answering
+//          until nothing is waiting.
 //
-// No broker connection here, so open pages do not update by themselves: refresh after each step.
+// The script opens a broker connection of its own when the MQTT site settings allow, so the next
+// queued command goes out after an ack and open pages update by themselves. Without one, commands
+// stay queued and pages need a refresh.
 // The daily broker check flags the fake controller (it has no broker account); that is expected.
 // Remove the fake pods with the reset-test-unit.js command that pods prints.
 //
@@ -37,6 +44,7 @@ function usage()
     console.log("  node scripts/fake-station.js connect <MAC>      (after Add gateway, type Controller pod, in the app)");
     console.log("  node scripts/fake-station.js pair <MAC> on|off");
     console.log("  node scripts/fake-station.js pods <MAC> <count> [--model vpod-acc|vpod-tof]");
+    console.log("  node scripts/fake-station.js ack <MAC> [--all] [--fail]");
 }
 
 function normalize(mac)
@@ -109,6 +117,7 @@ async function connect(args)
         guid = crypto.randomUUID();
         await knex(T("device_credentials")).insert({ device_id: device.id, mac: mac, state: "active", broker_username: guid, created_epoch: nowEpoch(), activated_epoch: nowEpoch(), type_slug: "controller_pod" });
         await send(guid, "config/pair_mode", "false");
+        await send(guid, "config/report_secs", "600");
         console.log(device.name + " connected (fake credentials, no broker account).");
     }
     else if (creds[0].state === "active")
@@ -120,6 +129,8 @@ async function connect(args)
     {
         throw new Error(device.name + " has a credential row in state " + creds[0].state + ": a real unit has started provisioning with this MAC. Not faking over it.");
     }
+    // The connect message: the server sends a command left unanswered again, or the next queued one.
+    await send(guid, "status", { event: "connect", firmware: "0.0.0-fake" });
     await controllerData(guid);
 
     console.log("  page: " + pageUrl(device));
@@ -180,14 +191,76 @@ async function pods(args)
     console.log("Remove the pods: node scripts/reset-test-unit.js " + macs.join(" ") + " --yes");
 }
 
+// Answers the command in flight like the controller would (pod-protocol.md 5.2).
+async function ack(args)
+{
+    const { device, guid } = await findController(args[0]);
+    const fail = args.includes("--fail");
+    const all = args.includes("--all");
+    const queue = require("../services/commandQueue");
+    let answered = 0;
+    for (let i = 0; i < 50; i++)
+    {
+        let row = await knex(T("command_queue")).where({ device_id: device.id, status: "sent" }).orderBy("id").first();
+        if (!row)
+        {
+            await queue.pump(device.id);      // queued but never sent (no broker connection at the time)
+            row = await knex(T("command_queue")).where({ device_id: device.id, status: "sent" }).orderBy("id").first();
+        }
+        if (!row) { break; }
+        const answer = { id: row.cmd_id, ok: !fail };
+        if (row.target)
+        {
+            const paired = (await require("../services/stations").roster(device.id)).map((p) => p.hardware_id);
+            const macs = row.target === "all" ? paired : [row.target];
+            answer.results = {};
+            for (const m of macs) { answer.results[m] = fail ? "no_ack" : (paired.includes(m) ? "ok" : "not_paired"); }
+            answer.ok = !fail && Object.values(answer.results).every((r) => r === "ok");
+        }
+        if (fail) { answer.error = "fake failure"; }
+        await send(guid, "cmd_ack", answer);
+        answered++;
+        console.log("Answered " + row.cmd + (row.value ? " " + row.value : "") + (row.target ? " to " + row.target : "") + ": " + (answer.ok ? "ok" : "failed") + (answer.results ? " " + JSON.stringify(answer.results) : ""));
+        if (!all) { break; }
+    }
+    if (answered === 0)
+    {
+        const waiting = await knex(T("command_queue")).where({ device_id: device.id, status: "queued" }).count("id as n").first();
+        console.log("Nothing is waiting for an answer from " + device.name + (Number(waiting.n) ? " (" + waiting.n + " queued, but no broker connection here to send them)" : "") + ".");
+    }
+    const left = await knex(T("command_queue")).where({ device_id: device.id }).whereIn("status", ["queued", "sent"]).count("id as n").first();
+    console.log(left.n + " still waiting. Queue: " + pageUrl(device) + "/commands");
+}
+
+// A broker connection for the queue and the page notices, with a client id of its own.
+async function openBroker()
+{
+    const cfg = require("../mqtt/broker").config();
+    if (!cfg.configured) { return null; }
+    const c = require("mqtt").connect(cfg.url, { clientId: cfg.clientId + "-fake-station-" + process.pid, username: cfg.user || undefined, password: cfg.password || undefined, clean: true, reconnectPeriod: 0, connectTimeout: 5000 });
+    await new Promise((resolve) =>
+    {
+        c.once("connect", resolve);
+        c.once("error", resolve);
+        c.once("close", resolve);
+        setTimeout(resolve, 6000);
+    });
+    if (!c.connected) { c.end(true); return null; }
+    require("../mqtt/downlink").useClient(c);
+    return c;
+}
+
 async function main()
 {
     const [cmd, ...args] = process.argv.slice(2);
-    const run = { connect: connect, pair: pair, pods: pods }[cmd];
+    const run = { connect: connect, pair: pair, pods: pods, ack: ack }[cmd];
     if (!run) { usage(); process.exit(1); }
     await settings.reload();
     await require("../db/shadow").syncDeviceTypes();
+    const broker = await openBroker();
+    if (!broker) { console.log("(no broker connection: queued commands are not sent from here, and open pages need a refresh)"); }
     await run(args);
+    if (broker) { await new Promise((resolve) => broker.end(false, {}, resolve)); }
     await knex.destroy();
 }
 

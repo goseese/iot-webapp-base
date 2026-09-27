@@ -70,6 +70,20 @@ async function write(mac, guid, key, raw, typeModule, userId)
     return { ok: true, sent: sent };
 }
 
+// A target pod's Config tab: the value is marked pending here and travels to the pod as a queued
+// set_config command through its controller (services/commandQueue.js), whose ack confirms it with
+// report(). Returns { ok, value } or { ok: false, error }.
+async function setDesired(mac, key, raw, typeModule, userId)
+{
+    const def = typeModule && typeModule.configKeys ? typeModule.configKeys[key] : null;
+    if (!def || !def.writable) { return { ok: false, error: "That setting cannot be changed." }; }
+    const v = validate(def, raw);
+    if (!v.ok) { return v; }
+    await upsert(mac, key, { desired_value: v.value, desired_epoch: nowEpoch(), desired_by: userId || null, sent_epoch: null });
+    await notify(mac);
+    return { ok: true, value: v.value };
+}
+
 async function cancel(mac, key)
 {
     await knex(T("unit_config")).where({ mac: mac, config_key: key }).update({ desired_value: null, desired_epoch: null, desired_by: null, sent_epoch: null });
@@ -102,4 +116,4 @@ async function forPage(mac, typeModule)
 }
 
 // notifyMac: the same notice, for other changes shown on a unit's pages (a pod station's roster).
-module.exports = { normalize, validate, report, write, cancel, resendPending, forPage, notifyMac: notify };
+module.exports = { normalize, validate, report, write, setDesired, cancel, resendPending, forPage, notifyMac: notify };

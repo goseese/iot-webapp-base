@@ -15,6 +15,7 @@ const activity = require("../services/activity");
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
 router.param("uid", require("../middleware/account").uidParam);
+router.param("cmdId", require("../middleware/account").uidParam);
 router.use(requireLogin);
 
 // Device detail: resolves permissions at the device's location; denied = 404.
@@ -58,15 +59,23 @@ function isStation(req)
 
 function hasConfig(req)
 {
-    return !!(req.typeModule && req.typeModule.configKeys && credentials.isUnitHardware(req.device));
+    return !!(req.typeModule && req.typeModule.configKeys && (credentials.isUnitHardware(req.device) || viaController(req)));
+}
+
+// A target pod: its commands and config go through the controller it is paired with, queued
+// (services/commandQueue.js).
+function viaController(req)
+{
+    return !!(req.typeModule && req.typeModule.commandQueue && req.device.controller_id && !credentials.isUnitHardware(req.device));
 }
 
 // Commands the type declares that this user may send. Each names its own permission bit, so a
-// view only user can Get data but not Reboot. Unit hardware only (it needs broker credentials).
+// view only user can Get data but not Reboot. Unit hardware (it needs broker credentials), or a
+// target pod through its controller.
 function allowedCommands(req)
 {
     const all = (req.typeModule && req.typeModule.commands) || {};
-    if (!credentials.isUnitHardware(req.device)) { return []; }
+    if (!credentials.isUnitHardware(req.device) && !viaController(req)) { return []; }
     return Object.keys(all)
         .filter((name) =>
         {
@@ -103,6 +112,7 @@ async function stationModel(req)
             wanted: pairing.pending !== null ? pairing.pending : pairing.on,
             pods: await stations.roster(req.device.id),
             canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
+            colors: require("../deviceTypes/shared/pod").LED_COLORS,
             elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id)
         };
     }
@@ -267,14 +277,22 @@ router.get("/:uid/settings", loadDevice, async (req, res, next) =>
 
 // Gateway config (services/unitConfig.js): what the unit reports, and writes waiting for it to
 // confirm. Keyed by the unit's MAC, so it follows the hardware across placements.
+// A target pod's config page shows its controller's credentials: that is what sends its writes.
+async function configCred(req)
+{
+    if (!viaController(req)) { return credentials.forDevice(req.device); }
+    const r = await require("../services/commandQueue").route(req.device);
+    return r.error ? null : credentials.forDevice(r.pod);
+}
+
 router.get("/:uid/config", loadDevice, async (req, res, next) =>
 {
     try
     {
         if (!hasConfig(req)) { return next(notFoundError()); }
-        const cred = await credentials.forDevice(req.device);
+        const cred = await configCred(req);
         const rows = await require("../services/unitConfig").forPage(req.device.hardware_id, req.typeModule);
-        res.render("devices/config", { title: req.device.name, device: req.device, location: req.location, cred: cred, rows: rows, now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Config") });
+        res.render("devices/config", { title: req.device.name, device: req.device, location: req.location, cred: cred, rows: rows, viaController: viaController(req), now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Config") });
     }
     catch (err) { next(err); }
 });
@@ -286,9 +304,9 @@ router.get("/:uid/config/rows", loadDevice, async (req, res, next) =>
     try
     {
         if (!hasConfig(req)) { return next(notFoundError()); }
-        const cred = await credentials.forDevice(req.device);
+        const cred = await configCred(req);
         const rows = await require("../services/unitConfig").forPage(req.device.hardware_id, req.typeModule);
-        res.render("devices/config-rows", { layout: false, device: req.device, location: req.location, cred: cred, rows: rows, bits: req.deviceBits, permissions: permissions });
+        res.render("devices/config-rows", { layout: false, device: req.device, location: req.location, cred: cred, rows: rows, viaController: viaController(req), bits: req.deviceBits, permissions: permissions });
     }
     catch (err) { next(err); }
 });
@@ -299,6 +317,7 @@ router.post("/:uid/config", loadDevice, need("edit"), async (req, res, next) =>
     {
         if (!hasConfig(req)) { return next(notFoundError()); }
         const back = "/devices/" + req.params.uid + "/config";
+        if (viaController(req)) { return configViaController(req, res, back); }
         const cred = await credentials.forDevice(req.device);
         if (!cred || cred.state !== "active")
         {
@@ -338,6 +357,33 @@ router.post("/:uid/config", loadDevice, need("edit"), async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// A target pod's config write: pending here, sent as a queued set_config through its controller.
+async function configViaController(req, res, back)
+{
+    const queue = require("../services/commandQueue");
+    const unitConfig = require("../services/unitConfig");
+    const key = String(req.body.key || "");
+    if (req.body.cancel)
+    {
+        await unitConfig.cancel(req.device.hardware_id, key);
+        await queue.cancelConfig(req.device.hardware_id, key);
+        await activity.log(req, "device_config_cancel", { entity_type: "device", entity_uid: req.device.uid, detail: key });
+        req.flash("success", "Pending change to " + key + " cancelled. If the controller already sent it, the pod keeps it.");
+        return res.redirect(back);
+    }
+    const r = await queue.route(req.device);
+    if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
+    const def = req.typeModule.configKeys[key];
+    const v = def && def.writable ? unitConfig.validate(def, req.body.value) : { ok: false, error: "That setting cannot be changed." };
+    if (!v.ok) { req.flash("danger", key + ": " + v.error); return res.redirect(back); }
+    await queue.cancelConfig(req.device.hardware_id, key);   // an older pending write of the same key goes
+    const d = await unitConfig.setDesired(req.device.hardware_id, key, v.value, req.typeModule, req.user.id);
+    await queue.enqueue({ pod: r.pod, target: r.target, targetDeviceId: r.targetDeviceId, cmd: "set_config", value: JSON.stringify({ key: key, value: d.value }), userId: req.user.id });
+    await activity.log(req, "device_config_write", { entity_type: "device", entity_uid: req.device.uid, detail: key });
+    req.flash("success", "Queued for " + r.pod.name + ". The value stays pending until the pod confirms it.");
+    return res.redirect(back);
+}
+
 function need(bitName)
 {
     return (req, res, next) =>
@@ -369,7 +415,88 @@ router.get("/:uid/commands", loadDevice, async (req, res, next) =>
         const commands = allowedCommands(req);
         if (commands.length === 0) { return next(notFoundError()); }
         const cred = await credentials.forDevice(req.device);
-        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
+        const queue = req.typeModule.commandQueue ? await queueModel(req) : null;
+        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, queue: queue, colors: require("../deviceTypes/shared/pod").LED_COLORS, now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
+    }
+    catch (err) { next(err); }
+});
+
+// Queued commands (services/commandQueue.js): where they go, and the list for the page. A target
+// pod's page lists its own commands and refreshes on its controller's notices.
+async function queueModel(req)
+{
+    const q = require("../services/commandQueue");
+    const r = await q.route(req.device);
+    const pod = r.pod || null;
+    const rows = viaController(req) ? await q.forTarget(req.device.id) : await q.forPod(req.device.id);
+    return { error: r.error || null, pod: pod, ownerUid: pod ? String(pod.uid).toLowerCase() : null, rows: rows, canCancel: permissions.has(req.deviceBits, permissions.byName.edit) };
+}
+
+// Just the queue list, for the Commands tab's live refresh.
+router.get("/:uid/commands/list", loadDevice, async (req, res, next) =>
+{
+    try
+    {
+        if (!req.typeModule || !req.typeModule.commandQueue || allowedCommands(req).length === 0) { return next(notFoundError()); }
+        res.render("devices/command-list", { layout: false, device: req.device, location: req.location, queue: await queueModel(req), now: nowEpoch() });
+    }
+    catch (err) { next(err); }
+});
+
+// Queued command from the Commands tab, or "all target pods" from a controller's Station tab.
+async function queueCommand(req, res, back, cmd)
+{
+    const q = require("../services/commandQueue");
+    const r = await q.route(req.device);
+    if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
+    let target = r.target;
+    if (req.body.to === "all")
+    {
+        if (!isStation(req)) { return res.redirect(back); }
+        target = "all";
+    }
+    let value = null;
+    if (cmd.value === "color")
+    {
+        value = String(req.body.value || "").trim();
+        value = value.toLowerCase() === "off" ? "off" : value.replace(/^#/, "").toUpperCase();
+        if (!/^([0-9A-F]{6}|off)$/.test(value)) { req.flash("danger", "Choose a color."); return res.redirect(back); }
+    }
+    if (cmd.cooldownSecs)
+    {
+        const now = nowEpoch();
+        const last = await require("../db/repos/events").lastEpoch("device_command", req.device.uid, cmd.name, now - cmd.cooldownSecs);
+        if (last)
+        {
+            req.flash("warning", cmd.label + " was requested " + (now - last) + " seconds ago. Try again in " + (last + cmd.cooldownSecs - now) + " seconds.");
+            return res.redirect(back);
+        }
+    }
+    const row = await q.enqueue({ pod: r.pod, target: target, targetDeviceId: target === "all" ? null : r.targetDeviceId, cmd: cmd.name, value: value, userId: req.user.id });
+    // detail stays the bare command name: the cooldown looks it up by exact match. The queue row
+    // holds the target, the value and who sent it.
+    await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: cmd.name });
+    const fresh = await knex(T("command_queue")).where({ id: row.id }).first();
+    req.flash("success", cmd.label + (target === "all" ? " for every target pod" : "") + (fresh && fresh.status === "sent" ? ": sent to " + r.pod.name + ", waiting for its answer." : ": queued for " + r.pod.name + ". It goes out when the pod answers the command before it, or when it next connects."));
+    return res.redirect(back);
+}
+
+// Cancel a queued or sent command: the row is deleted (a pod that already has it may still carry
+// it out). Only from the page of the pod it was sent to, or of the target pod it was for.
+router.post("/:uid/commands/:cmdId/cancel", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        if (!req.typeModule || !req.typeModule.commandQueue) { return next(notFoundError()); }
+        const row = await knex(T("command_queue")).where({ cmd_id: req.params.cmdId }).first();
+        const mine = row && (viaController(req) ? row.target_device_id === req.device.id : row.device_id === req.device.id);
+        if (!mine) { return next(notFoundError()); }
+        const back = "/devices/" + req.params.uid + (req.body.from === "station" ? "" : "/commands");
+        const gone = await require("../services/commandQueue").cancel(row);
+        if (!gone) { req.flash("warning", "That command was already answered, so it could not be cancelled."); return res.redirect(back); }
+        await activity.log(req, "device_command_cancel", { entity_type: "device", entity_uid: req.device.uid, detail: row.cmd + (row.target ? " to " + row.target : "") });
+        req.flash("success", "Command cancelled." + (row.status === "sent" ? " It had already been sent, so the pod may still carry it out." : ""));
+        res.redirect(back);
     }
     catch (err) { next(err); }
 });
@@ -381,10 +508,11 @@ router.post("/:uid/commands", loadDevice, async (req, res, next) =>
 {
     try
     {
-        const back = "/devices/" + req.params.uid + "/commands";
+        const back = "/devices/" + req.params.uid + (req.body.from === "station" ? "" : "/commands");
         const name = String(req.body.command || "");
         const cmd = allowedCommands(req).find((c) => c.name === name);
         if (!cmd) { return next(notFoundError()); }
+        if (req.typeModule.commandQueue) { return queueCommand(req, res, back, cmd); }
         const cred = await credentials.forDevice(req.device);
         if (!cred || cred.state !== "active")
         {

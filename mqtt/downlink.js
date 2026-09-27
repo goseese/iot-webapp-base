@@ -9,8 +9,19 @@
 // when the device connects (see services/unitConfig.js).
 const logger = require("../config/logger");
 
+// A connection lent by a script (scripts/fake-station.js), which has neither the ingest client nor
+// the realtime relay. It must use a client id of its own: sharing the ingest id evicts the ingest
+// process from the broker.
+let lent = null;
+
+function useClient(c)
+{
+    lent = c;
+}
+
 function connectedClient()
 {
+    if (lent && lent.connected) { return lent; }
     const ingest = require("./client").get();
     if (ingest && ingest.connected) { return ingest; }
     const feed = require("../realtime").feedClient();
@@ -38,4 +49,4 @@ function publish(topic, payload)
     });
 }
 
-module.exports = { publish };
+module.exports = { publish, useClient };

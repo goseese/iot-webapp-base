@@ -24,5 +24,9 @@ module.exports =
         { id: "signal", name: "Signal", metric: "percent", perGateway: true }
     ]),
     pairsWith: ["controller_pod"],
+    // Sent through the controller it is paired with, as queued commands (services/commandQueue.js).
+    configKeys: { report_secs: pod.reportSecs },
+    commands: pod.commands,
+    commandQueue: true,
     hooks: {}
 };

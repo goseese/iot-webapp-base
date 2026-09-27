@@ -1,6 +1,10 @@
 <% var uid = fmt.uid(device.uid); var canEdit = permissions.has(bits, permissions.byName.edit) && cred && cred.state === "active"; %>
 
+<% if (locals.viaController) { %>
+<p class="text-secondary small">This pod's settings go through its controller as queued commands (see the Commands tab). A saved change stays pending until the pod confirms it, and then shows as reported.</p>
+<% } else { %>
 <p class="text-secondary small">Values the gateway reported, newest on every connect. A saved change is sent to the gateway and stays greyed out as pending until the gateway reports the new value back. If the gateway is offline, pending changes are sent again when it next connects.</p>
+<% } %>
 <% if (!cred || cred.state !== "active") { %><div class="alert alert-secondary">This unit has no active broker credentials yet, so settings cannot be sent. Values appear here once it connects.</div><% } %>
 <div id="config-rows" data-device="<%= uid %>">
 <%- include("config-rows") %>

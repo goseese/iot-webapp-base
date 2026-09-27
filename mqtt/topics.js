@@ -6,6 +6,10 @@
 //   dev/{device_guid}/config/+  uplink, one config value per publish, key in the topic (not retained)
 //   dev/{device_guid}/geoscan   uplink, wifi/cell scan for location (not retained)
 //   dev/{device_guid}/cmd_ack   uplink, the device heard a command (not retained)
+//   dev/{device_guid}/event     uplink, pod events: wristband reads, later game events (not
+//                               retained; pod-protocol.md section 8). In the ACLs from the start,
+//                               because a unit's ACLs are fixed when it provisions.
+//   dev/{device_guid}/cmd/q     downlink, a queued command (services/commandQueue.js)
 //   dev/{device_guid}/cmd       downlink commands. Everything the server sends a device lives at or
 //                               under this, and ACLs are scoped to the subtree dev/{guid}/cmd/#, so
 //                               dev/{guid}/cmd/reboot can be added later with no ACL change. A `#`
@@ -16,7 +20,7 @@
 //                               topic the shared `announce` credential is allowed to read.
 const DEVICE_PREFIX = "dev";
 const ACCOUNT_PREFIX = "acct";
-const UPLINK_KINDS = ["frame", "status", "data", "geoscan", "cmd_ack"];
+const UPLINK_KINDS = ["frame", "status", "data", "geoscan", "cmd_ack", "event"];
 // Kinds whose last topic level is a key: dev/{guid}/config/{key}, one value per publish.
 const KEYED_UPLINK_KINDS = ["config"];
 
@@ -32,6 +36,8 @@ const device =
     // One command (the Commands tab), not retained. Covered by the cmd/# ACL, so no role change.
     // name comes only from a type module's commands list, never from the request.
     command: (guid, name) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/" + name,
+    // Queued commands (pod-protocol.md section 5): JSON { id, to?, cmd, value? }, acked on cmd_ack.
+    queued: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/q",
     cmdAll: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/#",
     all: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/#"
 };

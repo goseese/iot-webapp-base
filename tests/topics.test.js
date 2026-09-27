@@ -8,8 +8,9 @@ test("device topics use the dev/ prefix, lower case guid", () =>
     assert.equal(topics.device.cmd("ABC-1"), "dev/abc-1/cmd");
     assert.equal(topics.device.setConfig("ABC-1", "rf_channel"), "dev/abc-1/cmd/set_config/rf_channel");
     assert.equal(topics.device.command("ABC-1", "publish_now"), "dev/abc-1/cmd/publish_now");
+    assert.equal(topics.device.queued("ABC-1"), "dev/abc-1/cmd/q");
     assert.equal(topics.account.config("ACC-1"), "acct/acc-1/config");
-    assert.deepEqual(topics.ingestSubscriptions, ["dev/+/frame", "dev/+/status", "dev/+/data", "dev/+/geoscan", "dev/+/cmd_ack", "dev/+/config/+"]);
+    assert.deepEqual(topics.ingestSubscriptions, ["dev/+/frame", "dev/+/status", "dev/+/data", "dev/+/geoscan", "dev/+/cmd_ack", "dev/+/event", "dev/+/config/+"]);
 });
 
 test("parse accepts platform topics and rejects everything else", () =>
@@ -17,6 +18,7 @@ test("parse accepts platform topics and rejects everything else", () =>
     assert.deepEqual(topics.parse("dev/ABC/status"), { kind: "device", guid: "abc", channel: "status" });
     assert.equal(topics.parse("provision/request/A4CF12345678"), null);   // MQTT provisioning is gone; HTTPS only
     assert.deepEqual(topics.parse("dev/ABC/data"), { kind: "device", guid: "abc", channel: "data" });
+    assert.deepEqual(topics.parse("dev/ABC/event"), { kind: "device", guid: "abc", channel: "event" });
     assert.deepEqual(topics.parse("dev/ABC/config/rf_channel"), { kind: "device", guid: "abc", channel: "config", key: "rf_channel" });
     assert.equal(topics.parse("dev/abc/config"), null);       // config always carries its key
     assert.equal(topics.parse("dev/abc/config/"), null);
@@ -37,6 +39,7 @@ test("device ACLs: publish own uplinks, subscribe and receive own cmd subtree", 
         "publishClientSend dev/abc/data",
         "publishClientSend dev/abc/geoscan",
         "publishClientSend dev/abc/cmd_ack",
+        "publishClientSend dev/abc/event",
         "publishClientSend dev/abc/config/+",
         "subscribePattern dev/abc/cmd/#",
         "publishClientReceive dev/abc/cmd/#"

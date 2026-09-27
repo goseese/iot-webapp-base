@@ -124,6 +124,7 @@ async function handle(topic, payload, meta)
     if (t.channel === "data") { return handleData(gateway, payload, receipt); }
     if (t.channel === "geoscan") { return handleGeoscan(gateway, payload); }
     if (t.channel === "cmd_ack") { return handleCmdAck(gateway, payload); }
+    if (t.channel === "event") { return handleEvent(gateway, payload); }
     if (t.channel === "frame") { return handleFrame(gateway, payload, receipt); }
 }
 
@@ -159,6 +160,8 @@ async function handleStatus(gateway, payload, receipt, retained, guid)
     if (status.event === "connect" && gateway.hardware_id && require("../services/devices").isMac(gateway.hardware_id))
     {
         await require("../services/unitConfig").resendPending(gateway.hardware_id, guid);
+        // Queued commands: the unacked one again (same id), else the next (services/commandQueue.js).
+        await require("../services/commandQueue").onConnect(gateway, guid);
     }
 }
 
@@ -203,12 +206,26 @@ async function handleConfig(mac, gateway, key, payload, receipt)
     await require("../services/unitConfig").report(mac, key, payload.toString("utf8"), type, receipt);
 }
 
-// dev/{guid}/cmd_ack: the device heard a command, JSON { event, value, response|result }. Logged
-// only; the Commands tab will read these once it exists. A geoscan command has no ack: the geoscan
-// publish itself is the reply.
+// dev/{guid}/cmd_ack: the ack of a queued command, JSON { id, ok, results?, error? }
+// (services/commandQueue.js, pod-protocol.md 5.2). An ack without an id, from a unit whose commands
+// are not queued (JSON { event, value, response|result }), is only logged. A geoscan command has no
+// ack: the geoscan publish itself is the reply.
 async function handleCmdAck(gateway, payload)
 {
+    if (await require("../services/commandQueue").onAck(gateway, payload)) { return; }
     logger.info({ gateway: gateway.uid, ack: payload.toString("utf8").slice(0, 200) }, "gateway cmd_ack");
+}
+
+// dev/{guid}/event: pod events (pod-protocol.md section 8): wristband reads now, game events later.
+// Recorded in the event log only until check in is built.
+async function handleEvent(gateway, payload)
+{
+    const text = payload.toString("utf8").slice(0, 1000);
+    let kind = null;
+    try { const e = JSON.parse(text); kind = e && typeof e.event === "string" ? e.event.slice(0, 30) : null; }
+    catch (err) { }
+    const activity = require("../services/activity");
+    await activity.record("pod_event", { entity_type: "device", entity_uid: gateway.uid, detail: (kind ? kind + ": " : "") + text }, { channel: "mqtt", correlationId: activity.newCorrelationId() });
 }
 
 // dev/{guid}/geoscan: wifi and cell scan for location. Accepted and logged only; the location

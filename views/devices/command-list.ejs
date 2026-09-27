@@ -1,0 +1,55 @@
+<%# Queued commands (services/commandQueue.js), rendered by the Commands tab and by
+    GET /devices/:uid/commands/list, which the page fetches when a config notice for the pod that
+    sends them arrives. The refresh swaps the data-part pieces, so the table tools stay. %>
+<% var uid = fmt.uid(device.uid); var q = queue; var waiting = q.rows.filter(function (r) { return r.status === "queued" || r.status === "sent"; }).length; %>
+<% function showValue(r)
+{
+    if (r.value === null || r.value === undefined) { return ""; }
+    if (r.cmd === "set_config") { try { var v = JSON.parse(r.value); return v.key + " = " + v.value; } catch (e) { return r.value; } }
+    return r.value;
+} %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Queue</strong> <span class="text-secondary small ms-2" data-part="count"><%= waiting %> waiting</span></div>
+  <div class="table-responsive">
+    <table class="table iot-table align-middle mb-0">
+      <thead><tr><th>Status</th><th>Command</th><th>For</th><th>Added</th><th>Answer</th><th data-export="skip"></th></tr></thead>
+      <tbody data-part="rows">
+      <% q.rows.forEach(function (r) { var res = r.result || {}; var results = res.results ? Object.keys(res.results).map(function (m) { return [m, res.results[m]]; }) : []; %>
+        <tr>
+          <td>
+            <% if (r.status === "queued") { %><span class="iot-status iot-status--offline">queued</span>
+            <% } else if (r.status === "sent") { %><span class="iot-status iot-status--warning">sent, waiting</span>
+            <% } else if (r.status === "done") { %><span class="iot-status iot-status--online">done</span>
+            <% } else { %><span class="iot-status iot-status--alarm">failed</span><% } %>
+          </td>
+          <td><code><%= r.cmd %></code><% if (r.value !== null) { %> <% if (r.cmd === "led" && r.value !== "off") { %><span class="d-inline-block align-middle rounded-1 border" style="width: 0.9rem; height: 0.9rem; background: #<%= r.value %>"></span> <% } %><span class="small"><%= showValue(r) %></span><% } %></td>
+          <td class="small">
+            <% if (!r.target) { %>this pod
+            <% } else if (r.target === "all") { %>every target pod
+            <% } else if (r.target_uid && fmt.uid(r.target_uid) !== uid) { %><a href="/devices/<%= fmt.uid(r.target_uid) %>"><%= r.target_name %></a>
+            <% } else { %><%= r.target_name || fmt.hardwareId(r.target) %><% } %>
+          </td>
+          <td class="small text-secondary"><span data-epoch="<%= r.created_epoch %>"><%= fmt.ago(r.created_epoch, now) %></span><%= r.username ? " by " + r.username : "" %></td>
+          <td class="small">
+            <% if (r.status === "sent") { %><span class="text-secondary">sent <%= fmt.ago(r.sent_epoch, now) %><%= r.sent_count > 1 ? ", " + r.sent_count + " times" : "" %></span>
+            <% } else if (r.status === "done" || r.status === "failed") { %>
+              <span class="text-secondary"><%= fmt.ago(r.done_epoch, now) %></span>
+              <% if (results.length) { %><div><% results.forEach(function (x) { %><span class="me-2" title="<%= fmt.hardwareId(x[0]) %>"><%= x[0].slice(-4) %>: <%= x[1] %></span><% }); %></div><% } %>
+              <% if (res.error) { %><div class="text-danger"><%= res.error %></div><% } %>
+            <% } %>
+          </td>
+          <td class="text-end">
+            <% if (q.canCancel && (r.status === "queued" || r.status === "sent")) { %>
+            <form method="post" action="/devices/<%= uid %>/commands/<%= fmt.uid(r.cmd_id) %>/cancel" class="d-inline">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <button class="btn btn-sm btn-outline-secondary" type="submit">Cancel</button>
+            </form>
+            <% } %>
+          </td>
+        </tr>
+      <% }); %>
+      <% if (!q.rows.length) { %><tr><td colspan="6" class="text-secondary">No commands yet.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
