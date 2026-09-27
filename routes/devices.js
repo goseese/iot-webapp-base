@@ -86,9 +86,9 @@ function trail(req)
     ];
 }
 
-// Pod stations (services/stations.js). A controller's Sensors tab shows its station: the pairing
-// toggle and banner, and the target pods paired with it. A target pod's shows its controller.
-// null for every other device.
+// Pod stations (services/stations.js). A controller's Station tab shows its station: the pairing
+// toggle and banner, and the target pods paired with it. null for every other device (a target
+// pod's controller shows in its "Gateways hearing this device" table).
 async function stationModel(req)
 {
     const stations = require("../services/stations");
@@ -105,10 +105,6 @@ async function stationModel(req)
             canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
             elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id)
         };
-    }
-    if (req.device.controller_id)
-    {
-        return { kind: "pod", controller: await devicesRepo.findById(req.device.controller_id) };
     }
     return null;
 }

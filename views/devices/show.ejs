@@ -29,8 +29,6 @@
 <div id="station" data-device="<%= uid %>">
 <%- include("station") %>
 </div>
-<% } else if (station && station.kind === "pod") { %>
-<div class="alert alert-secondary mb-3">Paired with <% if (station.controller && !station.controller.delete_epoch) { %><a href="/devices/<%= fmt.uid(station.controller.uid) %>"><%= station.controller.name %></a><% } else { %>a controller that has been deleted<% } %>. Its readings arrive through that controller.</div>
 <% } %>
 <% } %>
 
