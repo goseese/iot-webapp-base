@@ -143,6 +143,9 @@ Commands arrive on `dev/{guid}/cmd/{name}` (and the bare `dev/{guid}/cmd`), with
 command names as declared in the device type's `commands` list. They are never retained or queued by
 the server: a command sent while the unit is offline is not delivered later.
 
+Pods use queued commands instead, on `dev/{guid}/cmd/q` with an ack on `dev/{guid}/cmd_ack`: see
+`pod-protocol.md`, section 5.
+
 ## When the MQTT connection fails
 
 The rule that matters: **only an authentication refusal sends the device back to provisioning.**
@@ -213,8 +216,9 @@ cd /opt/voltastc && sudo runuser -u voltastc -- node scripts/reset-test-unit.js 
 
 ## Open items for firmware
 
-- **Model strings:** no pod type exists on the server yet, so every request gets 400 until the
-  controller and account pod types list their models.
+- **Model strings:** the server provisions `vpod-ctl` (controller pod) and `vpod-acct` (account pod).
+  Target pod models (`vpod-acc`, `vpod-tof`) get 400: they never connect to the broker
+  (`pod-protocol.md`).
 - **Certificate chain:** check what a device actually receives on 443 and 8883 before building
   firmware (see `dynsec-broker-summary.md`, Open items). Expect the leaf, the intermediate, and an
   issuer chaining to ISRG Root X1.
