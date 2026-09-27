@@ -65,7 +65,7 @@ async function roster(controllerId)
         .where("d.controller_id", controllerId)
         .whereNull("d.delete_epoch")
         .where("d.is_archived", false)
-        .select("d.id", "d.uid", "d.name", "d.hardware_id", "d.model", "d.firmware", "d.last_seen_epoch", "d.created_epoch", "dt.display_name as type_name", "c.last_rssi")
+        .select("d.id", "d.uid", "d.name", "d.hardware_id", "d.model", "d.firmware", "d.last_seen_epoch", "d.created_epoch", "dt.display_name as type_name", "dt.slug as type_slug", "c.last_rssi")
         .orderBy("d.created_epoch", "asc");
     rows.forEach((r) => { r.signal_pct = require("./levels").signalPercent("wifi", r.last_rssi); });
     return rows;

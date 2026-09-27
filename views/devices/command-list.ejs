@@ -6,6 +6,7 @@
 {
     if (r.value === null || r.value === undefined) { return ""; }
     if (r.cmd === "set_config") { try { var v = JSON.parse(r.value); return v.key + " = " + v.value; } catch (e) { return r.value; } }
+    if (r.cmd === "ota") { try { return "MD5 " + String(JSON.parse(r.value).md5 || "").slice(0, 8); } catch (e) { return ""; } }
     return r.value;
 } %>
 <div class="iot-panel mb-3">
@@ -32,6 +33,7 @@
           <td class="small text-secondary"><span data-epoch="<%= r.created_epoch %>"><%= fmt.ago(r.created_epoch, now) %></span><%= r.username ? " by " + r.username : "" %></td>
           <td class="small">
             <% if (r.status === "sent") { %><span class="text-secondary">sent <%= fmt.ago(r.sent_epoch, now) %><%= r.sent_count > 1 ? ", " + r.sent_count + " times" : "" %></span>
+              <% if (r.progress) { %><div><% Object.keys(r.progress).forEach(function (m) { %><span class="me-2" title="<%= fmt.hardwareId(m) %>"><%= m.slice(-4) %>: <%= r.progress[m] %>%</span><% }); %></div><% } %>
             <% } else if (r.status === "done" || r.status === "failed") { %>
               <span class="text-secondary"><%= fmt.ago(r.done_epoch, now) %></span>
               <% if (results.length) { %><div><% results.forEach(function (x) { %><span class="me-2" title="<%= fmt.hardwareId(x[0]) %>"><%= x[0].slice(-4) %>: <%= x[1] %></span><% }); %></div><% } %>

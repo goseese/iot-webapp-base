@@ -55,7 +55,7 @@ All under the pod's own `dev/{guid}/`. The broker allows nothing else.
 | up | `frame` | no | one relayed target pod message, section 3.2 |
 | up | `config/{key}` | no | one config value, bare, section 4 |
 | up | `cmd_ack` | no | the answer to a queued command, section 5 |
-| up | `event` | no | wristband reads (section 8), the pairing button (6.3); game events later |
+| up | `event` | no | wristband reads (section 8), the pairing button (6.3), firmware update progress (9); game events later |
 | down | `cmd/q` | no | a queued command, section 5 |
 | down | `cmd/set_config/{key}` | no | a config write, bare value, section 4 |
 
@@ -194,9 +194,12 @@ MAC is not one of this controller's target pods); `"error"` (the target answered
    when the pod next publishes its connect message.
 3. **Same id, do it once.** A pod that receives an id it has already carried out acks it again
    without carrying it out again. Keep at least the last 16 ids.
-4. **Ack when done, except reboot.** Ack after the command has been applied. For `reboot`, ack
-   first, wait about 1 s for the ack to go out, say you are going offline (section 2), then reboot; otherwise the resend on connect reboots
-   the pod again, forever.
+4. **Ack when done, except reboot and the pod's own ota.** Ack after the command has been applied.
+   For `reboot`, ack first, wait about 1 s for the ack to go out, say you are going offline
+   (section 2), then reboot; otherwise the resend on connect reboots the pod again, forever. For
+   `ota` to the pod itself (no `to`), ack once the new image is written and its MD5 checked, then
+   say you are going offline and restart into it. Keep that id among the carried out ids across the
+   restart (rule 3), so the resend on connect is acked again, not installed again.
 5. **Unknown command:** ack with `"ok":false,"error":"unknown command"`. Never leave a command
    unacked: it blocks the pod's queue.
 
@@ -208,6 +211,7 @@ MAC is not one of this controller's target pods); `"error"` (the target answered
 | `set_config` | target pods | `{"key":"report_secs","value":"600"}` | Sets one config key (section 4) |
 | `publish_now` | any pod | none | Sends readings now (a target pod through its controller) |
 | `reboot` | any pod | none | Acks, then reboots (rule 4) |
+| `ota` | any pod | `{"url":"https://...","md5":"<32 hex>"}` | Installs the firmware at `url`, section 9 |
 
 Game setup, start and stop commands are **Later**. They will use this same queue and message format.
 
@@ -354,18 +358,41 @@ whose band it is, or offers to enroll it to a new athlete (the tablet screens co
 `band_rssi_min` and the 5 s repeat rule are still for the firmware to apply: the server takes every
 band it is sent.
 
-## 9. Target pod firmware updates (Later)
+## 9. Firmware updates
 
-Two options, to be chosen when needed:
+Built, September 2026. The server keeps one current file per firmware image and queues an `ota`
+command (section 5.4) naming it:
 
-- **Over ESP-NOW:** Espressif's `esp-now` component has an OTA feature: the controller downloads
-  the image over HTTP and sends it to several target pods at once. Target pods never need WiFi
-  credentials. Needs the two OTA partition layout.
-- **Over WiFi:** a queued command gives the target pod WiFi credentials and an image URL; it joins
-  the WiFi, downloads, updates and reboots. Simpler, but WiFi credentials travel over unencrypted
-  ESP-NOW.
+| Image | Pods | URL |
+|---|---|---|
+| `volta-pod-ctl` | controller and account pods | `https://app.voltastc.com/firmware/volta-pod-ctl/firmware.bin` |
+| `volta-pod-target` | both target pod models | `https://app.voltastc.com/firmware/volta-pod-target/firmware.bin` |
 
-Controller and account pods update over their own WiFi, by a queued command with the image URL.
+```json
+{"id":"8f3c2a1e","cmd":"ota","to":"all","value":{"url":"https://app.voltastc.com/firmware/volta-pod-target/firmware.bin","md5":"73d605588010c0f63cb79a6eb3e27dbe"}}
+```
+
+- **Download:** plain HTTPS GET, no login. The answer always has `Content-Length` (never chunked)
+  and an `x-MD5` header, which arduino-esp32 HTTPUpdate checks the image against.
+- **MD5:** the server reads the file's MD5 when the command is queued. The URL has no version in it,
+  so the MD5 is what pins the exact file: if the file is replaced before the pod downloads it, the
+  check fails and the pod keeps its current firmware. The server always sends `md5`; a bare URL
+  string as `value`, or no `md5`, is accepted by the firmware but never sent.
+- **No `to`:** the pod updates itself over its own WiFi (rule 4 in 5.3 for the ack).
+- **`to` a MAC, or `"all"`:** the controller downloads the image and sends it to each target pod
+  over ESP-NOW, one after another. The server sends `"all"` when every target pod of the station is
+  chosen (they all run one image), otherwise one command per target pod.
+- **Progress:** while a transfer runs, publish on `dev/{guid}/event`, every 10 % or so:
+
+  ```json
+  {"event":"ota_progress","mac":"A4CF12345678","pct":50}
+  ```
+
+  `mac` is the pod being updated; it may be left out for the pod's own update. The server shows the
+  percent on the Station and Commands tabs while the `ota` command is in flight.
+- **Ack:** once every pod is done, with per MAC results as in 5.2 (`"ok"`, `"no_ack"`,
+  `"not_paired"`, `"error"`). A failed or interrupted transfer leaves the target pod on its current
+  firmware.
 
 ## 10. Not in this version
 

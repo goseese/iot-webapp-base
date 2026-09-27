@@ -105,12 +105,24 @@ async function stationModel(req)
     {
         const cred = await credentials.forDevice(req.device);
         const pairing = await stations.pairingState(req.device);
+        const pods = await stations.roster(req.device.id);
+        // Firmware updates (POST /station/ota): each pod's pending ota, and the file its type installs.
+        const pendingOta = await require("../services/commandQueue").pendingOta(req.device.id);
+        pods.forEach((p) =>
+        {
+            const row = otaWaiting(pendingOta, p.hardware_id);
+            const pct = row && row.progress ? row.progress[p.hardware_id] : undefined;
+            p.ota = row ? { status: row.status, pct: pct === undefined ? null : pct } : null;
+        });
+        const firmware = require("../services/firmware");
+        const images = [...new Set(pods.map((p) => firmware.imageForType(require("../deviceTypes").all[p.type_slug])).filter(Boolean))];
         return {
             kind: "controller",
             pairing: pairing,
             // What the page asks for: a pending write wins over what the pod last reported.
             wanted: pairing.pending !== null ? pairing.pending : pairing.on,
-            pods: await stations.roster(req.device.id),
+            pods: pods,
+            firmware: images.length === 1 ? await firmware.current(images[0]) : null,
             canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
             colors: require("../deviceTypes/shared/pod").LED_COLORS,
             elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id),
@@ -214,6 +226,43 @@ router.get("/:uid/station", loadDevice, async (req, res, next) =>
         const station = await stationModel(req);
         if (!station || station.kind !== "controller") { return next(notFoundError()); }
         res.render("devices/station", { layout: false, device: req.device, location: req.location, station: station });
+    }
+    catch (err) { next(err); }
+});
+
+// Update firmware on the target pods ticked on a controller's Station tab. Every target pod ticked
+// is one "to":"all" command (they install one image); some of them, one command per pod. A pod with
+// an update already waiting is left out.
+router.post("/:uid/station/ota", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        if (!isStation(req)) { return next(notFoundError()); }
+        const back = "/devices/" + req.params.uid;
+        const q = require("../services/commandQueue");
+        const firmware = require("../services/firmware");
+        const station = await stationModel(req);
+        const picked = new Set([].concat(req.body.pod || []).map((u) => String(u).toLowerCase()));
+        const chosen = station.pods.filter((p) => picked.has(String(p.uid).toLowerCase()));
+        if (chosen.length === 0) { req.flash("warning", "Tick the target pods to update first."); return res.redirect(back); }
+        if (!station.firmware) { req.flash("warning", "There is no firmware file on the server for these target pods yet."); return res.redirect(back); }
+        const r = await q.route(req.device);
+        if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
+        const value = JSON.stringify({ url: station.firmware.url, md5: station.firmware.md5 });
+        const fresh = chosen.filter((p) => !p.ota);
+        const skipped = chosen.length - fresh.length;
+        if (fresh.length === 0) { req.flash("warning", "A firmware update is already waiting for " + (chosen.length === 1 ? "that pod." : "those pods.")); return res.redirect(back); }
+        if (fresh.length === station.pods.length)
+        {
+            await q.enqueue({ pod: r.pod, target: "all", targetDeviceId: null, cmd: "ota", value: value, userId: req.user.id });
+        }
+        else
+        {
+            for (const p of fresh) { await q.enqueue({ pod: r.pod, target: p.hardware_id, targetDeviceId: p.id, cmd: "ota", value: value, userId: req.user.id }); }
+        }
+        await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: "ota" });
+        req.flash("success", "Firmware update queued for " + (fresh.length === station.pods.length ? "every target pod" : fresh.length + " target pod" + (fresh.length === 1 ? "" : "s")) + (skipped ? " (" + skipped + " already waiting, left out)" : "") + ". The controller updates them one after another; the list below shows each pod's progress.");
+        res.redirect(back);
     }
     catch (err) { next(err); }
 });
@@ -502,7 +551,9 @@ router.get("/:uid/commands", loadDevice, async (req, res, next) =>
         if (commands.length === 0) { return next(notFoundError()); }
         const cred = await credentials.forDevice(req.device);
         const queue = req.typeModule.commandQueue ? await queueModel(req) : null;
-        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, queue: queue, colors: require("../deviceTypes/shared/pod").LED_COLORS, now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
+        const firmware = require("../services/firmware");
+        const firmwareFile = commands.some((c) => c.value === "firmware") ? await firmware.current(firmware.imageForType(req.typeModule)) : null;
+        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, queue: queue, firmwareFile: firmwareFile, colors: require("../deviceTypes/shared/pod").LED_COLORS, now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
     }
     catch (err) { next(err); }
 });
@@ -529,6 +580,13 @@ router.get("/:uid/commands/list", loadDevice, async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// The pending ota command that covers a pod: its own (target null), or a target pod's (its MAC, or
+// "all" of the controller's target pods). rows: commandQueue.pendingOta for the controller.
+function otaWaiting(rows, mac)
+{
+    return rows.find((row) => (mac ? row.target === mac || row.target === "all" : !row.target)) || null;
+}
+
 // Queued command from the Commands tab, or "all target pods" from a controller's Station tab.
 async function queueCommand(req, res, back, cmd)
 {
@@ -547,6 +605,16 @@ async function queueCommand(req, res, back, cmd)
         value = String(req.body.value || "").trim();
         value = value.toLowerCase() === "off" ? "off" : value.replace(/^#/, "").toUpperCase();
         if (!/^([0-9A-F]{6}|off)$/.test(value)) { req.flash("danger", "Choose a color."); return res.redirect(back); }
+    }
+    if (cmd.value === "firmware")
+    {
+        // Target pods are updated together from the controller's Station tab (POST /station/ota).
+        if (target === "all") { return res.redirect(back); }
+        const firmware = require("../services/firmware");
+        const fw = await firmware.current(firmware.imageForType(req.typeModule));
+        if (!fw) { req.flash("warning", "There is no firmware file on the server for this pod yet."); return res.redirect(back); }
+        if (otaWaiting(await q.pendingOta(r.pod.id), r.target)) { req.flash("warning", "A firmware update for this pod is already waiting."); return res.redirect(back); }
+        value = JSON.stringify({ url: fw.url, md5: fw.md5 });
     }
     if (cmd.cooldownSecs)
     {

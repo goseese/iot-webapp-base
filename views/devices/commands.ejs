@@ -10,17 +10,19 @@
 <div class="iot-panel mb-3">
   <div class="iot-panel__header"><strong>Commands</strong></div>
   <div class="iot-panel__body">
-    <% commands.forEach(function (c, i) { %>
+    <% commands.forEach(function (c, i) { var can = ready && (c.value !== "firmware" || !!firmwareFile); %>
     <form method="post" action="/devices/<%= uid %>/commands" class="d-flex align-items-center gap-3<%= i < commands.length - 1 ? " mb-3" : "" %>"<% if (c.confirm) { %> onsubmit="return confirmCommand(event)" data-label="<%= c.label %>" data-confirm="<%= c.description %>"<% } %>>
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <input type="hidden" name="command" value="<%= c.name %>">
-      <button class="btn btn-outline-primary text-nowrap" style="min-width: 8rem" type="submit" <%= ready ? "" : "disabled" %>><%= c.label %></button>
+      <button class="btn btn-outline-primary text-nowrap" style="min-width: 8rem" type="submit" <%= can ? "" : "disabled" %>><%= c.label %></button>
       <% if (c.value === "color") { %>
       <select class="form-select form-select-sm w-auto" name="value" aria-label="Color" <%= ready ? "" : "disabled" %>>
         <% colors.forEach(function (col) { %><option value="<%= col[0] %>"><%= col[1] %></option><% }); %>
       </select>
       <% } %>
-      <div class="form-text m-0"><%= c.description %></div>
+      <div class="form-text m-0"><%= c.description %><% if (c.value === "firmware") { %>
+        <% if (firmwareFile) { %><br>On the server: <%= firmwareFile.image %>, <%= (firmwareFile.bytes / 1048576).toFixed(2) %> MB, copied <span data-epoch="<%= firmwareFile.mtime_epoch %>"><%= fmt.ago(firmwareFile.mtime_epoch, now) %></span>, MD5 <code><%= firmwareFile.md5.slice(0, 8) %></code><% } else { %><br><span class="text-warning">There is no firmware file on the server for this pod yet.</span><% } %>
+      <% } %></div>
     </form>
     <% }); %>
   </div>

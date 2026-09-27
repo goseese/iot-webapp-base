@@ -257,6 +257,12 @@ async function handleEvent(gateway, payload, receipt, guid)
         const type = await typeForDevice(gateway);
         if (type && type.station) { await require("../services/stations").buttonRequest(gateway, gateway.hardware_id, guid, type); return; }
     }
+    if (kind === "ota_progress")
+    {
+        // A firmware update in progress (pod-protocol.md 5.4 ota), shown on the pages; not logged.
+        if (!(await require("../services/commandQueue").onProgress(gateway, e))) { logger.info({ pod: gateway.uid, mac: e.mac, pct: e.pct }, "ota progress with no ota in flight"); }
+        return;
+    }
     const activity = require("../services/activity");
     await activity.record("pod_event", { entity_type: "device", entity_uid: gateway.uid, detail: (kind ? kind + ": " : "") + text }, { channel: "mqtt", correlationId: activity.newCorrelationId() });
 }

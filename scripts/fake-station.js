@@ -8,6 +8,7 @@
 //   node scripts/fake-station.js ack <MAC> [--all] [--fail]
 //   node scripts/fake-station.js band <MAC> <band id> [--rssi -40]
 //   node scripts/fake-station.js button <MAC>
+//   node scripts/fake-station.js progress <MAC> <pct>
 //
 // First add the controller in the app: the location's Gateways page, Add gateway, type Controller
 // pod, with the MAC. The page then says it is waiting for first connection.
@@ -30,6 +31,9 @@
 //          connect, ack and band also work for an Account pod added the same way.
 // button   holds the controller's pairing button: the server grants pairing or refuses it (another
 //          controller at the location is pairing); then "pair <MAC> on" plays the pod confirming.
+// progress plays the controller's ota_progress events (pod-protocol.md 5.4) for the firmware update
+//          in flight: <pct> for each pod it covers (the controller itself, one target pod, or all).
+//          Then ack finishes it.
 //
 // The script opens a broker connection of its own when the MQTT site settings allow, so the next
 // queued command goes out after an ack and open pages update by themselves. Without one, commands
@@ -54,6 +58,7 @@ function usage()
     console.log("  node scripts/fake-station.js ack <MAC> [--all] [--fail]");
     console.log("  node scripts/fake-station.js band <MAC> <band id> [--rssi -40]");
     console.log("  node scripts/fake-station.js button <MAC>");
+    console.log("  node scripts/fake-station.js progress <MAC> <pct>");
 }
 
 function normalize(mac)
@@ -273,6 +278,18 @@ async function ack(args)
     console.log(left.n + " still waiting. Queue: " + pageUrl(device) + "/commands");
 }
 
+async function progress(args)
+{
+    const { device, guid } = await findController(args[0], true);
+    const pct = Number(args[1]);
+    if (!Number.isFinite(pct)) { throw new Error("give the percent, 0 to 100"); }
+    const row = await knex(T("command_queue")).where({ device_id: device.id, cmd: "ota", status: "sent" }).orderBy("id").first();
+    if (!row) { console.log("No firmware update is in flight at " + device.name + ". Queue one first (Commands or Station tab), or ack the command ahead of it."); return; }
+    const macs = !row.target ? [device.hardware_id] : (row.target === "all" ? (await require("../services/stations").roster(device.id)).map((p) => p.hardware_id) : [row.target]);
+    for (const m of macs) { await send(guid, "event", { event: "ota_progress", mac: m, pct: pct }); }
+    console.log("Progress " + pct + "% for " + macs.join(", ") + ".");
+}
+
 // A broker connection for the queue and the page notices, with a client id of its own.
 async function openBroker()
 {
@@ -294,7 +311,7 @@ async function openBroker()
 async function main()
 {
     const [cmd, ...args] = process.argv.slice(2);
-    const run = { connect: connect, pair: pair, pods: pods, ack: ack, band: band, button: button }[cmd];
+    const run = { connect: connect, pair: pair, pods: pods, ack: ack, band: band, button: button, progress: progress }[cmd];
     if (!run) { usage(); process.exit(1); }
     await settings.reload();
     await require("../db/shadow").syncDeviceTypes();

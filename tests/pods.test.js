@@ -60,3 +60,17 @@ test("pairing values read as the config page writes them", () =>
     ["true", "1", "on", "yes", "TRUE"].forEach((v) => assert.equal(truthy(v), true, v));
     ["false", "0", "", null, undefined, "off"].forEach((v) => assert.equal(truthy(v), false, String(v)));
 });
+
+test("ota: every pod type names its firmware image, and the value goes out as an object", () =>
+{
+    assert.equal(types.get("controller_pod").firmwareImage, "volta-pod-ctl");
+    assert.equal(types.get("account_pod").firmwareImage, "volta-pod-ctl");
+    assert.equal(types.get("target_accel").firmwareImage, "volta-pod-target");
+    assert.equal(types.get("target_tof").firmwareImage, "volta-pod-target");
+    assert.deepEqual(require("../services/firmware").images().sort(), ["volta-pod-ctl", "volta-pod-target"]);
+    assert.equal(require("../services/firmware").filePath("../etc"), null);
+    const { message } = require("../services/commandQueue");
+    const m = JSON.parse(message({ cmd_id: "c1", cmd: "ota", target: "all", value: JSON.stringify({ url: "https://x/firmware/volta-pod-target/firmware.bin", md5: "0123456789abcdef0123456789abcdef" }) }));
+    assert.deepEqual(m, { id: "c1", cmd: "ota", to: "all", value: { url: "https://x/firmware/volta-pod-target/firmware.bin", md5: "0123456789abcdef0123456789abcdef" } });
+    assert.equal(JSON.parse(message({ cmd_id: "c2", cmd: "led", target: null, value: "FF0000" })).value, "FF0000");
+});

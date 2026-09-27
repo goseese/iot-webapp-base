@@ -5,7 +5,7 @@
 // it. Writes are never awaited: a slow database never delays a page.
 //
 // Mounted twice in app.js:
-//   early()  before /provision/v1 and /api/v1, which run ahead of the session; it handles only
+//   early()  before /provision/v1, /firmware and /api/v1, which run ahead of the session; it handles only
 //            those paths (channel device or api). Their actor is known at the end (the API key).
 //   web()    right after the session, before CSRF, for everything else, so the start row already
 //            has the signed in user and CSRF refusals are logged too. A login shows the user on
@@ -154,7 +154,7 @@ function early()
         if (!skipped(req))
         {
             if (req.path.startsWith("/api/")) { begin(req, res, "api"); }
-            else if (req.path.startsWith("/provision/")) { begin(req, res, "device"); }
+            else if (req.path.startsWith("/provision/") || req.path.startsWith("/firmware/")) { begin(req, res, "device"); }
         }
         next();
     };

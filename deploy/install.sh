@@ -27,6 +27,8 @@
 #   /opt/voltastc               code, owned by root (the app cannot change its own code)
 #   /opt/voltastc/.env          root:voltastc 0640
 #   /opt/voltastc/storage       report files, owned by voltastc
+#   /opt/voltastc/storage/firmware/{volta-pod-ctl,volta-pod-target}/firmware.bin
+#                               pod firmware, copied in by hand (services/firmware.js)
 #   /opt/voltastc/certs         RDS CA bundle
 #   /var/lib/voltastc           home of the voltastc system user; pm2 state and logs in .pm2
 #   /etc/voltastc/broker.env    broker passwords, root only
@@ -191,6 +193,7 @@ then
 fi
 as_app test -r "$APP_DIR/app.js" || die "the $APP_USER user cannot read $APP_DIR (clone with the default umask 022)"
 install -d -o "$APP_USER" -g "$APP_USER" -m 750 "$APP_DIR/storage"
+install -d -o "$APP_USER" -g "$APP_USER" -m 750 "$APP_DIR/storage/firmware" "$APP_DIR/storage/firmware/volta-pod-ctl" "$APP_DIR/storage/firmware/volta-pod-target"
 install -d -m 755 "$APP_DIR/certs"
 npm ci --omit=dev --no-fund --no-audit
 

@@ -44,6 +44,14 @@
     <a class="small ms-2" href="/devices/<%= uid %>/commands">Queue</a>
   </form>
   <% } %></div>
+  <div data-part="ota"><% if (st.canPair && st.pods.length) { %>
+  <form id="otaForm" method="post" action="/devices/<%= uid %>/station/ota" class="d-flex align-items-center flex-wrap gap-2 px-3 pt-2" onsubmit="return confirmOta(event)">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+    <span class="small text-secondary">Target pods ticked below:</span>
+    <button class="btn btn-sm btn-outline-primary" type="submit" <%= st.firmware ? "" : "disabled" %>>Update firmware</button>
+    <span class="small text-secondary"><% if (st.firmware) { %>On the server: <%= st.firmware.image %>, <%= (st.firmware.bytes / 1048576).toFixed(2) %> MB, copied <span data-epoch="<%= st.firmware.mtime_epoch %>"><%= fmt.ago(st.firmware.mtime_epoch, now) %></span>, MD5 <code><%= st.firmware.md5.slice(0, 8) %></code><% } else { %><span class="text-warning">There is no firmware file on the server for these pods yet.</span><% } %></span>
+  </form>
+  <% } %></div>
   <div data-part="note"><% if (st.buttonRefused && !st.pairing.on) { %>
   <div class="px-3 pt-2 small text-warning">The pairing button on this controller was pressed <span data-epoch="<%= st.buttonRefused.epoch %>"><%= fmt.ago(st.buttonRefused.epoch, now) %></span> and <%= st.buttonRefused.detail %>.</div>
   <% } %><% if (st.elsewhere && !st.wanted) { %>
@@ -51,18 +59,20 @@
   <% } %></div>
   <div class="table-responsive">
     <table class="table iot-table align-middle mb-0">
-      <thead><tr><th>Target pod</th><th>Type</th><th>Hardware id</th><th>Signal</th><th>Last heard</th></tr></thead>
+      <thead><tr><% if (st.canPair) { %><th data-export="skip" style="width: 2rem"><input class="form-check-input" type="checkbox" id="otaAll" aria-label="Tick every target pod"></th><% } %><th>Target pod</th><th>Type</th><th>Hardware id</th><th>Firmware</th><th>Signal</th><th>Last heard</th></tr></thead>
       <tbody data-part="pods">
       <% st.pods.forEach(function (p) { %>
         <tr>
+          <% if (st.canPair) { %><td><input class="form-check-input ota-pick" type="checkbox" name="pod" value="<%= fmt.uid(p.uid) %>" form="otaForm" aria-label="Tick <%= p.name %>"></td><% } %>
           <td><a href="/devices/<%= fmt.uid(p.uid) %>"><%= p.name %></a></td>
           <td class="small"><%= p.type_name %></td>
           <td class="small"><code><%= fmt.hardwareId(p.hardware_id) %></code></td>
+          <td class="small"><%= p.firmware || "" %><% if (p.ota) { %> <span class="iot-status iot-status--warning"><%= p.ota.status === "queued" ? "update queued" : (p.ota.pct !== null ? "updating " + p.ota.pct + "%" : "update sent") %></span><% } %></td>
           <td><% if (p.signal_pct !== null) { %><span title="<%= p.last_rssi %> dBm"><%= p.signal_pct %>%</span><% } %></td>
           <td class="text-secondary" data-live="device:<%= fmt.uid(p.uid) %>:ago" data-epoch="<%= p.last_seen_epoch || 0 %>"><%= fmt.ago(p.last_seen_epoch, now) %></td>
         </tr>
       <% }); %>
-      <% if (!st.pods.length) { %><tr><td colspan="5" class="text-secondary">No target pods yet. Turn on pairing, then hold the button on each target pod.</td></tr><% } %>
+      <% if (!st.pods.length) { %><tr><td colspan="<%= st.canPair ? 7 : 6 %>" class="text-secondary">No target pods yet. Turn on pairing, then hold the button on each target pod.</td></tr><% } %>
       </tbody>
     </table>
   </div>

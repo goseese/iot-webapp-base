@@ -23,6 +23,9 @@ const downlink = require("../mqtt/downlink");
 
 const LOCK_CLASS = 7305;        // pg_advisory_xact_lock(class, device id): one sender per pod
 const PENDING = ["queued", "sent"];
+// Commands whose value is stored as JSON text and sent as an object: set_config { key, value },
+// ota { url, md5 } (pod-protocol.md 5.4).
+const JSON_VALUES = ["set_config", "ota"];
 
 // Where a placement's commands go. { pod, guid, target, targetDeviceId } or { error } for the page.
 //   unit hardware (a controller or account pod): published to itself, no target
@@ -60,7 +63,7 @@ function message(row)
     if (row.target) { m.to = row.target; }
     if (row.value !== null && row.value !== undefined)
     {
-        m.value = row.cmd === "set_config" ? JSON.parse(row.value) : row.value;
+        m.value = JSON_VALUES.includes(row.cmd) ? JSON.parse(row.value) : row.value;
     }
     return JSON.stringify(m);
 }
@@ -183,6 +186,21 @@ async function onAck(pod, payload)
     return true;
 }
 
+// From ingest, {"event":"ota_progress","mac":..,"pct":N} on dev/{guid}/event: kept on the pod's ota
+// command in flight, per MAC, for the pages. The pod's own update may leave out mac. Returns false
+// when there is no ota in flight (a cancelled one, say); the caller only logs it.
+async function onProgress(pod, e)
+{
+    const mac = String(e.mac || pod.hardware_id || "").replace(/[^0-9a-fA-F]/g, "").toUpperCase();
+    const pct = Math.max(0, Math.min(100, Math.round(Number(e.pct))));
+    if (mac.length !== 12 || !Number.isFinite(pct)) { return false; }
+    const row = await knex(T("command_queue")).where({ device_id: pod.id, cmd: "ota", status: "sent" }).orderBy("id").first();
+    if (!row) { return false; }
+    await knex(T("command_queue")).where({ id: row.id }).update({ progress: knex.raw("COALESCE(progress, '{}'::jsonb) || jsonb_build_object(?::text, ?::int)", [mac, pct]) });
+    await notify(pod);
+    return true;
+}
+
 // A target pod's set_config ack confirms (or clears) the pending value on its Config tab.
 async function settleConfig(row, result, now)
 {
@@ -246,6 +264,8 @@ function list(where, limit)
 }
 
 function forPod(podId) { return list({ "q.device_id": podId }); }
+// A controller's ota commands still to be answered, for its Station tab.
+function pendingOta(podId) { return knex(T("command_queue")).where({ device_id: podId, cmd: "ota" }).whereIn("status", PENDING).orderBy("id"); }
 function forTarget(targetDeviceId) { return list({ "q.target_device_id": targetDeviceId }); }
 
-module.exports = { route, enqueue, pump, onConnect, onAck, cancel, cancelConfig, forPod, forTarget, message };
+module.exports = { route, enqueue, pump, onConnect, onAck, onProgress, cancel, cancelConfig, forPod, forTarget, pendingOta, message };

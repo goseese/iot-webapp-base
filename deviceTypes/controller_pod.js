@@ -12,6 +12,7 @@ module.exports =
     dedupMode: "none",
     minIntervalSecs: 0,
     models: ["vpod-ctl"],   // exact model string the firmware sends when provisioning
+    firmwareImage: "volta-pod-ctl",   // storage/firmware/volta-pod-ctl/firmware.bin (services/firmware.js)
     fields: [],
     statusMap: {},
     dataMap: Object.assign({ wifi_rssi: "wifi-rssi", wifi_channel: "wifi-channel" }, pod.dataMap),

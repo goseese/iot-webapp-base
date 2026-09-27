@@ -41,14 +41,17 @@ const bandRssiMin = { label: "Wristband minimum signal", kind: "int", min: -100,
 
 // Commands (pod-protocol.md section 5.4). Every pod type sets commandQueue: true, so these are
 // queued and acked rather than published straight to the pod. value "color" makes the Commands tab
-// offer the LED colors below.
+// offer the LED colors below; value "firmware" is filled in by the server.
 const commands =
 {
     led:         { label: "LED color", permission: "edit", confirm: false, value: "color", description: "Sets the whole LED grid to one color." },
     // No cooldownSecs (Jeff, Sep 2026): a person may press these as often as needed; each press is
     // queued and goes out when the pod has answered the one before.
     publish_now: { label: "Get data", permission: "view", confirm: false, description: "The pod sends its current readings." },
-    reboot:      { label: "Reboot", permission: "edit", confirm: true, description: "The pod restarts." }
+    reboot:      { label: "Reboot", permission: "edit", confirm: true, description: "The pod restarts." },
+    // value "firmware": the server fills in { url, md5 } from the type's firmwareImage file when the
+    // command is queued (services/firmware.js). Target pods get it through their controller.
+    ota:         { label: "Update firmware", permission: "edit", confirm: true, value: "firmware", description: "The pod installs the firmware file on the server and restarts." }
 };
 
 const LED_COLORS = [["FF0000", "Red"], ["00FF00", "Green"], ["0000FF", "Blue"], ["FFFF00", "Yellow"], ["FFFFFF", "White"], ["off", "Off"]];

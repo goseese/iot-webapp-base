@@ -79,6 +79,15 @@
 
 <% if (station && station.kind === "controller") { %>
 <script>
+async function confirmOta(e)
+{
+    e.preventDefault();
+    var n = document.querySelectorAll("#station .ota-pick:checked").length;
+    if (n === 0) { e.target.submit(); return false; }     // the server says what to do
+    if (await iotConfirm({ title: "Update firmware?", body: n + " target pod" + (n === 1 ? "" : "s") + " install the firmware file on the server and restart. The controller updates them one after another, which can take a few minutes, and its other commands wait until it is done.", confirmText: "Queue it", danger: true })) { e.target.submit(); }
+    return false;
+}
+
 // Live station panel: a "config" socket notice for this controller (pairing confirmed, a target pod
 // paired or moved) triggers one fetch of the panel, debounced like the Config tab.
 document.addEventListener("DOMContentLoaded", function ()
@@ -99,14 +108,33 @@ document.addEventListener("DOMContentLoaded", function ()
             next.innerHTML = await res.text();
             var parts = next.querySelectorAll("[data-part]");
             if (parts.length === 0) { return; }      // not the panel (e.g. the session expired and this is the login page)
+            // Ticked target pods stay ticked when the rows are swapped.
+            var ticked = Array.from(box.querySelectorAll(".ota-pick:checked")).map(function (c) { return c.value; });
             parts.forEach(function (p)
             {
                 var old = box.querySelector('[data-part="' + p.getAttribute("data-part") + '"]');
                 if (old && old.innerHTML !== p.innerHTML) { old.innerHTML = p.innerHTML; }
             });
+            box.querySelectorAll(".ota-pick").forEach(function (c) { c.checked = ticked.indexOf(c.value) >= 0; });
+            syncAll();
         }
         catch (err) { }
     }
+
+    // Tick every target pod, and keep that box in step with the rows.
+    function syncAll()
+    {
+        var all = document.getElementById("otaAll");
+        if (!all) { return; }
+        var picks = box.querySelectorAll(".ota-pick"), n = box.querySelectorAll(".ota-pick:checked").length;
+        all.checked = picks.length > 0 && n === picks.length;
+        all.indeterminate = n > 0 && n < picks.length;
+    }
+    box.addEventListener("change", function (e)
+    {
+        if (e.target.id === "otaAll") { box.querySelectorAll(".ota-pick").forEach(function (c) { c.checked = e.target.checked; }); }
+        syncAll();
+    });
 
     window.iotSocket.on("config", function (msg)
     {

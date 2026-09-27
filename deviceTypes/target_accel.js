@@ -13,6 +13,7 @@ module.exports =
     dedupMode: "counter",   // seq in the relayed frame
     minIntervalSecs: 0,
     models: ["vpod-acc"],
+    firmwareImage: "volta-pod-target",   // storage/firmware/volta-pod-target/firmware.bin (services/firmware.js)
     fields: [],
     dataMap: pod.dataMap,
     batteryChemistry: "li_ion",
