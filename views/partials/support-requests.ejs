@@ -1,0 +1,15 @@
+<%
+// A requester's own requests (Help page and the profile's Support tab). Labels are from the
+// requester's side: open means it is with support.
+var reqLabel = { open: ["Waiting on support", "warning"], waiting: ["Support replied", "online"], closed: ["Closed", "offline"] };
+%>
+<div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Subject</th><th>Status</th><th>Last update</th></tr></thead><tbody>
+<% mine.forEach(function (r) { var st = reqLabel[r.status] || [r.status, "offline"]; %>
+  <tr>
+    <td><a href="/support/<%= fmt.uid(r.uid) %>"><%= r.subject %></a></td>
+    <td><span class="iot-status iot-status--<%= st[1] %>"><%= st[0] %></span></td>
+    <td><span class="iot-hint" title="Opened <%= fmt.epoch(r.created_epoch, "UTC") %> UTC, last update <%= fmt.epoch(r.updated_epoch, "UTC") %> UTC"><%= fmt.ago(r.updated_epoch) %></span></td>
+  </tr>
+<% }); %>
+<% if (!mine.length) { %><tr><td colspan="3" class="text-secondary">No support requests yet.</td></tr><% } %>
+</tbody></table></div>

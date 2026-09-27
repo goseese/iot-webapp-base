@@ -13,6 +13,7 @@ router.use("/alarms", require("./alarms"));
 router.use("/analytics", require("./charts"));
 router.use("/reports", require("./reports"));
 router.use("/admin", require("./admin"));
+router.use("/", require("./support"));
 router.use("/", require("./home"));
 
 module.exports = router;

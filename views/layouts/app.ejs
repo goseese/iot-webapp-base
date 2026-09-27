@@ -30,6 +30,7 @@
       <% section.items.forEach(function (item) { %>
       <a class="iot-nav-link<%= nav.top && nav.top.path === item.path ? " active" : "" %>" href="<%= item.path %>">
         <i class="fa-solid <%= item.icon %>"></i><span><%= item.label %></span>
+        <% if (item.badge === "support" && typeof supportOpenCount !== "undefined" && supportOpenCount > 0) { %><span class="badge rounded-pill text-bg-warning iot-nav-badge" title="Support requests that need an answer"><%= supportOpenCount %></span><% } %>
         <% if (item.badge === "alarms") { %><span class="badge rounded-pill text-bg-danger iot-nav-badge d-none" data-live-alarm-count data-location="<%= section.location ? fmt.uid(section.location.uid) : "" %>">0</span><% } %>
       </a>
       <% }); %>

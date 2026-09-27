@@ -83,7 +83,19 @@ function manageItems(user, account)
     return items;
 }
 
-const SUPPORT = [{ label: "Help", path: "/help", icon: "fa-circle-question" }];
+// Help for everyone; a requester's own conversations (/support/<uid>) light up Help. Superadmins
+// also get the request list, with a badge counting requests that need an answer.
+function supportItems(user)
+{
+    if (user && user.is_superadmin)
+    {
+        return [
+            { label: "Help", path: "/help", icon: "fa-circle-question", exact: true },
+            { label: "Support requests", path: "/support", icon: "fa-life-ring", badge: "support" }
+        ];
+    }
+    return [{ label: "Help", path: "/help", alt: "/support", icon: "fa-circle-question" }];
+}
 
 function matches(node, path)
 {
@@ -115,7 +127,7 @@ function resolve(path, user, currentLocation, account)
     [
         { section: "Monitor", scoped: true, location: currentLocation || null, items: monitor },
         { section: "Manage", items: manageItems(user, account || null) },
-        { section: "Support", items: SUPPORT }
+        { section: "Support", items: supportItems(user) }
     ].filter((s) => !s.scoped || s.items.length > 0);
     const items = sections.flatMap((s) => s.items);
     const trail = findTrail(items, path) || [];

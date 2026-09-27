@@ -29,15 +29,19 @@ function fromAddress()
     return settings.get("MAIL_FROM_ADDRESS", "") || env.mail.resetFrom || env.mail.supportFrom || "no-reply@localhost";
 }
 
-// msg: { to, subject, text, html?, kind, recipientType, recipientId?, from?, alarmEventId?, ladderNote? }
+// msg: { to, subject, text, html?, kind, recipientType, recipientId?, from?, replyTo?, alarmEventId?, ladderNote? }
+// to is one address or a list; a list goes out as one message with every address in To (support
+// mail, so the team can reply all). replyTo is an optional address or list.
 async function send(msg)
 {
     const driver = active();
+    const to = [].concat(msg.to || []).map((a) => String(a).trim()).filter((a) => a.length > 0);
+    const replyTo = [].concat(msg.replyTo || []).map((a) => String(a).trim()).filter((a) => a.length > 0);
     const notConfigured = driver.name === "none" && chosen().name !== "none";
     const id = await notifications.insert(
     {
         kind: msg.kind, channel: "email", recipient_type: msg.recipientType || "address", recipient_id: msg.recipientId || null,
-        address: msg.to, alarm_event_id: msg.alarmEventId || null, ladder_note: msg.ladderNote || null,
+        address: to.join(", ").slice(0, 254), alarm_event_id: msg.alarmEventId || null, ladder_note: msg.ladderNote || null,
         outcome: "failed", reason: "not attempted", provider: driver.name, subject: (msg.subject || "").slice(0, 200)
     });
     if (notConfigured)
@@ -47,7 +51,7 @@ async function send(msg)
     }
     try
     {
-        const result = await driver.send({ to: msg.to, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.siteName(), subject: msg.subject, text: msg.text, html: msg.html || null });
+        const result = await driver.send({ to: to, replyTo: replyTo, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.siteName(), subject: msg.subject, text: msg.text, html: msg.html || null });
         await notifications.update(id, { outcome: "sent", reason: null, provider_message_id: result.messageId });
         return { ok: true, notificationId: id };
     }
@@ -55,7 +59,7 @@ async function send(msg)
     {
         // AWS SDK errors carry the SES error code in err.name (MessageRejected, AccessDeniedException, ...).
         const reason = ((err.name && err.name !== "Error" ? err.name + ": " : "") + (err.message || "send failed")).slice(0, 190);
-        logger.error({ err: err.message, to: msg.to, driver: driver.name }, "mail send failed");
+        logger.error({ err: err.message, to: to, driver: driver.name }, "mail send failed");
         await notifications.update(id, { outcome: "failed", reason: reason });
         return { ok: false, notificationId: id, reason: reason };
     }

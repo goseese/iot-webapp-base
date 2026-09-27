@@ -34,6 +34,7 @@ const DEFAULTS =
     { key: "MAIL_DRIVER", value: "none", kind: "string", group: "email", description: "Outbound mail driver." },
     { key: "MAIL_FROM_ADDRESS", value: null, kind: "string", group: "email", description: "From address for every email the platform sends. Must be a verified sender at the provider." },
     { key: "MAIL_FROM_NAME", value: null, kind: "string", group: "email", description: "From name; blank uses the site name." },
+    { key: "SUPPORT_EMAILS", value: null, kind: "string", group: "email", description: "Addresses that get every new support request and requester reply, comma separated. All are in To on one message, and Reply-To is this list, so the team can reply all to each other; the requester is only answered on the site." },
     { key: "SMS_DRIVER", value: "none", kind: "string", group: "sms", description: "Outbound SMS driver." },
 
         { key: "MQTT_HOST", value: null, kind: "string", group: "mqtt", description: "Applies within 15 seconds." },

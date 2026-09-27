@@ -10,7 +10,7 @@ module.exports =
     async send(msg)
     {
         // Full text goes to the log so reset, invite and alarm links are usable in dev.
-        logger.warn({ to: msg.to, subject: msg.subject, text: msg.text }, "mail driver 'none': not sent");
+        logger.warn({ to: msg.to, replyTo: msg.replyTo && msg.replyTo.length ? msg.replyTo : undefined, subject: msg.subject, text: msg.text }, "mail driver 'none': not sent");
         return { ok: true, messageId: null };
     }
 };

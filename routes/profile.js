@@ -15,6 +15,12 @@ router.use(requireLogin);
 
 const TRAIL = [{ label: "Profile", path: "/profile", isCurrent: true }];
 
+// Profile tabs: your details, and your support requests (DECISIONS.md "Support requests").
+function tabs(current)
+{
+    return [["Details", "/profile"], ["Support", "/profile/support"]].map((t) => ({ label: t[0], path: t[1], active: t[1] === current }));
+}
+
 function usernameCooldownEnds(user)
 {
     const days = settings.get("USERNAME_CHANGE_DAYS", 30);
@@ -26,7 +32,7 @@ router.get("/", (req, res) =>
 {
     res.render("profile/index",
     {
-        title: "Profile", navTrail: TRAIL, values: req.user, errors: {},
+        title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: req.user, errors: {},
         usernameLockedUntil: usernameCooldownEnds(req.user), policy: passwords.describe()
     });
 });
@@ -60,7 +66,7 @@ router.post("/",
             }
             if (Object.keys(errors).length > 0)
             {
-                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe() });
+                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe() });
             }
 
             const patch =
@@ -91,6 +97,16 @@ router.post("/",
         }
         catch (err) { next(err); }
     });
+
+router.get("/support", async (req, res, next) =>
+{
+    try
+    {
+        const mine = await require("../services/support").listForUser(req.user.id);
+        res.render("profile/support", { title: "Profile", navTrail: TRAIL.concat([{ label: "Support", path: "/profile/support", isCurrent: true }]), navSub: tabs("/profile/support"), mine: mine });
+    }
+    catch (err) { next(err); }
+});
 
 router.get("/password", (req, res) =>
 {

@@ -143,6 +143,17 @@ async function startWeb()
     app.use(auth.loadUser);
     app.use(auth.mustSetPassword);
     app.use(require("./middleware/account").currentAccount);
+    // The superadmin's Support requests badge: one indexed count per page, no polling.
+    app.use(async (req, res, next) =>
+    {
+        res.locals.supportOpenCount = 0;
+        if (req.user && req.user.is_superadmin)
+        {
+            try { res.locals.supportOpenCount = await require("./services/support").countOpen(); }
+            catch (err) { /* the badge is not worth failing a page for */ }
+        }
+        next();
+    });
     app.use((req, res, next) =>
     {
         // Resolved at render time, after the route has said which location (if any) the page is in.

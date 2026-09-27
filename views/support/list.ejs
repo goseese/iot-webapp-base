@@ -1,0 +1,20 @@
+<%
+// Superadmin view. Labels are from support's side: open means it needs an answer.
+var label = { open: ["Needs answer", "alarm"], waiting: ["Waiting on requester", "warning"], closed: ["Closed", "offline"] };
+%>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Subject</th><th>Requester</th><th>Account</th><th>Status</th><th>Last update</th><th>Opened</th></tr></thead><tbody>
+  <% rows.forEach(function (r) { var st = label[r.status] || [r.status, "offline"]; %>
+    <tr>
+      <td><a href="/support/<%= fmt.uid(r.uid) %>"><%= r.subject %></a></td>
+      <td><%= r.display_name || r.username %> <span class="text-secondary small"><%= r.email %></span></td>
+      <td><%= r.account_name || "" %></td>
+      <td><span class="iot-status iot-status--<%= st[1] %>"><%= st[0] %></span></td>
+      <td><span class="iot-hint" title="<%= fmt.epoch(r.updated_epoch, "UTC") %> UTC"><%= fmt.ago(r.updated_epoch) %></span></td>
+      <td><%= fmt.epoch(r.created_epoch, "UTC") %> UTC</td>
+    </tr>
+  <% }); %>
+  <% if (!rows.length) { %><tr><td colspan="6" class="text-secondary">Nothing here.</td></tr><% } %>
+  </tbody></table></div>
+</div>
+<p class="small text-secondary mt-2">New requests and requester replies are emailed to the Support emails setting (Admin, Site settings, Email). Answers are always written here.</p>

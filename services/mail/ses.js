@@ -48,7 +48,8 @@ module.exports =
         const res = await client.send(new SendEmailCommand(
         {
             FromEmailAddress: fromHeader(msg.from, msg.fromName),
-            Destination: { ToAddresses: [msg.to] },
+            Destination: { ToAddresses: [].concat(msg.to) },
+            ReplyToAddresses: msg.replyTo && msg.replyTo.length ? [].concat(msg.replyTo) : undefined,
             Content: { Simple: { Subject: { Data: msg.subject || "", Charset: "UTF-8" }, Body: body } }
         }));
         return { ok: true, messageId: res.MessageId || null };

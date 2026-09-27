@@ -1,0 +1,69 @@
+<%
+var supportLabel = { open: ["Needs answer", "alarm"], waiting: ["Waiting on requester", "warning"], closed: ["Closed", "offline"] };
+var requesterLabel = { open: ["Waiting on support", "warning"], waiting: ["Support replied", "online"], closed: ["Closed", "offline"] };
+var st = (currentUser.is_superadmin ? supportLabel : requesterLabel)[request.status] || [request.status, "offline"];
+%>
+<div class="row g-3">
+  <div class="col-12 col-xl-8">
+    <% messages.forEach(function (m) { %>
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header d-flex justify-content-between align-items-center">
+        <span><strong><%= m.display_name || m.username %></strong><% if (m.from_support) { %> <span class="badge text-bg-success ms-1"><%= siteName %> support</span><% } %></span>
+        <span class="small text-secondary sup-time" data-epoch="<%= m.epoch %>"><%= fmt.epoch(m.epoch, "UTC") %> UTC</span>
+      </div>
+      <div class="iot-panel__body" style="white-space: pre-wrap; overflow-wrap: anywhere;"><%= m.body %></div>
+    </div>
+    <% }); %>
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong><%= asSupport ? "Reply to the requester" : "Reply to support" %></strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/support/<%= fmt.uid(request.uid) %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="action" value="reply">
+          <textarea class="form-control mb-2" name="body" rows="6" maxlength="<%= max %>" required></textarea>
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="small text-secondary"><%= asSupport ? "The requester gets an email with this reply and a link back here." : (request.status === "closed" ? "Replying reopens this request." : "The support team gets an email with this reply.") %></span>
+            <button class="btn btn-primary">Send reply</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-12 col-xl-4">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Request</strong></div>
+      <div class="iot-panel__body small">
+        <div class="mb-2"><span class="iot-status iot-status--<%= st[1] %>"><%= st[0] %></span></div>
+        <div class="mb-1"><span class="text-secondary">Opened</span> <span class="sup-time" data-epoch="<%= request.created_epoch %>"><%= fmt.epoch(request.created_epoch, "UTC") %> UTC</span></div>
+        <% if (request.closed_epoch) { %><div class="mb-1"><span class="text-secondary">Closed</span> <span class="sup-time" data-epoch="<%= request.closed_epoch %>"><%= fmt.epoch(request.closed_epoch, "UTC") %> UTC</span></div><% } %>
+        <% if (currentUser.is_superadmin) { %>
+        <hr>
+        <div class="mb-1"><span class="text-secondary">Requester</span> <%= requester.display_name || requester.username %></div>
+        <div class="mb-1"><span class="text-secondary">Email</span> <%= requester.email %></div>
+        <div class="mb-1"><span class="text-secondary">Username</span> <%= requester.username %></div>
+        <div class="mb-3"><span class="text-secondary">Account</span> <% if (account) { %><a href="/account/<%= fmt.uid(account.uid) %>"><%= account.name %></a><% } else { %>not about a specific account<% } %></div>
+        <form method="post" action="/support/<%= fmt.uid(request.uid) %>">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <% if (request.status === "closed") { %>
+          <button class="btn btn-sm btn-outline-secondary" name="action" value="reopen">Reopen</button>
+          <% } else { %>
+          <button class="btn btn-sm btn-outline-secondary" name="action" value="close">Close request</button>
+          <% } %>
+        </form>
+        <% } else if (account) { %>
+        <div class="mb-1"><span class="text-secondary">Account</span> <%= account.name %></div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    // Browser local times.
+    document.querySelectorAll(".sup-time").forEach(function (el)
+    {
+        el.textContent = new Date(Number(el.dataset.epoch) * 1000).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    });
+});
+</script>
