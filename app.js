@@ -87,6 +87,8 @@ async function startWeb()
     app.set("views", path.join(__dirname, "views"));
     app.set("layout", "layouts/app");
     app.use(expressLayouts);
+    // The Help modal on every page (views/partials/help-modal.ejs) uses the support form's limits.
+    app.locals.supportMax = { subject: require("./services/support").MAX_SUBJECT, body: require("./services/support").MAX_BODY };
 
     app.use(helmet({ contentSecurityPolicy: false }));   // inline page scripts and echarts; CSP tightened later
     app.use(express.static(path.join(__dirname, "public"), { maxAge: env.isProd ? "7d" : 0 }));

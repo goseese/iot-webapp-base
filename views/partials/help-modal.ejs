@@ -1,0 +1,118 @@
+<%# Help modal (routes/support.js POST /help), on every signed in page; the Help nav link opens it
+    (nav/menu.js modal). It sends the page it was opened on (path and a readable title from the
+    breadcrumb, page title and active tab) and posts in the background, so the page underneath stays
+    as it was. The /help page keeps the requests list and works without JavaScript. %>
+<% var helpAccounts = typeof accounts !== "undefined" && accounts ? accounts : []; var helpCurrent = typeof account !== "undefined" && account ? account.id : null; %>
+<div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form id="helpForm" method="post" action="/help">
+        <input type="hidden" name="_csrf" value="<%= typeof csrfToken !== "undefined" ? csrfToken : "" %>">
+        <input type="hidden" name="page_url" value="">
+        <input type="hidden" name="page_title" value="">
+        <div class="modal-header">
+          <h5 class="modal-title" id="helpModalTitle">Ask for help</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" data-help="form">
+          <p class="text-secondary small mb-2">Describe what you need and the <%= siteName %> team will answer. You will get an email when they reply.</p>
+          <div class="small mb-3"><span class="text-secondary">About this page:</span> <span data-help="page"></span></div>
+          <div class="alert alert-danger py-2 d-none" data-help="error"></div>
+          <div class="mb-3">
+            <label class="form-label" for="helpSubject">Subject</label>
+            <input class="form-control" id="helpSubject" name="subject" maxlength="<%= supportMax.subject %>" required>
+          </div>
+          <% if (helpAccounts.length > 1) { %>
+          <div class="mb-3">
+            <label class="form-label" for="helpAccount">Account</label>
+            <select class="form-select" id="helpAccount" name="account_id">
+              <option value="">Not about a specific account</option>
+              <% helpAccounts.forEach(function (a) { %><option value="<%= a.id %>" <%= helpCurrent === a.id ? "selected" : "" %>><%= a.name %></option><% }); %>
+            </select>
+          </div>
+          <% } %>
+          <div class="mb-1">
+            <label class="form-label" for="helpBody">Message</label>
+            <textarea class="form-control" id="helpBody" name="body" rows="6" maxlength="<%= supportMax.body %>" required></textarea>
+          </div>
+        </div>
+        <div class="modal-body d-none" data-help="done">
+          <p class="mb-2"><strong>Your request was sent.</strong></p>
+          <p class="text-secondary mb-0">You will get an email when support replies. <a href="#" data-help="link">View your request</a></p>
+        </div>
+        <div class="modal-footer">
+          <a class="me-auto small" href="/help">Your requests</a>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-help="cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary" data-help="send">Send request</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var modal = document.getElementById("helpModal");
+    var form = document.getElementById("helpForm");
+    if (!modal || !form) { return; }
+    var part = function (name) { return form.querySelector('[data-help="' + name + '"]'); };
+
+    // A readable name for the page: the breadcrumb (or the page title), then the active tab.
+    function pageTitle()
+    {
+        var crumbs = Array.from(document.querySelectorAll(".iot-breadcrumb a, .iot-breadcrumb span:not(.mx-2)")).map(function (el) { return el.textContent.trim(); }).filter(Boolean);
+        var h1 = document.querySelector(".iot-page-title");
+        var name = crumbs.length ? crumbs.join(" / ") : (h1 ? h1.textContent.trim() : document.title);
+        var tab = document.querySelector(".iot-subnav-link.active");
+        return name + (tab ? ", " + tab.textContent.trim() : "");
+    }
+
+    modal.addEventListener("show.bs.modal", function ()
+    {
+        var sent = !part("done").classList.contains("d-none");
+        if (sent) { form.reset(); }
+        part("form").classList.remove("d-none");
+        part("done").classList.add("d-none");
+        part("error").classList.add("d-none");
+        part("send").classList.remove("d-none");
+        part("send").disabled = false;
+        part("cancel").textContent = "Cancel";
+        form.elements.page_url.value = window.location.pathname + window.location.search;
+        form.elements.page_title.value = pageTitle();
+        part("page").textContent = form.elements.page_title.value;
+    });
+    modal.addEventListener("shown.bs.modal", function () { document.getElementById("helpSubject").focus(); });
+
+    form.addEventListener("submit", async function (e)
+    {
+        e.preventDefault();
+        var send = part("send");
+        send.disabled = true;
+        part("error").classList.add("d-none");
+        try
+        {
+            var res = await fetch("/help", { method: "POST", credentials: "same-origin", headers: { "Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(new FormData(form)) });
+            var data = null;
+            try { data = await res.json(); }
+            catch (err) { }
+            if (res.ok && data && data.ok)
+            {
+                part("link").setAttribute("href", data.url);
+                part("form").classList.add("d-none");
+                part("done").classList.remove("d-none");
+                send.classList.add("d-none");
+                part("cancel").textContent = "Close";
+                return;
+            }
+            part("error").textContent = data && data.message ? data.message : (res.status === 403 ? "The form has expired. Reload the page and try again." : "The request could not be sent (" + res.status + "). Try again.");
+            part("error").classList.remove("d-none");
+        }
+        catch (err)
+        {
+            part("error").textContent = "The request could not be sent: " + err.message;
+            part("error").classList.remove("d-none");
+        }
+        send.disabled = false;
+    });
+});
+</script>

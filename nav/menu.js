@@ -86,18 +86,20 @@ function manageItems(user, account)
     return items;
 }
 
-// Help for everyone; a requester's own conversations (/support/<uid>) light up Help. Superadmins
+// Help for everyone; a requester's own conversations (/support/<uid>) light up Help. Help opens the
+// Help modal on the page the user is on (views/partials/help-modal.ejs); /help stays the page with
+// their requests, and the form without JavaScript. Superadmins
 // also get the request list, with a badge counting requests that need an answer.
 function supportItems(user)
 {
     if (user && user.is_superadmin)
     {
         return [
-            { label: "Help", path: "/help", icon: "fa-circle-question", exact: true },
+            { label: "Help", path: "/help", icon: "fa-circle-question", exact: true, modal: "helpModal" },
             { label: "Support requests", path: "/support", icon: "fa-life-ring", badge: "support" }
         ];
     }
-    return [{ label: "Help", path: "/help", alt: "/support", icon: "fa-circle-question" }];
+    return [{ label: "Help", path: "/help", alt: "/support", icon: "fa-circle-question", modal: "helpModal" }];
 }
 
 function matches(node, path)

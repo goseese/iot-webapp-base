@@ -35,6 +35,7 @@ var st = (currentUser.is_superadmin ? supportLabel : requesterLabel)[request.sta
       <div class="iot-panel__body small">
         <div class="mb-2"><span class="iot-status iot-status--<%= st[1] %>"><%= st[0] %></span></div>
         <div class="mb-1"><span class="text-secondary">Opened</span> <span class="sup-time" data-epoch="<%= request.created_epoch %>"><%= fmt.epoch(request.created_epoch, "UTC") %> UTC</span></div>
+        <% if (request.page_url) { %><div class="mb-1"><span class="text-secondary">Sent from</span> <a href="<%= request.page_url %>"><%= request.page_title || request.page_url %></a></div><% } %>
         <% if (request.closed_epoch) { %><div class="mb-1"><span class="text-secondary">Closed</span> <span class="sup-time" data-epoch="<%= request.closed_epoch %>"><%= fmt.epoch(request.closed_epoch, "UTC") %> UTC</span></div><% } %>
         <% if (currentUser.is_superadmin) { %>
         <hr>

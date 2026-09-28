@@ -10,7 +10,7 @@
         <% if (!f) { %>
         <div class="alert alert-secondary py-2">No file yet. Pods of these types cannot be updated until one is uploaded.</div>
         <% } else { %>
-        <table class="table table-sm iot-table mb-3">
+        <table class="table table-sm iot-table mb-3" data-tools="none">
           <tbody>
             <tr><th class="text-secondary fw-normal" style="width: 9rem">Version</th><td><% if (f.version) { %><strong><%= f.version %></strong><% } else { %><span class="text-warning">unknown: copied in by hand, not uploaded here</span><% } %></td></tr>
             <% if (f.built) { %><tr><th class="text-secondary fw-normal">Built</th><td><%= f.built %></td></tr><% } %>

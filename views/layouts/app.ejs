@@ -28,7 +28,7 @@
         </a>
       <% } %>
       <% section.items.forEach(function (item) { %>
-      <a class="iot-nav-link<%= nav.top && nav.top.path === item.path ? " active" : "" %>" href="<%= item.path %>">
+      <a class="iot-nav-link<%= nav.top && nav.top.path === item.path ? " active" : "" %>" href="<%= item.path %>"<% if (item.modal) { %> data-bs-toggle="modal" data-bs-target="#<%= item.modal %>"<% } %>>
         <i class="fa-solid <%= item.icon %>"></i><span><%= item.label %></span>
         <% if (item.badge === "support" && typeof supportOpenCount !== "undefined" && supportOpenCount > 0) { %><span class="badge rounded-pill text-bg-warning iot-nav-badge" title="Support requests that need an answer"><%= supportOpenCount %></span><% } %>
         <% if (item.badge === "alarms") { %><span class="badge rounded-pill text-bg-danger iot-nav-badge d-none" data-live-alarm-count data-location="<%= section.location ? fmt.uid(section.location.uid) : "" %>">0</span><% } %>
@@ -99,6 +99,7 @@
   </main>
 </div>
 
+<% if (currentUser) { %><%- include("../partials/help-modal") %><% } %>
 <script src="/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js"></script>
 <script src="/vendor/echarts-6.1.0/echarts.min.js"></script>
 <script src="/vendor/simple-datatables-10.3.0/simple-datatables.js"></script>

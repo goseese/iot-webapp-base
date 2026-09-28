@@ -47,13 +47,18 @@ router.post("/help", async (req, res, next) =>
             const a = accounts.find((x) => x.id === Number(req.body.account_id));
             accountId = a ? a.id : null;
         }
-        const r = await support.create(req.user, { subject: req.body.subject, body: req.body.body, accountId: accountId });
+        // The Help modal (views/partials/help-modal.ejs) posts in the background and adds the page it
+        // was opened on; it gets JSON and stays on that page. The /help page form works as before.
+        const wantsJson = (req.get("accept") || "").includes("application/json");
+        const r = await support.create(req.user, { subject: req.body.subject, body: req.body.body, accountId: accountId, pageUrl: req.body.page_url, pageTitle: req.body.page_title });
         if (r.error)
         {
+            if (wantsJson) { return res.status(422).json({ ok: false, message: r.error }); }
             res.status(422);
             return helpPage(req, res, req.body, r.error);
         }
         await activity.log(req, "support_request_created", { entity_type: "support", entity_uid: r.request.uid, detail: r.request.subject });
+        if (wantsJson) { return res.json({ ok: true, url: "/support/" + String(r.request.uid).toLowerCase() }); }
         req.flash("success", "Your request was sent. You will get an email when support replies, and you can follow it here or on your profile's Support tab.");
         res.redirect("/support/" + String(r.request.uid).toLowerCase());
     }

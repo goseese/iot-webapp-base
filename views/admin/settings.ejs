@@ -49,14 +49,14 @@ function row(s)
       <div class="col-md-7 small text-secondary">Set the driver, save, then fill in that driver's credentials below and send yourself a test. Results, including failures with the provider's reason, are on the alarm notifications log.</div>
     </div>
   </div>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
     <% ["MAIL_FROM_ADDRESS", "MAIL_FROM_NAME"].forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
   </tbody></table></div>
 </div>
 <% mailDrivers.filter(function (d) { return d.keys.length; }).forEach(function (d) { %>
 <div class="iot-panel mb-3 <%= d.name === mailChosen ? "" : "opacity-75" %>">
   <div class="iot-panel__header"><strong><%= d.label %></strong> <span class="iot-status iot-status--<%= d.configured ? "online" : "offline" %> ms-2"><%= d.configured ? "configured" : "not configured" %></span></div>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><tbody>
     <% d.keys.forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
   </tbody></table></div>
 </div>
@@ -83,7 +83,7 @@ function row(s)
 <% smsDrivers.filter(function (d) { return d.keys.length; }).forEach(function (d) { %>
 <div class="iot-panel mb-3 <%= d.name === smsChosen ? "" : "opacity-75" %>">
   <div class="iot-panel__header"><strong><%= d.label %></strong> <span class="iot-status iot-status--<%= d.configured ? "online" : "offline" %> ms-2"><%= d.configured ? "configured" : "not configured" %></span></div>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><tbody>
     <% d.keys.forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
   </tbody></table></div>
 </div>
@@ -93,7 +93,7 @@ function row(s)
 <% if (rows.length) { %>
 <div class="iot-panel">
   <% if (group === "email") { %><div class="iot-panel__header"><strong>Support requests</strong></div><% } %>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
   <% rows.forEach(function (s) { row(s); }); %>
   </tbody></table></div>
 </div>

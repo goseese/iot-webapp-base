@@ -1,9 +1,13 @@
 /* Table tools for every .iot-table: a small "download" control (CSV / JSON) in the panel header,
    and a right click menu that copies the selected rows (drag-select across rows, or none = all)
    as CSV or JSON. Works from the rendered cells, so values are in display units. When a table
-   is run by simple-datatables, export covers every row, not just the visible page. */
+   is run by simple-datatables, export covers every row, not just the visible page.
+   A table marked data-tools="none" gets neither: tables that are forms (site settings) or a
+   short list of facts, where a download has nothing useful to carry. A single column that is
+   a form or controls is left out with data-export="skip" on its header cell. */
 (function ()
 {
+    function toolsOff(table) { return table.dataset.tools === "none"; }
     function cellText(cell) { return (cell.innerText || cell.textContent || "").replace(/\s+/g, " ").trim(); }
 
     // Columns to export: skip selection and action columns (blank header, a control in the
@@ -150,7 +154,7 @@
     document.addEventListener("contextmenu", function (e)
     {
         var table = e.target.closest("table.iot-table");
-        if (!table || e.target.closest("input, textarea, select, a, button")) { return; }
+        if (!table || toolsOff(table) || e.target.closest("input, textarea, select, a, button")) { return; }
         e.preventDefault();
         var m = getMenu();
         var rows = selectedRows(table);
@@ -175,6 +179,6 @@
 
     document.addEventListener("DOMContentLoaded", function ()
     {
-        document.querySelectorAll("table.iot-table").forEach(function (t) { if (t.tHead && t.tHead.rows.length) { addDownload(t); } });
+        document.querySelectorAll("table.iot-table").forEach(function (t) { if (t.tHead && t.tHead.rows.length && !toolsOff(t)) { addDownload(t); } });
     });
 })();

@@ -29,6 +29,12 @@ function linkFor(request)
     return new URL("/support/" + String(request.uid).toLowerCase(), env.appUrl).toString();
 }
 
+// The full link to the page a request was sent from (page_url is a local path, services/support cleanPage).
+function pageLink(request)
+{
+    return request.page_url ? new URL(request.page_url, env.appUrl).toString() : null;
+}
+
 function nameOf(user)
 {
     return user.display_name || user.username;
@@ -114,6 +120,7 @@ async function notifyTeam(request, author, body, isNew)
         isNew ? "New support request from " + who : who + " replied to a support request",
         "Subject: " + request.subject,
         "Account: " + (account ? account.name : "not about a specific account"),
+    ].concat(isNew && request.page_url ? ["Sent from: " + (request.page_title || request.page_url), pageLink(request)] : []).concat([
         "",
         body,
         "",
@@ -121,7 +128,7 @@ async function notifyTeam(request, author, body, isNew)
         linkFor(request),
         "",
         "This request is answered only on the site. Replying to this email reaches the support team, not the requester."
-    ].join("\n");
+    ]).join("\n");
     await mail.send({ kind: "support", to: to, replyTo: to, recipientType: "address", subject: "[" + site + " support] " + (isNew ? "" : "Re: ") + request.subject, text: text });
 }
 
@@ -145,7 +152,16 @@ async function notifyRequester(request, body)
     await mail.send({ kind: "support", to: requester.email, recipientType: "user", recipientId: requester.id, subject: "[" + site + " support] Re: " + request.subject, text: text });
 }
 
-// fields: { subject, body, accountId }. Returns { error } or { request }.
+// The page a request was sent from (the Help modal): a path on this site, or null. Anything that is
+// not a plain local path ("//host", a scheme, backslashes, spaces) is dropped.
+function cleanPage(url, title)
+{
+    const u = String(url || "").trim();
+    const ok = u.length <= 500 && /^\/(?![\/\\])[^\s\\]*$/.test(u);
+    return { url: ok ? u : null, title: ok ? (String(title || "").replace(/\s+/g, " ").trim().slice(0, 200) || null) : null };
+}
+
+// fields: { subject, body, accountId, pageUrl?, pageTitle? }. Returns { error } or { request }.
 async function create(user, fields)
 {
     const subject = clean(fields.subject, MAX_SUBJECT).replace(/\s+/g, " ");
@@ -153,12 +169,15 @@ async function create(user, fields)
     if (!subject) { return { error: "Give the request a subject." }; }
     if (!body) { return { error: "Describe what you need help with." }; }
     const now = nowEpoch();
+    const page = cleanPage(fields.pageUrl, fields.pageTitle);
     const request = await knex.transaction(async (trx) =>
     {
         const rows = await trx(T("support_requests")).insert(
         {
             user_id: user.id,
             account_id: fields.accountId || null,
+            page_url: page.url,
+            page_title: page.title,
             subject: subject,
             status: "open",
             created_epoch: now,
@@ -201,4 +220,4 @@ async function setStatus(request, action)
     await knex(T("support_requests")).where({ id: request.id }).update(patch);
 }
 
-module.exports = { supportAddresses, linkFor, canSee, isSupportReply, byUid, messages, context, listForUser, listAll, countOpen, create, reply, setStatus, MAX_SUBJECT, MAX_BODY };
+module.exports = { supportAddresses, linkFor, pageLink, cleanPage, canSee, isSupportReply, byUid, messages, context, listForUser, listAll, countOpen, create, reply, setStatus, MAX_SUBJECT, MAX_BODY };
