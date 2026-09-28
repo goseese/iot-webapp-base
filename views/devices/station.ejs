@@ -30,28 +30,14 @@
     </form>
     <% } %></span>
   </div>
-  <div data-part="all"><% if (st.canPair && st.pods.length) { %>
-  <form method="post" action="/devices/<%= uid %>/commands" class="d-flex align-items-center gap-2 px-3 pt-3">
+  <% if (st.canPair && st.pods.length) { %>
+  <%# The bulk action controls live in the table footer and post through this form: the tick
+      boxes, the color select and both submit buttons carry form="otaForm". The footer stays
+      hidden until at least one target pod is ticked (syncAll in show.ejs). %>
+  <form id="otaForm" method="post" action="/devices/<%= uid %>/station/ota" onsubmit="return confirmOta(event)">
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <input type="hidden" name="command" value="led">
-    <input type="hidden" name="to" value="all">
-    <input type="hidden" name="from" value="station">
-    <span class="small text-secondary">Every target pod's LEDs:</span>
-    <select class="form-select form-select-sm w-auto" name="value" aria-label="Color">
-      <% st.colors.forEach(function (col) { %><option value="<%= col[0] %>"><%= col[1] %></option><% }); %>
-    </select>
-    <button class="btn btn-sm btn-outline-primary" type="submit">Send</button>
-    <a class="small ms-2" href="/devices/<%= uid %>/commands">Queue</a>
   </form>
-  <% } %></div>
-  <div data-part="ota"><% if (st.canPair && st.pods.length) { %>
-  <form id="otaForm" method="post" action="/devices/<%= uid %>/station/ota" class="d-flex align-items-center flex-wrap gap-2 px-3 pt-2" onsubmit="return confirmOta(event)">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <span class="small text-secondary">Target pods ticked below:</span>
-    <button class="btn btn-sm btn-outline-primary" type="submit" <%= st.firmware ? "" : "disabled" %>>Update firmware</button>
-    <span class="small text-secondary"><% if (st.firmware) { %>On the server: <%= st.firmware.image %>, <%= (st.firmware.bytes / 1048576).toFixed(2) %> MB, copied <span data-epoch="<%= st.firmware.mtime_epoch %>"><%= fmt.ago(st.firmware.mtime_epoch, now) %></span>, MD5 <code><%= st.firmware.md5.slice(0, 8) %></code><% } else { %><span class="text-warning">There is no firmware file on the server for these pods yet.</span><% } %></span>
-  </form>
-  <% } %></div>
+  <% } %>
   <div data-part="note"><% if (st.buttonRefused && !st.pairing.on) { %>
   <div class="px-3 pt-2 small text-warning">The pairing button on this controller was pressed <span data-epoch="<%= st.buttonRefused.epoch %>"><%= fmt.ago(st.buttonRefused.epoch, now) %></span> and <%= st.buttonRefused.detail %>.</div>
   <% } %><% if (st.elsewhere && !st.wanted) { %>
@@ -74,6 +60,30 @@
       <% }); %>
       <% if (!st.pods.length) { %><tr><td colspan="<%= st.canPair ? 7 : 6 %>" class="text-secondary">No target pods yet. Turn on pairing, then hold the button on each target pod.</td></tr><% } %>
       </tbody>
+      <% if (st.canPair && st.pods.length) { %>
+      <tfoot data-part="actions" id="stationActions" class="d-none">
+        <tr>
+          <td colspan="7">
+            <div class="d-flex align-items-center gap-2">
+              <span id="stationSel" class="small text-secondary me-2">0 selected</span>
+              <label class="small text-secondary" for="ledColor">Turn LEDs</label>
+              <select id="ledColor" class="form-select form-select-sm w-auto" name="value" form="otaForm" aria-label="Color">
+                <% st.colors.forEach(function (col) { %><option value="<%= col[0] %>"><%= col[1] %></option><% }); %>
+              </select>
+              <button class="btn btn-sm btn-outline-primary" type="submit" form="otaForm" formaction="/devices/<%= uid %>/station/led">Send</button>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="7">
+            <div class="d-flex align-items-center flex-wrap gap-2">
+              <button id="otaGo" class="btn btn-sm btn-outline-primary" type="submit" form="otaForm" formaction="/devices/<%= uid %>/station/ota" <%= st.firmware ? "" : "disabled" %>>Update firmware</button>
+              <span class="small text-secondary"><% if (st.firmware) { %>On the server: <%= st.firmware.image %>, <%= (st.firmware.bytes / 1048576).toFixed(2) %> MB, copied <span data-epoch="<%= st.firmware.mtime_epoch %>"><%= fmt.ago(st.firmware.mtime_epoch, now) %></span>, MD5 <code><%= st.firmware.md5.slice(0, 8) %></code><% } else { %><span class="text-warning">There is no firmware file on the server for these pods yet.</span><% } %></span>
+            </div>
+          </td>
+        </tr>
+      </tfoot>
+      <% } %>
     </table>
   </div>
 </div>

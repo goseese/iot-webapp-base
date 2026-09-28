@@ -267,6 +267,41 @@ router.post("/:uid/station/ota", loadDevice, need("edit"), async (req, res, next
     catch (err) { next(err); }
 });
 
+// Turn the LEDs of the target pods ticked on a controller's Station tab, from the bulk actions
+// footer. Same fan out as /station/ota: every pod ticked is one "to":"all" command, some of them
+// one command per pod.
+router.post("/:uid/station/led", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        if (!isStation(req)) { return next(notFoundError()); }
+        const back = "/devices/" + req.params.uid;
+        const q = require("../services/commandQueue");
+        const station = await stationModel(req);
+        const colors = require("../deviceTypes/shared/pod").LED_COLORS;
+        const value = String(req.body.value || "");
+        const color = colors.find((c) => c[0] === value);
+        if (!color) { return next(notFoundError()); }
+        const picked = new Set([].concat(req.body.pod || []).map((u) => String(u).toLowerCase()));
+        const chosen = station.pods.filter((p) => picked.has(String(p.uid).toLowerCase()));
+        if (chosen.length === 0) { req.flash("warning", "Tick the target pods first."); return res.redirect(back); }
+        const r = await q.route(req.device);
+        if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
+        if (chosen.length === station.pods.length)
+        {
+            await q.enqueue({ pod: r.pod, target: "all", targetDeviceId: null, cmd: "led", value: value, userId: req.user.id });
+        }
+        else
+        {
+            for (const p of chosen) { await q.enqueue({ pod: r.pod, target: p.hardware_id, targetDeviceId: p.id, cmd: "led", value: value, userId: req.user.id }); }
+        }
+        await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: "led " + value });
+        req.flash("success", "LEDs " + color[1] + " queued for " + (chosen.length === station.pods.length ? "every target pod" : chosen.length + " target pod" + (chosen.length === 1 ? "" : "s")) + ".");
+        res.redirect(back);
+    }
+    catch (err) { next(err); }
+});
+
 // Just an account pod's band panel, for its page's live refresh.
 router.get("/:uid/band", loadDevice, async (req, res, next) =>
 {

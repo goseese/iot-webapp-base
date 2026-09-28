@@ -82,8 +82,12 @@
 async function confirmOta(e)
 {
     e.preventDefault();
+    // Two submit buttons share this form (LED color and firmware); the button's
+    // formaction decides where it posts.
+    if (e.submitter && e.submitter.formAction) { e.target.action = e.submitter.formAction; }
+    var isFirmware = !e.submitter || e.submitter.id === "otaGo";
     var n = document.querySelectorAll("#station .ota-pick:checked").length;
-    if (n === 0) { e.target.submit(); return false; }     // the server says what to do
+    if (!isFirmware || n === 0) { e.target.submit(); return false; }     // the server says what to do
     if (await iotConfirm({ title: "Update firmware?", body: n + " target pod" + (n === 1 ? "" : "s") + " install the firmware file on the server and restart. The controller updates them one after another, which can take a few minutes, and its other commands wait until it is done.", confirmText: "Queue it", danger: true })) { e.target.submit(); }
     return false;
 }
@@ -124,11 +128,18 @@ document.addEventListener("DOMContentLoaded", function ()
     // Tick every target pod, and keep that box in step with the rows.
     function syncAll()
     {
-        var all = document.getElementById("otaAll");
-        if (!all) { return; }
         var picks = box.querySelectorAll(".ota-pick"), n = box.querySelectorAll(".ota-pick:checked").length;
-        all.checked = picks.length > 0 && n === picks.length;
-        all.indeterminate = n > 0 && n < picks.length;
+        var all = document.getElementById("otaAll");
+        if (all)
+        {
+            all.checked = picks.length > 0 && n === picks.length;
+            all.indeterminate = n > 0 && n < picks.length;
+        }
+        // The bulk actions footer shows only while at least one target pod is ticked.
+        var foot = document.getElementById("stationActions");
+        if (foot) { foot.classList.toggle("d-none", n === 0); }
+        var sel = document.getElementById("stationSel");
+        if (sel) { sel.textContent = n + " selected"; }
     }
     box.addEventListener("change", function (e)
     {
@@ -143,6 +154,7 @@ document.addEventListener("DOMContentLoaded", function ()
         timer = setTimeout(refresh, 500);
     });
     window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
+    syncAll();
 });
 </script>
 <% } %>
@@ -188,6 +200,7 @@ document.addEventListener("DOMContentLoaded", function ()
         timer = setTimeout(refresh, 300);
     });
     window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
+    syncAll();
 });
 </script>
 <% } %>
