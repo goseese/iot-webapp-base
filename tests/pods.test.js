@@ -74,3 +74,18 @@ test("ota: every pod type names its firmware image, and the value goes out as an
     assert.deepEqual(m, { id: "c1", cmd: "ota", to: "all", value: { url: "https://x/firmware/volta-pod-target/firmware.bin", md5: "0123456789abcdef0123456789abcdef" } });
     assert.equal(JSON.parse(message({ cmd_id: "c2", cmd: "led", target: null, value: "FF0000" })).value, "FF0000");
 });
+
+test("firmware upload check: ESP32-S3 app images only; the typed version is looked for as a C string", () =>
+{
+    const fw = require("../services/firmware");
+    const b = Buffer.alloc(400);
+    b[0] = 0xE9; b.writeUInt16LE(9, 12); b.writeUInt32LE(0xABCD5432, 32);
+    b.write("18:02:11", 112); b.write("Sep 27 2026", 128);
+    assert.deepEqual(fw.inspect(b), { ok: true, built: "Sep 27 2026 18:02:11" });
+    assert.equal(fw.inspect(Buffer.alloc(400)).ok, false);
+    b.writeUInt16LE(2, 12);
+    assert.match(fw.inspect(b).error, /chip id 2/);
+    const v = Buffer.from("\0abc\x001.0.2\0xyz", "latin1");
+    assert.equal(fw.hasVersion(v, "1.0.2"), true);
+    assert.equal(fw.hasVersion(v, "1.0"), false);
+});

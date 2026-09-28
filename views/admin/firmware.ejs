@@ -1,0 +1,75 @@
+<%# Pod firmware (routes/admin.js, services/firmware.js): one card per image, the current file and
+    its upload. The upload posts the file itself as the body (see the script below). %>
+<p class="text-secondary small">Each image has one current file, which "Update firmware" sends to the pods that run it. Uploading replaces it; a pod part way through a download finishes the previous file. Upload the sketch's <code>.ino.bin</code> (Arduino IDE: Sketch, Export Compiled Binary), up to <%= maxMb %> MB.</p>
+<div class="row g-3">
+<% cards.forEach(function (c) { var f = c.file; %>
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel h-100" data-image="<%= c.image %>">
+      <div class="iot-panel__header"><strong><%= c.types.join(", ") %></strong> <code class="ms-2 small"><%= c.image %></code></div>
+      <div class="iot-panel__body">
+        <% if (!f) { %>
+        <div class="alert alert-secondary py-2">No file yet. Pods of these types cannot be updated until one is uploaded.</div>
+        <% } else { %>
+        <table class="table table-sm iot-table mb-3">
+          <tbody>
+            <tr><th class="text-secondary fw-normal" style="width: 9rem">Version</th><td><% if (f.version) { %><strong><%= f.version %></strong><% } else { %><span class="text-warning">unknown: copied in by hand, not uploaded here</span><% } %></td></tr>
+            <% if (f.built) { %><tr><th class="text-secondary fw-normal">Built</th><td><%= f.built %></td></tr><% } %>
+            <tr><th class="text-secondary fw-normal">Uploaded</th><td><% if (f.uploaded_epoch) { %><span data-epoch="<%= f.uploaded_epoch %>"><%= fmt.ago(f.uploaded_epoch, now) %></span>, <%= fmt.epoch(f.uploaded_epoch) %><%= f.uploaded_by ? " by " + f.uploaded_by : "" %><% } else { %>file changed <span data-epoch="<%= f.mtime_epoch %>"><%= fmt.ago(f.mtime_epoch, now) %></span><% } %></td></tr>
+            <% if (f.original_name) { %><tr><th class="text-secondary fw-normal">File</th><td class="small"><%= f.original_name %></td></tr><% } %>
+            <tr><th class="text-secondary fw-normal">Size</th><td><%= (f.bytes / 1048576).toFixed(2) %> MB <span class="text-secondary small">(<%= f.bytes %> bytes)</span></td></tr>
+            <tr><th class="text-secondary fw-normal">MD5</th><td><code class="small"><%= f.md5 %></code></td></tr>
+            <tr><th class="text-secondary fw-normal">URL</th><td class="small text-break"><a href="<%= f.url %>"><%= f.url %></a></td></tr>
+          </tbody>
+        </table>
+        <% } %>
+        <% if (c.waiting) { %><div class="small text-secondary mb-2"><%= c.waiting %> firmware update<%= c.waiting === 1 ? "" : "s" %> for this image waiting in pod queues.</div><% } %>
+        <form class="fw-upload row g-2 align-items-end" data-image="<%= c.image %>">
+          <div class="col-12 col-md-6"><label class="form-label small mb-1">Firmware file</label><input class="form-control form-control-sm" type="file" name="file" accept=".bin" required></div>
+          <div class="col-6 col-md-3"><label class="form-label small mb-1">Version</label><input class="form-control form-control-sm" name="version" placeholder="1.0.2" maxlength="32" required pattern="[0-9A-Za-z._+\-]{1,32}"></div>
+          <div class="col-6 col-md-3"><button class="btn btn-sm btn-primary w-100" type="submit">Upload</button></div>
+          <div class="col-12"><div class="fw-error small text-danger d-none"></div></div>
+        </form>
+      </div>
+    </div>
+  </div>
+<% }); %>
+</div>
+
+<script>
+// The file goes as the request body, not a multipart form: the CSRF middleware reads the token from
+// the x-csrf-token header, so no upload library is needed. On success the page reloads to show the
+// flash and the new file.
+document.querySelectorAll("form.fw-upload").forEach(function (form)
+{
+    form.addEventListener("submit", async function (e)
+    {
+        e.preventDefault();
+        var file = form.querySelector("input[name=file]").files[0];
+        var version = form.querySelector("input[name=version]").value.trim();
+        var btn = form.querySelector("button");
+        var errBox = form.querySelector(".fw-error");
+        errBox.classList.add("d-none");
+        if (!file || !version) { return; }
+        btn.disabled = true;
+        btn.textContent = "Uploading...";
+        try
+        {
+            var url = "/admin/firmware/" + encodeURIComponent(form.getAttribute("data-image")) + "?version=" + encodeURIComponent(version) + "&name=" + encodeURIComponent(file.name);
+            var res = await fetch(url, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/octet-stream", "Accept": "application/json", "x-csrf-token": "<%= csrfToken %>" }, body: file });
+            var data = null;
+            try { data = await res.json(); }
+            catch (err) { }
+            if (res.ok && data && data.ok) { window.location.reload(); return; }
+            errBox.textContent = data && data.message ? data.message : (res.status === 413 ? "That file is too large." : "Upload failed (" + res.status + ").");
+            errBox.classList.remove("d-none");
+        }
+        catch (err)
+        {
+            errBox.textContent = "Upload failed: " + err.message;
+            errBox.classList.remove("d-none");
+        }
+        btn.disabled = false;
+        btn.textContent = "Upload";
+    });
+});
+</script>

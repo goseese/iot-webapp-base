@@ -1,4 +1,4 @@
-// Superadmin only: accounts, unknown devices, site settings, event log (architecture 12, 13).
+// Superadmin only: accounts, unknown devices, pod firmware, site settings, event log (architecture 12, 13).
 const express = require("express");
 const { notFoundError } = require("../middleware/errors");
 const { body, validationResult } = require("express-validator");
@@ -62,6 +62,74 @@ router.post("/accounts/:uid", async (req, res, next) =>
         }
         await activity.log(req, "account_" + req.body.action, { entity_type: "account", entity_uid: a.uid });
         res.redirect("/admin/accounts");
+    }
+    catch (err) { next(err); }
+});
+
+// Pod firmware (services/firmware.js, DECISIONS.md "Firmware updates"): one card per image with the
+// current file, and its upload.
+router.get("/firmware", async (req, res, next) =>
+{
+    try
+    {
+        const firmware = require("../services/firmware");
+        const cards = [];
+        for (const c of firmware.forPage())
+        {
+            c.file = await firmware.describe(c.image);
+            c.waiting = Number((await knex(T("command_queue")).where({ cmd: "ota" }).whereIn("status", ["queued", "sent"]).where("value", "like", "%/firmware/" + c.image + "/%").count("id as n").first()).n);
+            cards.push(c);
+        }
+        res.render("admin/firmware", { title: "Firmware", cards: cards, maxMb: firmware.MAX_BYTES / 1048576 });
+    }
+    catch (err) { next(err); }
+});
+
+// Upload: the page posts the file itself as the body (application/octet-stream), with the CSRF token
+// in x-csrf-token and the version and file name in the query. Answers JSON; the page then reloads and
+// shows the flash.
+router.post("/firmware/:image", async (req, res, next) =>
+{
+    const firmware = require("../services/firmware");
+    const fail = (status, message) => res.status(status).json({ ok: false, message: message });
+    try
+    {
+        const image = req.params.image;
+        if (!firmware.images().includes(image)) { return next(notFoundError()); }
+        const version = String(req.query.version || "").trim();
+        if (!/^[0-9A-Za-z._+-]{1,32}$/.test(version)) { return fail(400, "Give the version, for example 1.0.2 (letters, digits, dots, dashes; up to 32 characters)."); }
+        const originalName = String(req.query.name || "").replace(/[^\w .()+-]/g, "").slice(0, 120) || null;
+
+        // Read the body, refusing anything over the limit as it arrives.
+        const chunks = [];
+        let bytes = 0;
+        let tooBig = false;
+        await new Promise((resolve, reject) =>
+        {
+            req.on("data", (d) =>
+            {
+                bytes += d.length;
+                if (bytes > firmware.MAX_BYTES) { tooBig = true; return; }
+                chunks.push(d);
+            });
+            req.on("end", resolve);
+            req.on("error", reject);
+        });
+        if (tooBig) { return fail(413, "That file is larger than " + (firmware.MAX_BYTES / 1048576) + " MB."); }
+        const buf = Buffer.concat(chunks);
+        const check = firmware.inspect(buf);
+        if (!check.ok) { return fail(400, check.error); }
+
+        const md5 = await firmware.store(image, buf, { version: version, built: check.built || null, uploaded_epoch: require("../db/knex").nowEpoch(), uploaded_by: req.user.username, original_name: originalName });
+        const stale = Number((await knex(T("command_queue")).where({ cmd: "ota" }).whereIn("status", ["queued", "sent"]).where("value", "like", "%/firmware/" + image + "/%").whereNot("value", "like", "%" + md5 + "%").count("id as n").first()).n);
+        await activity.log(req, "firmware_upload", { entity_type: "firmware", entity_uid: image, detail: image + " " + version + ", " + buf.length + " bytes, md5 " + md5 + (originalName ? ", " + originalName : "") });
+
+        let message = image + " " + version + " uploaded (" + (buf.length / 1048576).toFixed(2) + " MB, MD5 " + md5.slice(0, 8) + ").";
+        let kind = "success";
+        if (!firmware.hasVersion(buf, version)) { message += " Note: \"" + version + "\" does not appear in the file, so check the version; upload again to correct it."; kind = "warning"; }
+        if (stale > 0) { message += " " + stale + " update" + (stale === 1 ? " was" : "s were") + " queued for the previous file; the pods will refuse " + (stale === 1 ? "it" : "them") + " (MD5), so cancel and queue again."; kind = "warning"; }
+        req.flash(kind, message);
+        res.json({ ok: true, message: message });
     }
     catch (err) { next(err); }
 });
