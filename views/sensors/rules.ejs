@@ -9,7 +9,7 @@ function ruleForm(r, action, isNew)
     <div class="col-md-2">
       <label class="form-label small">Kind</label>
       <% if (isNew) { %><select class="form-select form-select-sm" name="rule_kind" onchange="this.form.querySelectorAll('[data-th]').forEach(function (e) { e.classList.toggle('d-none', this.value === 'no_data'); }, this); this.form.querySelectorAll('[data-nd]').forEach(function (e) { e.classList.toggle('d-none', this.value !== 'no_data'); }, this);"><option value="threshold">Threshold</option><option value="no_data">No data</option></select>
-      <% } else { %><input type="hidden" name="rule_kind" value="<%= r.rule_kind %>"><div class="form-control-plaintext form-control-sm"><%= r.rule_kind === "no_data" ? "No data" : "Threshold" %></div><% } %>
+      <% } else { %><input type="hidden" name="rule_kind" value="<%= r.rule_kind %>"><div class="form-control-plaintext form-control-sm" style="color: var(--iot-text)"><%= r.rule_kind === "no_data" ? "No data" : "Threshold" %></div><% } %>
     </div>
     <div class="col-md-2 <%= (r && r.rule_kind === "no_data") ? "d-none" : "" %>" data-th>
       <label class="form-label small">Direction</label>
@@ -48,7 +48,7 @@ function ruleForm(r, action, isNew)
     </div>
     <div class="col-md-5">
       <label class="form-label small">Channels per transition</label>
-      <table class="table table-sm mb-0 small"><thead><tr><th></th><th>Email</th></tr></thead><tbody>
+      <table class="table iot-table table-sm mb-0 small"><thead><tr><th></th><th>Email</th></tr></thead><tbody>
       <% [["raise", "Raise"], ["escalate", "Escalate"], ["de_escalate", "De-escalate"], ["clear", "Clear"]].forEach(function (t) { var p = r && r.policy && r.policy[t[0]]; %>
         <tr><td><%= t[1] %></td><td><input type="checkbox" name="p_<%= t[0] %>_email" value="1" <%= (!p || p.email !== false) ? "checked" : "" %>></td></tr>
       <% }); %>
@@ -65,7 +65,7 @@ function ruleForm(r, action, isNew)
 function historyTable(list)
 {
 %>
-<table class="table table-sm small mb-0 mt-1"><thead><tr><th>When</th><th>Who</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
+<table class="table iot-table table-sm small mb-0 mt-1"><thead><tr><th>When</th><th>Who</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
 <% list.forEach(function (h) { %>
   <tr><td class="text-nowrap"><span class="iot-hint" data-epoch="<%= h.epoch %>" title="<%= fmt.epoch(h.epoch, location.iana_timezone) %>"><%= fmt.ago(h.epoch) %></span></td><td><%= h.who %></td><td><%= h.what %></td><td class="text-break"><%= h.before %></td><td class="text-break"><%= h.after %></td></tr>
 <% }); %>
