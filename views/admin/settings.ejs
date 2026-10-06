@@ -41,20 +41,19 @@ function row(s)
         <% if (md.fromEnv) { %><div class="form-control-plaintext"><%= mailChosen %> <span class="badge text-bg-secondary">.env</span></div><% } else { %>
         <form method="post" action="/admin/settings/MAIL_DRIVER" class="d-flex gap-1">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <select class="form-select form-select-sm" name="value"><% mailDrivers.forEach(function (d) { %><option value="<%= d.name %>" <%= d.name === mailChosen ? "selected" : "" %>><%= d.label %><%= d.configured ? "" : " (not configured)" %></option><% }); %></select>
-          <button class="btn btn-sm btn-outline-secondary">Save</button>
+          <select class="form-select form-select-sm" name="value" onchange="this.form.submit()"><% mailDrivers.forEach(function (d) { %><option value="<%= d.name %>" <%= d.name === mailChosen ? "selected" : "" %>><%= d.label %><%= d.configured ? "" : " (not configured)" %></option><% }); %></select>
         </form>
         <% } %>
       </div>
-      <div class="col-md-7 small text-secondary">Set the driver, save, then fill in that driver's credentials below and send yourself a test. Results, including failures with the provider's reason, are on the alarm notifications log.</div>
+      <div class="col-md-7 small text-secondary">Pick a driver (it saves right away), fill in its settings below, then send yourself a test. Results, including failures with the provider's reason, are on the alarm notifications log.</div>
     </div>
   </div>
   <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
     <% ["MAIL_FROM_ADDRESS", "MAIL_FROM_NAME"].forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
   </tbody></table></div>
 </div>
-<% mailDrivers.filter(function (d) { return d.keys.length; }).forEach(function (d) { %>
-<div class="iot-panel mb-3 <%= d.name === mailChosen ? "" : "opacity-75" %>">
+<% mailDrivers.filter(function (d) { return d.keys.length && d.name === mailChosen; }).forEach(function (d) { %>
+<div class="iot-panel mb-3">
   <div class="iot-panel__header"><strong><%= d.label %></strong> <span class="iot-status iot-status--<%= d.configured ? "online" : "offline" %> ms-2"><%= d.configured ? "configured" : "not configured" %></span></div>
   <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><tbody>
     <% d.keys.forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
