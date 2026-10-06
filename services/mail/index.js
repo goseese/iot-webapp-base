@@ -9,7 +9,9 @@ const notifications = require("../../db/repos/notifications");
 const drivers =
 {
     none: require("./none"),
-    ses: require("./ses")
+    ses: require("./ses"),
+    sendgrid: require("./sendgrid"),
+    smtp: require("./smtp")
 };
 
 function chosen()
@@ -29,7 +31,8 @@ function fromAddress()
     return settings.get("MAIL_FROM_ADDRESS", "") || env.mail.resetFrom || env.mail.supportFrom || "no-reply@localhost";
 }
 
-// msg: { to, subject, text, html?, kind, recipientType, recipientId?, from?, replyTo?, alarmEventId?, ladderNote? }
+// msg: { to, subject, text, html?, kind, recipientType, recipientId?, from?, replyTo?, alarmEventId?, ladderNote?, attachments? }
+// attachments: optional list of { filename, contentType, data (Buffer) } (support requests).
 // to is one address or a list; a list goes out as one message with every address in To (support
 // mail, so the team can reply all). replyTo is an optional address or list.
 async function send(msg)
@@ -51,7 +54,7 @@ async function send(msg)
     }
     try
     {
-        const result = await driver.send({ to: to, replyTo: replyTo, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.siteName(), subject: msg.subject, text: msg.text, html: msg.html || null });
+        const result = await driver.send({ to: to, replyTo: replyTo, from: msg.from || fromAddress(), fromName: settings.get("MAIL_FROM_NAME", "") || settings.siteName(), subject: msg.subject, text: msg.text, html: msg.html || null, attachments: msg.attachments || [] });
         await notifications.update(id, { outcome: "sent", reason: null, provider_message_id: result.messageId });
         return { ok: true, notificationId: id };
     }

@@ -46,12 +46,24 @@ module.exports =
         {
             body.Html = { Data: msg.html, Charset: "UTF-8" };
         }
+        const simple = { Subject: { Data: msg.subject || "", Charset: "UTF-8" }, Body: body };
+        // Message.Attachments in the SESv2 SDK (models_0.d.ts); the SDK base64 encodes RawContent.
+        if (msg.attachments && msg.attachments.length)
+        {
+            simple.Attachments = msg.attachments.map((a) => (
+            {
+                RawContent: a.data,
+                FileName: a.filename,
+                ContentType: a.contentType,
+                ContentDisposition: "ATTACHMENT"
+            }));
+        }
         const res = await client.send(new SendEmailCommand(
         {
             FromEmailAddress: fromHeader(msg.from, msg.fromName),
             Destination: { ToAddresses: [].concat(msg.to) },
             ReplyToAddresses: msg.replyTo && msg.replyTo.length ? [].concat(msg.replyTo) : undefined,
-            Content: { Simple: { Subject: { Data: msg.subject || "", Charset: "UTF-8" }, Body: body } }
+            Content: { Simple: simple }
         }));
         return { ok: true, messageId: res.MessageId || null };
     }
