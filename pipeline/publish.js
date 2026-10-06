@@ -17,6 +17,21 @@ async function accountUidForLocation(locationId)
     return uid;
 }
 
+// The alarm engine's transitions carry internal ids. Everything that leaves this process (webhooks,
+// the acct/ feed) names the alarm and sensor by uid instead (DECISIONS "API detail endpoints").
+async function transitionsOut(transitions)
+{
+    if (!transitions.length) { return []; }
+    const rows = await knex(T("alarms") + " as a").join(T("sensors") + " as s", "s.id", "a.sensor_id").whereIn("a.id", transitions.map((t) => t.alarmId))
+        .select("a.id", "a.uid", "a.direction", "s.uid as sensor_uid");
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    return transitions.filter((t) => byId.has(t.alarmId)).map((t) =>
+    {
+        const r = byId.get(t.alarmId);
+        return { alarm: String(r.uid).toLowerCase(), sensor: String(r.sensor_uid).toLowerCase(), direction: r.direction, kind: t.kind, severity: t.severity };
+    });
+}
+
 async function batch(device, accepted, transitions, epoch)
 {
     if (accepted.length === 0 && transitions.length === 0) { return; }
@@ -26,7 +41,8 @@ async function batch(device, accepted, transitions, epoch)
     const webhooks = require("../services/webhooks");
     const devUid = String(device.uid).toLowerCase();
     if (accepted.length > 0) { await webhooks.enqueue(accountId, "reading", { event: "reading", device: devUid, epoch: epoch, readings: accepted.map((a) => ({ sensor: String(a.sensorUid).toLowerCase(), channel: a.channel, metric: a.metric, value: a.value, epoch: a.epoch })) }).catch((err) => logger.warn({ err: err.message }, "webhook enqueue failed")); }
-    for (const t of transitions) { await webhooks.enqueue(accountId, "alarm", Object.assign({ event: "alarm", device: devUid, epoch: epoch }, t)).catch((err) => logger.warn({ err: err.message }, "webhook enqueue failed")); }
+    const alarmsOut = await transitionsOut(transitions);
+    for (const t of alarmsOut) { await webhooks.enqueue(accountId, "alarm", Object.assign({ event: "alarm", device: devUid, epoch: epoch }, t)).catch((err) => logger.warn({ err: err.message }, "webhook enqueue failed")); }
 
     const client = mqttClient.get();
     if (!client || !client.connected) { return; }
@@ -36,7 +52,7 @@ async function batch(device, accepted, transitions, epoch)
         device: String(device.uid).toLowerCase(),
         epoch: epoch,
         readings: accepted.map((a) => ({ sensor: String(a.sensorUid).toLowerCase(), channel: a.channel, metric: a.metric, value: a.value, epoch: a.epoch })),
-        alarms: transitions
+        alarms: alarmsOut
     };
     client.publish(require("../mqtt/topics").account.data(accountUid), JSON.stringify(payload), { qos: 0 }, (err) =>
     {

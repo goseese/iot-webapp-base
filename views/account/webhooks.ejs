@@ -1,0 +1,34 @@
+
+<% if (newSecret) { %>
+<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-Voltastc-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
+<% } %>
+
+<div class="row g-3">
+  <div class="col-12 col-xl-6">
+    <div class="iot-panel">
+      <div class="iot-panel__header"><strong>Webhooks</strong> <span class="text-secondary small ms-2">outbound, signed, retried</span></div>
+      <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Name</th><th>URL</th><th>Events</th><th>Recent</th><th></th></tr></thead><tbody>
+      <% hooks.forEach(function (h) { %>
+        <tr class="<%= h.is_enabled ? "" : "text-secondary" %>"><td><%= h.name %></td><td class="small text-break"><%= h.url %></td><td class="small"><%= h.event_types %></td>
+          <td class="small"><% h.recent.forEach(function (d) { %><span class="iot-status iot-status--<%= d.outcome === "sent" ? "online" : (d.outcome === "failed" ? "alarm" : "warning") %>" title="<%= d.status_code || "" %>"><%= d.outcome %></span> <% }); %></td>
+          <td class="text-end text-nowrap"><% if (canEdit) { %><form method="post" action="<%= acctBase %>/webhooks" class="d-inline"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="uid" value="<%= fmt.uid(h.uid) %>"><input type="hidden" name="name" value="x"><button class="btn btn-sm btn-outline-secondary" name="action" value="toggle"><%= h.is_enabled ? "Pause" : "Resume" %></button> <button class="btn btn-sm btn-outline-danger" name="action" value="delete" onclick="return confirm('Remove webhook?')">Remove</button></form><% } %></td></tr>
+      <% }); %>
+      <% if (!hooks.length) { %><tr><td colspan="5" class="text-secondary">No webhooks.</td></tr><% } %>
+      </tbody></table></div>
+      <% if (canEdit) { %>
+      <div class="iot-panel__body border-top">
+        <form method="post" action="<%= acctBase %>/webhooks" class="row g-2 align-items-end">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="col-md-4"><label class="form-label small">Name</label><input class="form-control form-control-sm" name="name" required></div>
+          <div class="col-md-8"><label class="form-label small">URL</label><input class="form-control form-control-sm" name="url" required placeholder="https://example.com/hook"></div>
+          <div class="col-12 d-flex gap-3">
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="events" value="reading" id="ev_r"><label class="form-check-label small" for="ev_r">Readings</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="events" value="alarm" id="ev_a" checked><label class="form-check-label small" for="ev_a">Alarm transitions</label></div>
+          </div>
+          <div class="col-12"><button class="btn btn-sm btn-primary">Add webhook</button></div>
+        </form>
+      </div>
+      <% } %>
+    </div>
+  </div>
+</div>

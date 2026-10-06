@@ -58,7 +58,22 @@ function manageItems(user, account, support)
             { label: "Athletes", path: base + "/athletes" },
             { label: "Wristbands", path: base + "/wristbands" },
             { label: "Alert groups", path: base + "/alert-groups" },
-            { label: "API and webhooks", path: base + "/api" },
+            {
+                label: "API", path: base + "/api",
+                children:
+                [
+                    { label: "API Keys", path: base + "/api", exact: true },
+                    { label: "API Docs", path: base + "/api/docs" }
+                ]
+            },
+            {
+                label: "Webhooks", path: base + "/webhooks",
+                children:
+                [
+                    { label: "Webhooks", path: base + "/webhooks", exact: true },
+                    { label: "Webhook Docs", path: base + "/webhooks/docs" }
+                ]
+            },
             { label: "Unclaimed devices", path: base + "/unclaimed" }
         ];
         if (handles) { children.push({ label: "Support", path: base + "/support", count: waiting }); }

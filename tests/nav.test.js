@@ -50,6 +50,20 @@ test("account overview and uid-only detail pages", () =>
     assert.equal(menu.resolve("/reports/abc", null, null, acct).top.label, "Reports");
 });
 
+test("API and Webhooks each have their own tabs", () =>
+{
+    const keys = menu.resolve(acctBase + "/api", null, null, acct);
+    assert.equal(keys.title, "API Keys");
+    assert.deepEqual(keys.subnav.map((n) => n.label), ["API Keys", "API Docs"]);
+    assert.deepEqual(keys.breadcrumb.map((b) => b.label), ["Account", "API", "API Keys"]);
+    const apiDocs = menu.resolve(acctBase + "/api/docs", null, null, acct);
+    assert.equal(apiDocs.subnav.find((n) => n.active).label, "API Docs");
+    const hooks = menu.resolve(acctBase + "/webhooks", null, null, acct);
+    assert.deepEqual(hooks.subnav.map((n) => n.label), ["Webhooks", "Webhook Docs"]);
+    assert.equal(hooks.subnav.find((n) => n.active).label, "Webhooks");
+    assert.equal(menu.resolve(acctBase + "/webhooks/docs", null, null, acct).subnav.find((n) => n.active).label, "Webhook Docs");
+});
+
 test("unknown path yields empty nav", () =>
 {
     const nav = menu.resolve("/charts/abc", null, loc);
