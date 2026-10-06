@@ -1,20 +1,39 @@
 <%
-// Superadmin view. Labels are from support's side: open means it needs an answer.
-var label = { open: ["Needs answer", "alarm"], waiting: ["Waiting on requester", "warning"], closed: ["Closed", "offline"] };
+// Support request lists (routes/support.js GET /support for superadmins, routes/account/support.js
+// for an account's handlers). showAccount: the superadmin list (Account column with the location
+// under it, and Emailed); otherwise a Location column.
+var statusClass = { open: "warning", answered: "online", closed: "offline" };
+var statusLabel = { open: "Waiting on support", answered: "Answered", closed: "Closed" };
+var sevClass = { "production-down": "text-bg-danger", "urgent": "text-bg-warning", "issue": "text-bg-secondary", "feature-request": "text-bg-info" };
+var sevShort = { "production-down": "Production down", "urgent": "Urgent", "issue": "Issue", "feature-request": "Request" };
+var filters = [["active", "Open and answered"], ["open", "Waiting on support"], ["answered", "Answered"], ["closed", "Closed"], ["all", "Everything"]];
 %>
+<div class="btn-group btn-group-sm mb-3 flex-wrap" role="group" aria-label="Filter">
+  <% filters.forEach(function (f) { %>
+  <a class="btn <%= filter.key === f[0] ? "btn-primary" : "btn-outline-secondary" %>" href="<%= base %><%= f[0] === "active" ? "" : "?status=" + f[0] %>"><%= f[1] %></a>
+  <% }); %>
+</div>
 <div class="iot-panel">
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Subject</th><th>Requester</th><th>Account</th><th>Status</th><th>Last update</th><th>Opened</th></tr></thead><tbody>
-  <% rows.forEach(function (r) { var st = label[r.status] || [r.status, "offline"]; %>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr>
+    <th>Reference</th><th>Updated</th><th>Status</th><th>Severity</th><th><%= showAccount ? "Account" : "Location" %></th><th>From</th><th>Request</th><% if (showAccount) { %><th>Emailed</th><% } %>
+  </tr></thead><tbody>
+  <% rows.forEach(function (r) { %>
     <tr>
-      <td><a href="/support/<%= fmt.uid(r.uid) %>"><%= r.subject %></a></td>
-      <td><%= r.display_name || r.username %> <span class="text-secondary small"><%= r.email %></span></td>
-      <td><%= r.account_name || "" %></td>
-      <td><span class="iot-status iot-status--<%= st[1] %>"><%= st[0] %></span></td>
-      <td><span class="iot-hint" title="<%= fmt.epoch(r.updated_epoch, "UTC") %> UTC"><%= fmt.ago(r.updated_epoch) %></span></td>
-      <td><%= fmt.epoch(r.created_epoch, "UTC") %> UTC</td>
+      <td class="text-nowrap"><a href="/support/<%= fmt.uid(r.uid) %>"><%= r.ref %></a></td>
+      <td class="text-nowrap"><span class="iot-hint" title="<%= fmt.epoch(r.updated_epoch, "UTC") %> UTC"><%= fmt.ago(r.updated_epoch) %></span></td>
+      <td class="text-nowrap"><span class="iot-status iot-status--<%= statusClass[r.status] %>"><%= statusLabel[r.status] %></span></td>
+      <td><span class="badge <%= sevClass[r.severity] %>"><%= sevShort[r.severity] %></span></td>
+      <% if (showAccount) { %>
+      <td><%= r.account_name || "Not specified" %><% if (r.location_name) { %><div class="small text-secondary"><%= r.location_name %></div><% } %></td>
+      <% } else { %>
+      <td><%= r.location_name || "Not specified" %></td>
+      <% } %>
+      <td><%= r.display_name || r.username %></td>
+      <td class="small" style="max-width: 28rem; overflow-wrap: anywhere;"><%= r.summary %><%= r.summary && r.summary.length >= 140 ? "..." : "" %></td>
+      <% if (showAccount) { %><td><%= r.email_sent ? "yes" : "no" %></td><% } %>
     </tr>
   <% }); %>
-  <% if (!rows.length) { %><tr><td colspan="6" class="text-secondary">Nothing here.</td></tr><% } %>
+  <% if (!rows.length) { %><tr><td colspan="<%= showAccount ? 8 : 7 %>" class="text-secondary"><%= empty %></td></tr><% } %>
   </tbody></table></div>
 </div>
-<p class="small text-secondary mt-2">New requests and requester replies are emailed to the Support emails setting (Admin, Site settings, Email). Answers are always written here.</p>
+<% if (showAccount) { %><p class="small text-secondary mt-2">New requests and every reply are emailed to SUPPORT_EMAILS (Administration, Site settings, Email) and, separately, to each request's account handlers. Answers are written on the request page.</p><% } %>

@@ -30,7 +30,8 @@
       <% section.items.forEach(function (item) { %>
       <a class="iot-nav-link<%= nav.top && nav.top.path === item.path ? " active" : "" %>" href="<%= item.path %>"<% if (item.modal) { %> data-bs-toggle="modal" data-bs-target="#<%= item.modal %>"<% } %>>
         <i class="fa-solid <%= item.icon %>"></i><span><%= item.label %></span>
-        <% if (item.badge === "support" && typeof supportOpenCount !== "undefined" && supportOpenCount > 0) { %><span class="badge rounded-pill text-bg-warning iot-nav-badge" title="Support requests that need an answer"><%= supportOpenCount %></span><% } %>
+        <% if (item.badge === "support" && typeof supportOpenCount !== "undefined" && supportOpenCount > 0) { %><span class="badge rounded-pill text-bg-warning iot-nav-badge" title="Support requests waiting on support"><%= supportOpenCount %></span><% } %>
+        <% if (item.count) { %><span class="badge rounded-pill text-bg-warning iot-nav-badge" title="Support requests for this account waiting on support"><%= item.count %></span><% } %>
         <% if (item.badge === "alarms") { %><span class="badge rounded-pill text-bg-danger iot-nav-badge d-none" data-live-alarm-count data-location="<%= section.location ? fmt.uid(section.location.uid) : "" %>">0</span><% } %>
       </a>
       <% }); %>
@@ -89,7 +90,7 @@
       <% if (sub.length) { %>
       <nav class="iot-subnav" aria-label="Section navigation">
         <% sub.forEach(function (link) { %>
-        <a class="iot-subnav-link<%= link.active ? " active" : "" %>" href="<%= link.path %>"><%= link.label %></a>
+        <a class="iot-subnav-link<%= link.active ? " active" : "" %>" href="<%= link.path %>"><%= link.label %><% if (link.count) { %> <span class="badge rounded-pill text-bg-warning" title="Waiting on support"><%= link.count %></span><% } %></a>
         <% }); %>
       </nav>
       <% } %>
@@ -99,7 +100,7 @@
   </main>
 </div>
 
-<% if (currentUser) { %><%- include("../partials/help-modal") %><% } %>
+<% if (currentUser) { %><%- include("../partials/support-modal") %><% } %>
 <script src="/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js"></script>
 <script src="/vendor/echarts-6.1.0/echarts.min.js"></script>
 <script src="/vendor/simple-datatables-10.3.0/simple-datatables.js"></script>
@@ -109,6 +110,7 @@
 <script src="/js/iot-table-tools.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
 <script src="/js/iot-sort.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
 <script src="/js/live.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script>
+<% if (currentUser) { %><script src="/js/support.js?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>"></script><% } %>
 <% if (typeof pageScript !== "undefined" && pageScript) { %><%- pageScript %><% } %>
 </body>
 </html>

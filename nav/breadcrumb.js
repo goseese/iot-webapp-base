@@ -5,7 +5,7 @@ function uid(u) { return String(u).toLowerCase(); }
 function build(nav, navTrail, account, currentLocation)
 {
     let trail = (navTrail || (nav ? nav.breadcrumb : []) || []).map((c) => Object.assign({}, c));
-    const outside = nav && nav.top && (nav.top.path === "/admin" || nav.top.path === "/help");
+    const outside = nav && nav.top && (nav.top.path === "/admin" || nav.top.path === "/support");
 
     if (account && !outside)
     {

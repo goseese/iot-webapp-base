@@ -279,6 +279,14 @@ router.post("/settings/:key", async (req, res, next) =>
         if (entry.kind === "secret" && (value === "" || value === "********")) { req.flash("info", "Secret unchanged."); return res.redirect("/admin/settings" + (entry.group !== "general" ? "/" + entry.group : "")); }
         if (entry.kind === "string") { value = String(value === undefined ? "" : value).trim(); }
         if (entry.key === "API_KEY_PREFIX" && !require("../services/apiAuth").KEY_PREFIX_RE.test(value)) { req.flash("danger", "API_KEY_PREFIX must be 1 to 16 characters from A-Z a-z 0-9 - . _ ~."); return res.redirect("/admin/settings/api"); }
+        // Support addresses (services/support.js): every address checked, stored normalised.
+        if (entry.key === "SUPPORT_EMAILS" || entry.key === "SUPPORT_FROM_ADDRESS")
+        {
+            const parsed = require("../services/support").parseAddresses(value);
+            if (parsed.bad.length) { req.flash("danger", entry.key + ": not an email address: " + parsed.bad.join(", ")); return res.redirect("/admin/settings/email"); }
+            if (entry.key === "SUPPORT_FROM_ADDRESS" && parsed.list.length > 1) { req.flash("danger", "SUPPORT_FROM_ADDRESS takes one address, or blank."); return res.redirect("/admin/settings/email"); }
+            value = parsed.list.join(", ");
+        }
         await settings.set(entry.key, value, req.user.id);
         const back = "/admin/settings" + (entry.group && entry.group !== "general" ? "/" + entry.group : "");
         await knex.transaction((trx) => require("../services/audit").audit(trx, { entityType: "setting", entityUid: "00000000-0000-0000-0000-000000000000", entityName: entry.key, field: entry.key, oldValue: entry.kind === "secret" ? "(secret)" : String(entry.value), newValue: entry.kind === "secret" ? "(secret)" : value, actorType: "user", actorId: req.user.id, actorName: req.user.username }));

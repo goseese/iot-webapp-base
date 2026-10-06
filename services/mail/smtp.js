@@ -17,6 +17,14 @@ function current()
     };
 }
 
+// Support request files (services/support.js): nodemailer attachments (mail-composer: filename,
+// content as a Buffer, contentType, contentDisposition).
+function attachments(msg)
+{
+    if (!msg.attachments || !msg.attachments.length) { return undefined; }
+    return msg.attachments.map((a) => ({ filename: a.filename, content: a.data, contentType: a.contentType, contentDisposition: "attachment" }));
+}
+
 module.exports =
 {
     name: "smtp",
@@ -39,7 +47,7 @@ module.exports =
             transport = nodemailer.createTransport({ host: c.host, port: Number(c.port) || 587, secure: !!c.secure, auth: { user: c.user, pass: c.pass }, connectionTimeout: 10000, greetingTimeout: 10000, socketTimeout: 20000 });
             signature = sig;
         }
-        const info = await transport.sendMail({ from: msg.fromName ? { name: msg.fromName, address: msg.from } : msg.from, to: msg.to, replyTo: msg.replyTo && msg.replyTo.length ? [].concat(msg.replyTo) : undefined, subject: msg.subject, text: msg.text, html: msg.html || undefined });
+        const info = await transport.sendMail({ from: msg.fromName ? { name: msg.fromName, address: msg.from } : msg.from, to: msg.to, replyTo: msg.replyTo && msg.replyTo.length ? [].concat(msg.replyTo) : undefined, subject: msg.subject, text: msg.text, html: msg.html || undefined, attachments: attachments(msg) });
         return { ok: true, messageId: info.messageId || null };
     }
 };

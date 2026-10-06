@@ -39,28 +39,32 @@ function monitorItems(loc)
 // uid (/account/<uid>/...). The Account link itself is always the account list. Analytics and
 // Reports need an account, so they show only inside one; `alt` lets their uid-only detail pages
 // (/analytics/charts/<uid>, /reports/<uid>) still light up the right item.
-function manageItems(user, account)
+// support: services/support.openByAccount() for this user ({ all, counts }), or null. The Support
+// tab shows only to users who are support for this account, with its count waiting on support,
+// which the Account item carries too.
+function manageItems(user, account, support)
 {
     const items = [];
     if (account)
     {
         const base = "/account/" + String(account.uid).toLowerCase();
+        const handles = !!support && (support.all || support.counts.has(account.id));
+        const waiting = handles ? (support.counts.get(account.id) || 0) : 0;
+        const children =
+        [
+            { label: "Overview", path: base, exact: true },
+            { label: "Locations", path: base + "/locations" },
+            { label: "Users", path: base + "/users" },
+            { label: "Athletes", path: base + "/athletes" },
+            { label: "Wristbands", path: base + "/wristbands" },
+            { label: "Alert groups", path: base + "/alert-groups" },
+            { label: "API and webhooks", path: base + "/api" },
+            { label: "Unclaimed devices", path: base + "/unclaimed" }
+        ];
+        if (handles) { children.push({ label: "Support", path: base + "/support", count: waiting }); }
+        children.push({ label: "Settings", path: base + "/settings" });
         items.push(
-            {
-                label: "Account", path: "/account", exact: true, icon: "fa-building",
-                children:
-                [
-                    { label: "Overview", path: base, exact: true },
-                    { label: "Locations", path: base + "/locations" },
-                    { label: "Users", path: base + "/users" },
-                    { label: "Athletes", path: base + "/athletes" },
-                    { label: "Wristbands", path: base + "/wristbands" },
-                    { label: "Alert groups", path: base + "/alert-groups" },
-                    { label: "API and webhooks", path: base + "/api" },
-                    { label: "Unclaimed devices", path: base + "/unclaimed" },
-                    { label: "Settings", path: base + "/settings" }
-                ]
-            },
+            { label: "Account", path: "/account", exact: true, icon: "fa-building", count: waiting, children: children },
             { label: "Analytics", path: base + "/analytics", alt: "/analytics", icon: "fa-chart-line" },
             { label: "Reports", path: base + "/reports", alt: "/reports", icon: "fa-file-lines" });
     }
@@ -86,20 +90,17 @@ function manageItems(user, account)
     return items;
 }
 
-// Help for everyone; a requester's own conversations (/support/<uid>) light up Help. Help opens the
-// Help modal on the page the user is on (views/partials/help-modal.ejs); /help stays the page with
-// their requests, and the form without JavaScript. Superadmins
-// also get the request list, with a badge counting requests that need an answer.
+// Support request for everyone: it opens the support modal on the page the user is on
+// (views/partials/support-modal.ejs); its link, for a click without JavaScript, is the user's own
+// list. Superadmins also get every request, with a badge counting requests waiting on support.
 function supportItems(user)
 {
+    const items = [{ label: "Support request", path: "/profile/support", icon: "fa-life-ring", modal: "supportModal" }];
     if (user && user.is_superadmin)
     {
-        return [
-            { label: "Help", path: "/help", icon: "fa-circle-question", exact: true, modal: "helpModal" },
-            { label: "Support requests", path: "/support", icon: "fa-life-ring", badge: "support" }
-        ];
+        items.push({ label: "Support requests", path: "/support", icon: "fa-inbox", badge: "support" });
     }
-    return [{ label: "Help", path: "/help", alt: "/support", icon: "fa-circle-question", modal: "helpModal" }];
+    return items;
 }
 
 function matches(node, path)
@@ -124,14 +125,14 @@ function findTrail(nodes, path)
     return best;
 }
 
-function resolve(path, user, currentLocation, account)
+function resolve(path, user, currentLocation, account, support)
 {
     const monitor = currentLocation ? monitorItems(currentLocation) : [];
     // Monitor appears only while inside a location.
     const sections =
     [
         { section: "Monitor", scoped: true, location: currentLocation || null, items: monitor },
-        { section: "Manage", items: manageItems(user, account || null) },
+        { section: "Manage", items: manageItems(user, account || null, support || null) },
         { section: "Support", items: supportItems(user) }
     ].filter((s) => !s.scoped || s.items.length > 0);
     const items = sections.flatMap((s) => s.items);
@@ -157,7 +158,7 @@ function resolve(path, user, currentLocation, account)
         current: current,
         title: current ? current.label : "",
         breadcrumb: breadcrumb,
-        subnav: subnav.map((n) => ({ label: n.label, path: n.path, active: matches(n, path) })),
+        subnav: subnav.map((n) => ({ label: n.label, path: n.path, active: matches(n, path), count: n.count || 0 })),
         inMonitor: !!(top && monitor.includes(top))
     };
 }

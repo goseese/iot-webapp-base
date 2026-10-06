@@ -102,8 +102,8 @@ router.get("/support", async (req, res, next) =>
 {
     try
     {
-        const mine = await require("../services/support").listForUser(req.user.id);
-        res.render("profile/support", { title: "Profile", navTrail: TRAIL.concat([{ label: "Support", path: "/profile/support", isCurrent: true }]), navSub: tabs("/profile/support"), mine: mine });
+        const rows = await require("../services/support").listForUser(req.user.id);
+        res.render("profile/support", { title: "Profile", navTrail: TRAIL.concat([{ label: "Support", path: "/profile/support", isCurrent: true }]), navSub: tabs("/profile/support"), rows: rows });
     }
     catch (err) { next(err); }
 });

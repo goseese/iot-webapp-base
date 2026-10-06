@@ -1,0 +1,49 @@
+<%# Support request modal (DECISIONS.md "Support requests"), on every signed in page. The Support
+    request nav item and any element with data-support-open open it; public/js/support.js posts it
+    to POST /support with the page it was opened on (path and a readable title), the page's account
+    and location, an optional file and a screenshot of the tab. %>
+<% var supAccount = typeof account !== "undefined" && account ? fmt.uid(account.uid) : ""; %>
+<% var supLocation = typeof currentLocation !== "undefined" && currentLocation ? fmt.uid(currentLocation.uid) : ""; %>
+<div class="modal fade" id="supportModal" tabindex="-1" aria-labelledby="supportModalTitle" aria-hidden="true"
+     data-csrf="<%= typeof csrfToken !== "undefined" ? csrfToken : "" %>" data-account="<%= supAccount %>" data-location="<%= supLocation %>" data-max-mb="<%= supportForm.maxMb %>">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="supportModalTitle">Support request</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="supportForm">
+          <div class="small mb-3"><span class="text-secondary">From this page:</span> <span id="supportPage"></span></div>
+          <label class="form-label" for="supportSeverity">How urgent is this?</label>
+          <select class="form-select mb-3" id="supportSeverity">
+            <% supportForm.severities.forEach(function (s) { %><option value="<%= s.key %>" <%= s.key === supportForm.defaultSeverity ? "selected" : "" %>><%= s.label %></option><% }); %>
+          </select>
+          <label class="form-label" for="supportDescription">Describe the problem</label>
+          <textarea class="form-control" id="supportDescription" rows="6" maxlength="<%= supportForm.maxDescription %>"></textarea>
+          <label class="form-label mt-3" for="supportFile">Attach a file (optional, up to <%= supportForm.maxMb %> MB)</label>
+          <input class="form-control" type="file" id="supportFile" accept="image/*,.pdf,.csv,.txt,.log,.xlsx,.xls,.docx,.doc">
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" id="supportScreenshot" checked>
+            <label class="form-check-label" for="supportScreenshot">Include a screenshot of this page</label>
+            <div class="form-text">Your browser asks which tab to share; pick this one. Cancel it and the request still goes, without a screenshot.</div>
+          </div>
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="supportCopyMe">
+            <label class="form-check-label" for="supportCopyMe">Email me a copy</label>
+          </div>
+          <div id="supportError" class="alert alert-danger py-2 mt-3 mb-0 d-none"></div>
+        </div>
+        <div id="supportDone" class="d-none">
+          <p class="mb-2">Your request <strong id="supportNumber"></strong> has been sent. Support has been notified.</p>
+          <p class="mb-0 small text-secondary">Replies appear on the request's page, and you get an email with a link when support answers. <a id="supportLink" href="#">Open the request</a></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a class="me-auto small" href="/profile/support">Your requests</a>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="supportSubmit">Send request</button>
+      </div>
+    </div>
+  </div>
+</div>

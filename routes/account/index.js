@@ -16,6 +16,7 @@ account.use("/", require("./alert-groups"));
 account.use("/", require("./settings"));
 account.use("/", require("./api"));
 account.use("/", require("./unclaimed"));
+account.use("/", require("./support"));
 account.use("/analytics", require("../charts"));
 account.use("/reports", require("../reports"));
 router.use("/:accountUid", loadAccount, account);

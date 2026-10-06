@@ -87,8 +87,8 @@ async function startWeb()
     app.set("views", path.join(__dirname, "views"));
     app.set("layout", "layouts/app");
     app.use(expressLayouts);
-    // The Help modal on every page (views/partials/help-modal.ejs) uses the support form's limits.
-    app.locals.supportMax = { subject: require("./services/support").MAX_SUBJECT, body: require("./services/support").MAX_BODY };
+    // The support modal on every signed in page (views/partials/support-modal.ejs): severities and limits.
+    app.locals.supportForm = { severities: require("./services/support").SEVERITIES, defaultSeverity: require("./services/support").DEFAULT_SEVERITY, maxDescription: require("./services/support").MAX_DESCRIPTION, maxMb: require("./services/support").MAX_BYTES / 1048576 };
 
     app.use(helmet({ contentSecurityPolicy: false }));   // inline page scripts and echarts; CSP tightened later
     app.use(express.static(path.join(__dirname, "public"), { maxAge: env.isProd ? "7d" : 0 }));
@@ -146,14 +146,22 @@ async function startWeb()
     app.use(auth.loadUser);
     app.use(auth.mustSetPassword);
     app.use(require("./middleware/account").currentAccount);
-    // The superadmin's Support requests badge: one indexed count per page, no polling.
+    // Support badges, computed per page from the database (no polling): the superadmin's Support
+    // requests count, and the accounts this user is support for with their waiting counts (the
+    // Account > Support menu item). GET pages only; posts redirect.
     app.use(async (req, res, next) =>
     {
         res.locals.supportOpenCount = 0;
-        if (req.user && req.user.is_superadmin)
+        req.supportAccounts = null;
+        if (req.user && req.method === "GET")
         {
-            try { res.locals.supportOpenCount = await require("./services/support").countOpen(); }
-            catch (err) { /* the badge is not worth failing a page for */ }
+            const support = require("./services/support");
+            try
+            {
+                if (req.user.is_superadmin) { res.locals.supportOpenCount = await support.openCount(); }
+                req.supportAccounts = await support.openByAccount(req.user);
+            }
+            catch (err) { /* the badges are not worth failing a page for */ }
         }
         next();
     });
@@ -161,7 +169,7 @@ async function startWeb()
     {
         // Resolved at render time, after the route has said which location (if any) the page is in.
         // req.path is router-relative by render time, so resolve against the full URL path.
-        Object.defineProperty(res.locals, "nav", { enumerable: true, configurable: true, get: () => menu.resolve(req.originalUrl.split("?")[0], req.user, req.navLocation || null, req.account || null) });
+        Object.defineProperty(res.locals, "nav", { enumerable: true, configurable: true, get: () => menu.resolve(req.originalUrl.split("?")[0], req.user, req.navLocation || null, req.account || null, req.supportAccounts || null) });
         Object.defineProperty(res.locals, "currentLocation", { enumerable: true, configurable: true, get: () => req.navLocation || null });
         res.locals.buildTrail = (navTrail) => require("./nav/breadcrumb").build(res.locals.nav, navTrail, req.account || null, req.navLocation || null);
         res.locals.appVersion = pkg.version;
