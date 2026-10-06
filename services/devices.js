@@ -2,7 +2,7 @@
 // Sensors are not created here (Sep 2026, deviates from architecture 3.2): each is created by
 // createSensor when the first value for its channel arrives, with the default alarm rules and tags
 // its channel declares.
-const { knex, T, nowEpoch } = require("../db/knex");
+const { knex, T, nowEpoch, insertId } = require("../db/knex");
 const deviceTypes = require("../deviceTypes");
 const devicesRepo = require("../db/repos/devices");
 const sensorsRepo = require("../db/repos/sensors");
@@ -116,31 +116,37 @@ async function createSensor(device, type, ch, trx)
         created_epoch: now
     }, db);
 
+    // Each default rule goes in the rule change log as created by System (ruleLog.js).
+    const ruleLog = require("./alarms/ruleLog");
     for (const a of (ch.defaultAlarms || []))
     {
+        let ins;
         if (a.rule === "no_data")
         {
-            await db(T("alarm_rules")).insert(
+            ins = await db(T("alarm_rules")).insert(
             {
                 sensor_id: sensorId,
                 rule_kind: "no_data",
                 severity: a.severity || "warning",
                 timeout_secs: a.timeoutSecs,
                 created_epoch: now
-            });
-            continue;
+            }).returning("id");
         }
-        await db(T("alarm_rules")).insert(
+        else
         {
-            sensor_id: sensorId,
-            rule_kind: "threshold",
-            direction: a.direction,
-            threshold: a.threshold,
-            severity: a.severity || "alarm",
-            exceed_secs: a.exceedSecs || 0,
-            return_secs: a.returnSecs || 0,
-            created_epoch: now
-        });
+            ins = await db(T("alarm_rules")).insert(
+            {
+                sensor_id: sensorId,
+                rule_kind: "threshold",
+                direction: a.direction,
+                threshold: a.threshold,
+                severity: a.severity || "alarm",
+                exceed_secs: a.exceedSecs || 0,
+                return_secs: a.returnSecs || 0,
+                created_epoch: now
+            }).returning("id");
+        }
+        await ruleLog.created(db, insertId(ins), ch.name, ruleLog.SYSTEM, "device type default");
     }
 
     for (const tagName of (ch.defaultTags || []))

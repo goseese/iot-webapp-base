@@ -434,7 +434,10 @@ router.get("/:uid/settings", loadDevice, async (req, res, next) =>
         const offline = await knex(T("offline_periods")).where({ device_id: req.device.id }).orderBy("start_epoch", "desc").limit(10);
         const reasons = await knex(T("list_items") + " as i").join(T("lists") + " as l", "l.id", "i.list_id").where("l.slug", "offline_reasons").orderBy("i.sort_order").select("i.label");
         const chemistryDefault = req.typeModule ? req.typeModule.batteryChemistry || null : null;
-        res.render("devices/settings", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, cred: cred, chemistryDefault: chemistryDefault, chemistries: require("../services/levels").chemistries, unitHardware: credentials.isUnitHardware(req.device), offline: offline, reasons: reasons.map((r) => r.label), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Settings") });
+        const title = require("../services/alarms/title");
+        const inh = await title.inherited("device", { location_id: req.location.id, account_id: req.location.account_id });
+        const titleField = title.field({ value: req.device.alarm_title, inherited: inh, sample: { device_name: req.device.name, location_name: req.location.name }, disabled: !permissions.has(req.deviceBits, permissions.byName.edit) });
+        res.render("devices/settings", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, cred: cred, chemistryDefault: chemistryDefault, titleField: titleField, chemistries: require("../services/levels").chemistries, unitHardware: credentials.isUnitHardware(req.device), offline: offline, reasons: reasons.map((r) => r.label), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Settings") });
     }
     catch (err) { next(err); }
 });
@@ -761,6 +764,28 @@ router.post("/:uid/battery", loadDevice, need("edit"), async (req, res, next) =>
         await knex(T("devices")).where({ id: req.device.id }).update({ battery_chemistry: value === "" ? null : value });
         await activity.log(req, "device_battery_chemistry", { entity_type: "device", entity_uid: req.device.uid, detail: value || "default" });
         req.flash("success", "Battery type saved. Battery percent uses it from the next reading.");
+        res.redirect(back);
+    }
+    catch (err) { next(err); }
+});
+
+// Alarm title for every sensor on this device (services/alarms/title.js); blank inherits.
+router.post("/:uid/alarm-title", loadDevice, need("edit"), async (req, res, next) =>
+{
+    try
+    {
+        const back = "/devices/" + req.params.uid + "/settings";
+        const value = require("../services/alarms/title").clean(req.body.alarm_title);
+        if (value !== (req.device.alarm_title || null))
+        {
+            await knex.transaction(async (trx) =>
+            {
+                await trx(T("devices")).where({ id: req.device.id }).update({ alarm_title: value });
+                await require("../services/audit").audit(trx, { entityType: "device", entityUid: req.device.uid, entityName: req.device.name, field: "alarm_title", oldValue: req.device.alarm_title, newValue: value, actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            });
+            await activity.log(req, "device_alarm_title", { entity_type: "device", entity_uid: req.device.uid, detail: value || "inherit" });
+        }
+        req.flash("success", "Alarm title saved.");
         res.redirect(back);
     }
     catch (err) { next(err); }

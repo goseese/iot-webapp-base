@@ -7,6 +7,9 @@ function field(s)
     <input type="hidden" name="_csrf" value="<%= csrfToken %>">
     <% if (s.kind === "bool") { %>
       <div class="form-check form-switch mb-0"><input class="form-check-input" type="checkbox" name="value" value="1" <%= s.value ? "checked" : "" %> onchange="this.form.submit()"></div>
+    <% } else if (s.key === "ALARM_TITLE_FORMAT") { %>
+      <div class="flex-grow-1"><%- include("../partials/alarm-title-field", { f: alarmTitleField }) %></div>
+      <button class="btn btn-sm btn-outline-secondary align-self-start">Save</button>
     <% } else { %>
       <input class="form-control form-control-sm" name="value" type="<%= s.kind === "secret" ? "password" : (s.kind === "int" ? "number" : "text") %>" value="<%= s.shown === null || s.shown === undefined ? "" : s.shown %>" <%= s.kind === "int" && s.min !== null ? 'min="' + s.min + '"' : "" %> <%= s.kind === "int" && s.max !== null ? 'max="' + s.max + '"' : "" %> placeholder="<%= s.kind === "secret" ? "not set" : "" %>" autocomplete="off">
       <button class="btn btn-sm btn-outline-secondary">Save</button>

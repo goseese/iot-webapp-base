@@ -45,7 +45,7 @@ async function send(msg)
     {
         kind: msg.kind, channel: "email", recipient_type: msg.recipientType || "address", recipient_id: msg.recipientId || null,
         address: to.join(", ").slice(0, 254), alarm_event_id: msg.alarmEventId || null, ladder_note: msg.ladderNote || null,
-        outcome: "failed", reason: "not attempted", provider: driver.name, subject: (msg.subject || "").slice(0, 200)
+        outcome: "failed", reason: "not attempted", provider: driver.name, subject: (msg.subject || "").slice(0, 255)
     });
     if (notConfigured)
     {

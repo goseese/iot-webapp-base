@@ -9,6 +9,7 @@ const credentials = require("../db/repos/credentials");
 const deviceTypes = require("../deviceTypes");
 const display = require("../services/display");
 const activity = require("../services/activity");
+const title = require("../services/alarms/title");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -188,12 +189,26 @@ router.get("/:uid/users", requireBits("location", ["view"]), async (req, res, ne
     catch (err) { next(err); }
 });
 
+// Alarm title field for a location: its ALARM_TITLE_FORMAT row in location_settings.
+async function locationTitleField(req, c, value)
+{
+    const inh = await title.inherited("location", { account_id: req.scope.account_id });
+    return title.field({ value: value, inherited: inh, sample: { location_name: req.scope.name, account_name: c.account ? c.account.name : undefined } });
+}
+
+async function locationTitle(locationId)
+{
+    const row = await knex(T("location_settings")).where({ location_id: locationId, setting_key: "ALARM_TITLE_FORMAT" }).first();
+    return row ? row.setting_value : null;
+}
+
 router.get("/:uid/settings", requireBits("location", ["edit"]), async (req, res, next) =>
 {
     try
     {
         const c = await common(req);
-        res.render("locations/settings", Object.assign({ title: "Settings", values: req.scope, errors: {} }, c));
+        const titleField = await locationTitleField(req, c, await locationTitle(req.scope.id));
+        res.render("locations/settings", Object.assign({ title: "Settings", values: req.scope, errors: {}, titleField: titleField }, c));
     }
     catch (err) { next(err); }
 });
@@ -217,7 +232,8 @@ router.post("/:uid/settings", requireBits("location", ["edit"]),
             const mode = canLock && ["locked", "normal", "release"].includes(req.body.membership_mode) ? req.body.membership_mode : null;
             if (Object.keys(errors).length > 0)
             {
-                return res.status(422).render("locations/settings", Object.assign({ title: "Settings", values: Object.assign({}, req.scope, req.body), errors: errors }, c));
+                const titleField = await locationTitleField(req, c, req.body.alarm_title);
+                return res.status(422).render("locations/settings", Object.assign({ title: "Settings", values: Object.assign({}, req.scope, req.body), errors: errors, titleField: titleField }, c));
             }
             const patch = { name: req.body.name.trim(), iana_timezone: req.body.iana_timezone.trim(), address: (req.body.address || "").trim() || null, lat: lat, lng: lng, notes: (req.body.notes || "").trim() || null };
             if (permissions.has(req.scopeBits, permissions.byName.manage_alarms) && ["active", "muted", "offline"].includes(req.body.alarm_mode) && req.body.alarm_mode !== req.scope.alarm_mode)
@@ -226,6 +242,18 @@ router.post("/:uid/settings", requireBits("location", ["edit"]),
             }
             if (mode) { patch.membership_mode = mode; }
             await locationService.update(req.scope, patch, req.user);
+            // Alarm title: a location_settings row; blank deletes it (inherit from the account).
+            const oldTitle = await locationTitle(req.scope.id);
+            const newTitle = title.clean(req.body.alarm_title);
+            if (newTitle !== oldTitle)
+            {
+                await knex.transaction(async (trx) =>
+                {
+                    await trx(T("location_settings")).where({ location_id: req.scope.id, setting_key: "ALARM_TITLE_FORMAT" }).del();
+                    if (newTitle !== null) { await trx(T("location_settings")).insert({ location_id: req.scope.id, setting_key: "ALARM_TITLE_FORMAT", setting_value: newTitle, updated_epoch: nowEpoch(), updated_by: req.user.id }); }
+                    await require("../services/audit").audit(trx, { entityType: "location", entityUid: req.scope.uid, entityName: req.scope.name, field: "alarm_title", oldValue: oldTitle, newValue: newTitle, actorType: "user", actorId: req.user.id, actorName: req.user.username });
+                });
+            }
             display.invalidate();
             await activity.log(req, "location_updated", { entity_type: "location", entity_uid: req.scope.uid });
             req.flash("success", "Location settings saved.");

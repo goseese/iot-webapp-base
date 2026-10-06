@@ -1,0 +1,17 @@
+<% /* Alarm title field (DECISIONS "Alarm titles"). f = title.field(...) from services/alarms/title.js.
+      The Tokens list inserts a token at the cursor; the preview renders with sample values.
+      Behaviour in public/js/iot-title.js. Blank stores NULL and inherits the placeholder. */ %>
+<div data-title-field data-sample="<%= JSON.stringify(f.sample) %>">
+  <% if (f.label) { %><label class="form-label<%= f.size === "sm" ? " small" : "" %>" for="<%= f.id %>"><%= f.label %></label><% } %>
+  <div class="input-group<%= f.size === "sm" ? " input-group-sm" : "" %>">
+    <input class="form-control" id="<%= f.id %>" name="<%= f.name %>" value="<%= f.value %>" maxlength="200" autocomplete="off" placeholder="<%= f.inherited.template %>" data-title-input <%= f.disabled ? "disabled" : "" %>>
+    <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-popper-config='{"strategy":"fixed"}' aria-expanded="false" title="Insert a token at the cursor" <%= f.disabled ? "disabled" : "" %>>Tokens</button>
+    <ul class="dropdown-menu dropdown-menu-end" style="max-height: 22rem; overflow-y: auto;">
+      <% f.tokens.forEach(function (t) { %><li><button type="button" class="dropdown-item py-1" data-title-token="<%= t.name %>"><code>{<%= t.name %>}</code><span class="d-block small text-secondary"><%= t.help %></span></button></li>
+      <% }); %>
+    </ul>
+  </div>
+  <div class="form-text">Blank uses the <%= f.inherited.sourceText %> title shown.</div>
+  <div class="form-text text-break">Preview: <span class="text-body" data-title-preview></span></div>
+  <div class="form-text text-warning d-none" data-title-unknown></div>
+</div>

@@ -12,6 +12,7 @@ const tokens = require("../tokens");
 const mail = require("../mail");
 const metrics = require("../../metrics");
 const { ORDER } = require("./ladder");
+const title = require("./title");
 
 const CHANNELS = ["email", "sms"];
 const TRANSITION_KEY = { raised: "raise", escalated: "escalate", de_escalated: "de_escalate", cleared: "clear", re_notified: "raise", suppressed: null };
@@ -170,11 +171,26 @@ function displayValue(ctx, value)
     return v.toFixed(metrics.precision(ctx.metric, unit)) + (unit ? " " + unit : "");
 }
 
-function subjectFor(ctx, eventKind, severity)
+// The alarm title (services/alarms/title.js), resolved once per notification run. A title problem
+// must never stop an alarm going out: log it and fall back to plain names.
+async function titleFor(ctx, rule)
 {
-    const site = settings.siteName();
+    try
+    {
+        return await title.forAlarm(ctx, rule);
+    }
+    catch (err)
+    {
+        logger.warn({ alarm: ctx.id, err: err.message }, "alarm title failed, using plain names");
+        return ctx.sensor_name + " on " + ctx.device_name + " at " + ctx.location_name;
+    }
+}
+
+// "<event word>: <title>". No site prefix; a title can use {site_name}.
+function subjectFor(titleText, eventKind, severity)
+{
     const what = { raised: severity.toUpperCase(), escalated: "ESCALATED to " + severity, de_escalated: "lowered to " + severity, cleared: "CLEARED", re_notified: "still " + severity.toUpperCase() }[eventKind] || eventKind;
-    return "[" + site + "] " + what + ": " + ctx.sensor_name + " on " + ctx.device_name + " at " + ctx.location_name;
+    return what + ": " + titleText;
 }
 
 function bodyFor(ctx, eventKind, severity, value, comment, actionUrl, ladderNote)
@@ -202,10 +218,11 @@ async function notify(alarmId, options)
     const ctx = await alarmsRepo.context(alarmId);
     if (!ctx) { return; }
     const rule = ctx.rule_id ? await knex(T("alarm_rules")).where({ id: ctx.rule_id }).first() : null;
+    const titleText = await titleFor(ctx, rule);
     const groups = await attachedGroups(ctx);
     if (groups.length === 0)
     {
-        await notifications.insert({ kind: "alarm", channel: "email", recipient_type: "address", address: "(nobody)", alarm_event_id: options.eventId, outcome: "suppressed", reason: "no alert group attached", subject: subjectFor(ctx, options.eventKind, options.severity || ctx.severity) });
+        await notifications.insert({ kind: "alarm", channel: "email", recipient_type: "address", address: "(nobody)", alarm_event_id: options.eventId, outcome: "suppressed", reason: "no alert group attached", subject: subjectFor(titleText, options.eventKind, options.severity || ctx.severity) });
         return;
     }
 
@@ -228,14 +245,15 @@ async function notify(alarmId, options)
                 const address = channel === "email" ? r.row.email : r.row.phone;
                 if (reason)
                 {
-                    await notifications.insert({ kind: "alarm", channel: channel, recipient_type: r.type, recipient_id: r.id, address: address || "", alarm_event_id: options.eventId, ladder_note: r.ladderNote, outcome: "suppressed", reason: reason, subject: subjectFor(ctx, options.eventKind, severity) });
+                    await notifications.insert({ kind: "alarm", channel: channel, recipient_type: r.type, recipient_id: r.id, address: address || "", alarm_event_id: options.eventId, ladder_note: r.ladderNote, outcome: "suppressed", reason: reason, subject: subjectFor(titleText, options.eventKind, severity) });
                     continue;
                 }
                 if (channel === "sms")
                 {
                     const sms = require("../sms").active();
-                    const smsText = subjectFor(ctx, options.eventKind, severity) + (options.value !== null && options.value !== undefined ? " " + displayValue(ctx, options.value) : "") + " " + env.appUrl + "/alarms/" + String(ctx.uid).toLowerCase();
-                    const nid = await notifications.insert({ kind: "alarm", channel: "sms", recipient_type: r.type, recipient_id: r.id, address: address, alarm_event_id: options.eventId, ladder_note: r.ladderNote, outcome: "failed", reason: "not attempted", provider: sms.name, subject: subjectFor(ctx, options.eventKind, severity), body: smsText, sender: settings.get("TWILIO_FROM_NUMBER", "") || null });
+                    // Subject, value (when there is one) and the alarm link, one per line.
+                    const smsText = [subjectFor(titleText, options.eventKind, severity), options.value !== null && options.value !== undefined ? displayValue(ctx, options.value) : null, env.appUrl + "/alarms/" + String(ctx.uid).toLowerCase()].filter((l) => l !== null).join("\n");
+                    const nid = await notifications.insert({ kind: "alarm", channel: "sms", recipient_type: r.type, recipient_id: r.id, address: address, alarm_event_id: options.eventId, ladder_note: r.ladderNote, outcome: "failed", reason: "not attempted", provider: sms.name, subject: subjectFor(titleText, options.eventKind, severity), body: smsText, sender: settings.get("TWILIO_FROM_NUMBER", "") || null });
                     const result = await sms.send({ to: address, text: smsText }).catch((err) => ({ ok: false, reason: err.message }));
                     await notifications.update(nid, result.ok ? { outcome: "sent", reason: null, provider_message_id: result.messageId || null, provider_response: result.raw ? JSON.stringify(result.raw).slice(0, 8000) : null } : { outcome: "failed", reason: (result.reason || "send failed").slice(0, 200), provider_response: result.raw ? JSON.stringify(result.raw).slice(0, 8000) : null });
                     continue;
@@ -251,7 +269,7 @@ async function notify(alarmId, options)
                 await mail.send(
                 {
                     kind: "alarm", to: address, recipientType: r.type, recipientId: r.id, alarmEventId: options.eventId, ladderNote: r.ladderNote,
-                    subject: subjectFor(ctx, options.eventKind, severity),
+                    subject: subjectFor(titleText, options.eventKind, severity),
                     text: bodyFor(ctx, options.eventKind, severity, options.value, options.comment, actionUrl, r.ladderNote)
                 });
             }

@@ -17,6 +17,7 @@
           <input class="form-control" name="retention_days" value="<%= sensor.retention_days === null ? "" : (sensor.retention_days === -1 ? "forever" : sensor.retention_days) %>" placeholder="inherit">
           <div class="form-text">Blank inherits; "forever" keeps everything.</div>
         </div>
+        <div class="col-12"><%- include("../partials/alarm-title-field", { f: titleField }) %></div>
       </div>
       <div class="form-check form-switch mt-3 mb-3">
         <input class="form-check-input" type="checkbox" id="is_enabled" name="is_enabled" value="1" <%= sensor.is_enabled ? "checked" : "" %>>

@@ -142,7 +142,7 @@ async function softDelete(device, actor)
     await require("./alarms/engine").clearAllForDevice(device.id, now, "archived", { type: "user", id: actor.id }, "device deleted");
     await knex.transaction(async (trx) =>
     {
-        await trx(T("alarm_rules")).whereIn("sensor_id", trx(T("sensors")).where({ device_id: device.id }).select("id")).whereNull("delete_epoch").update({ delete_epoch: now });
+        await require("./alarms/ruleLog").deleteForSensors(trx, trx(T("sensors")).where({ device_id: device.id }).select("id"), { actorType: "user", actorId: actor.id, actorName: actor.username }, "device deleted", now);
         await trx(T("sensors")).where({ device_id: device.id }).whereNull("delete_epoch").update({ delete_epoch: now });
         await trx(T("devices")).where({ id: device.id }).update({ delete_epoch: now });
         await audit(trx, { entityType: "device", entityUid: device.uid, entityName: device.name, field: "deleted", actorType: "user", actorId: actor.id, actorName: actor.username });

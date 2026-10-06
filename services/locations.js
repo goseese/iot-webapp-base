@@ -44,6 +44,8 @@ async function softDelete(location, actor)
         const ids = devices.map((d) => d.id);
         if (ids.length > 0)
         {
+            // Rules are soft deleted and logged too, so they can be restored with the location.
+            await require("./alarms/ruleLog").deleteForSensors(trx, trx(T("sensors")).whereIn("device_id", ids).whereNull("delete_epoch").select("id"), { actorType: "user", actorId: actor.id, actorName: actor.username }, "location deleted", now);
             await trx(T("sensors")).whereIn("device_id", ids).whereNull("delete_epoch").update({ delete_epoch: now });
             // Units behind these devices keep their credentials (migration 0020); only placements end.
             await trx(T("devices")).whereIn("id", ids).update({ delete_epoch: now });

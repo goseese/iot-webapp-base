@@ -43,4 +43,4 @@ async function format(sensor, value, location)
 
 function invalidate() { scopedCache.clear(); }
 
-module.exports = { resolveUnit, format, invalidate };
+module.exports = { resolveUnit, format, invalidate, scoped };

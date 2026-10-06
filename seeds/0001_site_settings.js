@@ -21,6 +21,7 @@ const DEFAULTS =
     { key: "ONLINE_THRESHOLD_SECS", value: "900", kind: "int", group: "general", description: "Seconds since last contact before a gateway or device shows offline.", min: 60, max: 86400 },
     { key: "RENOTIFY_MINUTES", value: "60", kind: "int", group: "general", description: "Minutes between repeat notifications for an unacknowledged active alarm.", min: 5, max: 1440 },
     { key: "REPORT_FILE_DAYS", value: "30", kind: "int", group: "general", description: "Days generated report files are kept.", min: 1, max: 365 },
+    { key: "ALARM_TITLE_FORMAT", value: "{sensor_name} on {device_name} at {location_name}", kind: "string", group: "general", description: "Alarm title: the email subject after the event word, the first line of the SMS and the API alarm name. Overridden per account, location, device, sensor or alarm rule." },
 
     { key: "EVENT_LOG_DAYS", value: "30", kind: "int", group: "logging", description: "Days of event log kept (every request and the events it records).", min: 1, max: 365 },
     { key: "DEVICE_FRAMES_HOURS", value: "24", kind: "int", group: "logging", description: "Hours dedup frame claims are kept.", min: 1, max: 168 },

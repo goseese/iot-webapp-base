@@ -37,6 +37,9 @@ function ruleForm(r, action, isNew)
     </div>
   </div>
   <div class="row g-2 mt-1">
+    <div class="col-md-10"><%- include("../partials/alarm-title-field", { f: r ? r.titleField : newTitleField }) %></div>
+  </div>
+  <div class="row g-2 mt-1">
     <div class="col-md-5">
       <label class="form-label small">Also notify these alert groups</label>
       <select class="form-select form-select-sm" name="groups" multiple size="3">
@@ -58,6 +61,16 @@ function ruleForm(r, action, isNew)
   </div>
 </form>
 <% } %>
+<%
+function historyTable(list)
+{
+%>
+<table class="table table-sm small mb-0 mt-1"><thead><tr><th>When</th><th>Who</th><th>Change</th><th>Before</th><th>After</th></tr></thead><tbody>
+<% list.forEach(function (h) { %>
+  <tr><td class="text-nowrap"><span class="iot-hint" data-epoch="<%= h.epoch %>" title="<%= fmt.epoch(h.epoch, location.iana_timezone) %>"><%= fmt.ago(h.epoch) %></span></td><td><%= h.who %></td><td><%= h.what %></td><td class="text-break"><%= h.before %></td><td class="text-break"><%= h.after %></td></tr>
+<% }); %>
+</tbody></table>
+<% } %>
 
 <div class="iot-panel mb-3">
   <div class="iot-panel__header"><strong>Rules on <%= sensor.name %></strong> <span class="text-secondary small ms-2">thresholds in <%= unit %></span></div>
@@ -67,9 +80,25 @@ function ruleForm(r, action, isNew)
       <% if (can) { ruleForm(r, "/sensors/" + uid + "/rules/" + fmt.uid(r.uid), false); } else { %>
       <div class="border-top pt-2 mt-2"><%= r.rule_kind === "no_data" ? "No data for " + Math.round(r.timeout_secs / 60) + " min" : (r.direction === "upper" ? "Above " : "Below ") + r.thresholdDisplay + " " + unit %> - <%= r.severity %><%= r.is_enabled ? "" : " (disabled)" %></div>
       <% } %>
+      <% if (r.history.length) { %><details class="mt-2"><summary class="small text-secondary">Change history (<%= r.history.length %>)</summary><% historyTable(r.history); %></details><% } %>
     <% }); %>
   </div>
 </div>
+
+<% if (removed.length) { %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Removed rules</strong> <span class="text-secondary small ms-2">kept with their history; thresholds in <%= unit %></span></div>
+  <div class="iot-panel__body">
+    <% removed.forEach(function (r, i) { %>
+      <div class="<%= i ? "border-top pt-2 mt-2" : "" %>">
+        <div><%= r.summary %></div>
+        <div class="small text-secondary">Removed <span class="iot-hint" data-epoch="<%= r.delete_epoch %>" title="<%= fmt.epoch(r.delete_epoch, location.iana_timezone) %>"><%= fmt.ago(r.delete_epoch) %></span><%= r.removedBy ? " by " + r.removedBy : "" %></div>
+        <% if (r.history.length) { %><details class="mt-1"><summary class="small text-secondary">Change history (<%= r.history.length %>)</summary><% historyTable(r.history); %></details><% } %>
+      </div>
+    <% }); %>
+  </div>
+</div>
+<% } %>
 
 <% if (can) { %>
 <div class="iot-panel">

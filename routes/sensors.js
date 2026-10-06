@@ -13,6 +13,9 @@ const activity = require("../services/activity");
 const deviceTypes = require("../deviceTypes");
 const tagsSvc = require("../services/tags");
 const tagsRepo = require("../db/repos/tags");
+const title = require("../services/alarms/title");
+const ruleLog = require("../services/alarms/ruleLog");
+const ruleHistory = require("../services/alarms/ruleHistory");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -74,6 +77,8 @@ function channelDescription(sensor)
 
 function toDisplay(req, v) { return v === null || v === undefined ? null : metrics.fromCanonical(req.sensor.metric, v, req.unit); }
 function fromDisplay(req, v) { return metrics.toCanonical(req.sensor.metric, v, req.unit); }
+// A canonical threshold as text in the page's unit, at the unit's precision, for the change history.
+function thresholdText(req, v) { return metrics.fromCanonical(req.sensor.metric, Number(v), req.unit).toFixed(metrics.precision(req.sensor.metric, req.unit)) + (req.unit ? " " + req.unit : ""); }
 
 router.get("/:uid", loadSensor, async (req, res, next) =>
 {
@@ -123,16 +128,46 @@ router.get("/:uid/rules", loadSensor, async (req, res, next) =>
     {
         const rules = await sensorsExt.rules(req.sensor.id);
         const groups = await knex(T("alert_groups")).where({ account_id: req.location.account_id }).whereNull("delete_epoch").orderBy("name");
+        // What a rule's title inherits when blank: the same for every rule on this sensor.
+        const inh = await title.inherited("rule", { sensor: req.sensor.alarm_title, device: req.sensor.device_alarm_title, location_id: req.location.id, account_id: req.location.account_id });
         for (const r of rules)
         {
             r.thresholdDisplay = toDisplay(req, r.threshold);
             r.groups = (await knex(T("alarm_rule_alert_groups")).where({ alarm_rule_id: r.id })).map((x) => x.alert_group_id);
             r.policy = r.channel_policy ? JSON.parse(r.channel_policy) : {};
+            r.titleField = title.field({ id: "title_" + r.uid, value: r.alarm_title, inherited: inh, sample: titleSample(req, r), size: "sm" });
         }
-        res.render("sensors/rules", { title: req.sensor.name, sensor: req.sensor, location: req.location, unit: req.unit, rules: rules, groups: groups, bits: req.bits, permissions: permissions, navTrail: trail(req, "Alarm rules"), navSub: tabs(req, "Alarm rules") });
+        const newTitleField = title.field({ id: "title_new", value: "", inherited: inh, sample: titleSample(req, null), size: "sm" });
+
+        // Change history (ruleHistory.js): one query for every rule on this sensor, live and
+        // removed (the 50 most recently removed), newest first; thresholds in this page's unit.
+        const removed = await knex(T("alarm_rules")).where({ sensor_id: req.sensor.id }).whereNotNull("delete_epoch").orderBy("delete_epoch", "desc").limit(50);
+        const history = ruleHistory.byRule(await ruleHistory.rowsFor(rules.concat(removed).map((r) => r.uid)), { threshold: (v) => thresholdText(req, v) });
+        for (const r of rules) { r.history = history.get(String(r.uid).toLowerCase()) || []; }
+        for (const r of removed)
+        {
+            r.history = history.get(String(r.uid).toLowerCase()) || [];
+            const del = r.history.find((l) => l.field === "deleted");
+            r.summary = del ? del.before : ruleHistory.summary(ruleLog.snapshotOf(r, []), { threshold: (v) => thresholdText(req, v) });
+            r.removedBy = del ? del.who : "";
+        }
+        res.render("sensors/rules", { title: req.sensor.name, sensor: req.sensor, location: req.location, unit: req.unit, rules: rules, removed: removed, groups: groups, newTitleField: newTitleField, bits: req.bits, permissions: permissions, navTrail: trail(req, "Alarm rules"), navSub: tabs(req, "Alarm rules") });
     }
     catch (err) { next(err); }
 });
+
+// Preview values for a rule's title field: this sensor's real names, and for an existing rule
+// its own direction, limit and delays. The limit stands in for the readings.
+function titleSample(req, r)
+{
+    const names = { location_name: req.location.name, device_name: req.sensor.device_name, sensor_name: req.sensor.name };
+    if (!r) { return names; }
+    const limit = r.rule_kind === "threshold" && r.thresholdDisplay !== null && r.thresholdDisplay !== undefined ? (r.thresholdDisplay + " " + (req.unit || "")).trim() : "";
+    const ctx = Object.assign({ severity: r.severity, direction: r.rule_kind === "no_data" ? "no_data" : r.direction }, names);
+    const v = title.tokens(ctx, r, { alarm_limit: limit, exceed_value: limit, return_value: limit });
+    // Tokens the page cannot know (account, site) keep their SAMPLE values.
+    return Object.fromEntries(Object.entries(v).filter((e) => e[1] !== undefined));
+}
 
 function ruleFromBody(req)
 {
@@ -166,6 +201,7 @@ function ruleFromBody(req)
         policy[tr] = { email: !!b["p_" + tr + "_email"], sms: !!b["p_" + tr + "_sms"] };
     }
     row.channel_policy = JSON.stringify(policy);
+    row.alarm_title = title.clean(b.alarm_title);
     return row;
 }
 
@@ -182,14 +218,15 @@ router.post("/:uid/rules", loadSensor, need("manage_alarms"), async (req, res, n
     {
         const row = ruleFromBody(req);
         const groupIds = [].concat(req.body.groups || []);
+        let ruleUid = null;
         await knex.transaction(async (trx) =>
         {
             const r = await trx(T("alarm_rules")).insert(Object.assign(row, { sensor_id: req.sensor.id, created_epoch: nowEpoch() })).returning("id");
             const id = insertId(r);
             await saveGroups(id, groupIds, trx);
-            await audit(trx, { entityType: "sensor", entityUid: req.sensor.uid, entityName: req.sensor.name, field: "alarm_rule_added", newValue: JSON.stringify(row), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            ruleUid = await ruleLog.created(trx, id, req.sensor.name, ruleLog.actorOf(req.user));
         });
-        await activity.log(req, "alarm_rule_created", { entity_type: "sensor", entity_uid: req.sensor.uid });
+        await activity.log(req, "alarm_rule_created", { entity_type: "alarm_rule", entity_uid: ruleUid, detail: "sensor " + req.sensor.name });
         req.flash("success", "Rule added.");
     }
     catch (err) { req.flash("danger", err.message); }
@@ -208,22 +245,33 @@ router.post("/:uid/rules/:ruleUid", loadSensor, need("manage_alarms"), async (re
             await knex.transaction(async (trx) =>
             {
                 await trx(T("alarm_rules")).where({ id: rule.id }).update({ delete_epoch: nowEpoch() });
-                await audit(trx, { entityType: "sensor", entityUid: req.sensor.uid, entityName: req.sensor.name, field: "alarm_rule_deleted", oldValue: rule.uid, actorType: "user", actorId: req.user.id, actorName: req.user.username });
+                await ruleLog.deleted(trx, rule.id, req.sensor.name, ruleLog.actorOf(req.user));
             });
+            await activity.log(req, "alarm_rule_deleted", { entity_type: "alarm_rule", entity_uid: String(rule.uid).toLowerCase(), detail: "sensor " + req.sensor.name });
             req.flash("success", "Rule removed.");
             return res.redirect(back);
         }
         const row = ruleFromBody(req);
         if (row.rule_kind !== rule.rule_kind) { throw new Error("A rule's kind cannot change; add a new rule instead."); }
+        // The form shows the threshold converted to the display unit, and converting back is not
+        // always exact (26.0 C shows as 78.80000000000001 F). A threshold field left as shown keeps
+        // the stored value, so the save neither moves it, restarts its clocks nor logs a change.
+        if (row.threshold !== null && rule.threshold !== null && String(req.body.threshold).trim() === String(toDisplay(req, rule.threshold))) { row.threshold = rule.threshold; }
+        let changed = [];
         await knex.transaction(async (trx) =>
         {
+            const before = await ruleLog.snapshot(trx, rule.id);
             // A threshold change restarts the clocks for that rule.
             if (rule.threshold !== row.threshold || rule.direction !== row.direction) { row.breach_since = null; row.return_since = null; }
             await trx(T("alarm_rules")).where({ id: rule.id }).update(row);
             await saveGroups(rule.id, [].concat(req.body.groups || []), trx);
-            await audit(trx, { entityType: "sensor", entityUid: req.sensor.uid, entityName: req.sensor.name, field: "alarm_rule_" + rule.uid, oldValue: JSON.stringify({ direction: rule.direction, threshold: rule.threshold, severity: rule.severity }), newValue: JSON.stringify({ direction: row.direction, threshold: row.threshold, severity: row.severity }), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            changed = await ruleLog.updated(trx, rule.id, before, req.sensor.name, ruleLog.actorOf(req.user));
         });
-        req.flash("success", "Rule saved.");
+        if (changed.length)
+        {
+            await activity.log(req, "alarm_rule_updated", { entity_type: "alarm_rule", entity_uid: String(rule.uid).toLowerCase(), detail: "sensor " + req.sensor.name + ": " + changed.join(", ") });
+        }
+        req.flash("success", changed.length ? "Rule saved." : "No changes to save.");
     }
     catch (err) { req.flash("danger", err.message); }
     res.redirect(back);
@@ -315,7 +363,9 @@ router.get("/:uid/settings", loadSensor, need("edit"), async (req, res, next) =>
     try
     {
         const units = [req.metric.canonical].concat(Object.keys(req.metric.units));
-        res.render("sensors/settings", { title: req.sensor.name, sensor: req.sensor, location: req.location, unit: req.unit, units: units, metric: req.metric, bits: req.bits, permissions: permissions, navTrail: trail(req, "Settings"), navSub: tabs(req, "Settings") });
+        const inh = await title.inherited("sensor", { device: req.sensor.device_alarm_title, location_id: req.location.id, account_id: req.location.account_id });
+        const titleField = title.field({ value: req.sensor.alarm_title, inherited: inh, sample: titleSample(req, null) });
+        res.render("sensors/settings", { title: req.sensor.name, sensor: req.sensor, location: req.location, unit: req.unit, units: units, metric: req.metric, titleField: titleField, bits: req.bits, permissions: permissions, navTrail: trail(req, "Settings"), navSub: tabs(req, "Settings") });
     }
     catch (err) { next(err); }
 });
@@ -334,7 +384,8 @@ router.post("/:uid/settings", loadSensor, need("edit"), body("name").trim().isLe
             display_unit: unit,
             display_precision: req.body.display_precision === "" ? null : Math.max(0, Math.min(6, Number(req.body.display_precision))),
             retention_days: req.body.retention_days === "" ? null : (req.body.retention_days === "forever" ? -1 : Math.max(1, Number(req.body.retention_days))),
-            is_enabled: req.body.is_enabled ? 1 : 0
+            is_enabled: req.body.is_enabled ? 1 : 0,
+            alarm_title: title.clean(req.body.alarm_title)
         };
         await knex.transaction(async (trx) =>
         {
@@ -411,7 +462,7 @@ router.post("/:uid/delete", loadSensor, need("delete"), async (req, res, next) =
         }
         await knex.transaction(async (trx) =>
         {
-            await trx(T("alarm_rules")).where({ sensor_id: req.sensor.id }).whereNull("delete_epoch").update({ delete_epoch: now });
+            await ruleLog.deleteForSensors(trx, [req.sensor.id], ruleLog.actorOf(req.user), "sensor deleted", now);
             await trx(T("sensors")).where({ id: req.sensor.id }).whereNull("delete_epoch").update({ delete_epoch: now });
             await audit(trx, { entityType: "sensor", entityUid: req.sensor.uid, entityName: req.sensor.name, field: "deleted", actorType: "user", actorId: req.user.id, actorName: req.user.username });
         });

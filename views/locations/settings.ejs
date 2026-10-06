@@ -35,6 +35,9 @@
               <label class="form-label" for="notes">Notes</label>
               <textarea class="form-control" id="notes" name="notes" rows="3"><%= values.notes || "" %></textarea>
             </div>
+            <div class="col-12">
+              <%- include("../partials/alarm-title-field", { f: titleField }) %>
+            </div>
           </div>
 
           <hr class="my-4">

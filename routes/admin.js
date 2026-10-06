@@ -234,8 +234,12 @@ async function settingsPage(req, res, next)
         {
             idRow.description = idRow.description + " Leave blank to use the default: " + require("../mqtt/broker").defaultClientId();
         }
+        // ALARM_TITLE_FORMAT gets the alarm title field (views/partials/alarm-title-field.ejs).
+        const titleMod = require("../services/alarms/title");
+        const alarmTitleField = titleMod.field({ name: "value", value: settings.get("ALARM_TITLE_FORMAT", ""), inherited: await titleMod.inherited("site", {}), label: false });
         res.render("admin/settings",
         {
+            alarmTitleField: alarmTitleField,
             title: "Site settings", group: group, rows: rows.filter((s) => !driverKeys.has(s.key) && !shownAbove.has(s.key)),
             byKey: Object.fromEntries(all.map((s) => [s.key, s])),
             mailDrivers: mailDrivers, mailChosen: mail.chosen().name, mailActive: mail.active().name, mailFrom: mail.fromAddress(),
@@ -278,6 +282,8 @@ router.post("/settings/:key", async (req, res, next) =>
         }
         if (entry.kind === "secret" && (value === "" || value === "********")) { req.flash("info", "Secret unchanged."); return res.redirect("/admin/settings" + (entry.group !== "general" ? "/" + entry.group : "")); }
         if (entry.kind === "string") { value = String(value === undefined ? "" : value).trim(); }
+        // Blank uses the built in default (services/alarms/title.js); stored as "", never "null".
+        if (entry.key === "ALARM_TITLE_FORMAT") { value = require("../services/alarms/title").clean(value) || ""; }
         if (entry.key === "API_KEY_PREFIX" && !require("../services/apiAuth").KEY_PREFIX_RE.test(value)) { req.flash("danger", "API_KEY_PREFIX must be 1 to 16 characters from A-Z a-z 0-9 - . _ ~."); return res.redirect("/admin/settings/api"); }
         // Support addresses (services/support.js): every address checked, stored normalised.
         if (entry.key === "SUPPORT_EMAILS" || entry.key === "SUPPORT_FROM_ADDRESS")

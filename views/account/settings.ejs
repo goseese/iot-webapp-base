@@ -24,6 +24,8 @@
       <% }); %>
       </div>
 
+      <div class="mb-3"><%- include("../partials/alarm-title-field", { f: titleField }) %></div>
+
       <label class="form-label">Reading retention (days)</label>
       <input class="form-control mb-1" name="retention_days" value="<%= current.RETENTION_DAYS || "" %>" placeholder="site default" <%= canEdit ? "" : "readonly" %>>
       <div class="form-text mb-3">Blank uses the site default. Sensors can override.</div>

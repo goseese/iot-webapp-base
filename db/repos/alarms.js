@@ -47,8 +47,8 @@ function context(alarmId)
         .join(T("locations") + " as l", "l.id", "d.location_id")
         .join(T("accounts") + " as ac", "ac.id", "l.account_id")
         .where("a.id", alarmId)
-        .select("a.*", "s.uid as sensor_uid", "s.name as sensor_name", "s.metric", "s.display_unit", "s.channel_id",
-                "d.id as device_id", "d.uid as device_uid", "d.name as device_name", "d.kind as device_kind",
+        .select("a.*", "s.uid as sensor_uid", "s.name as sensor_name", "s.metric", "s.display_unit", "s.display_precision", "s.channel_id", "s.alarm_title as sensor_alarm_title",
+                "d.id as device_id", "d.uid as device_uid", "d.name as device_name", "d.kind as device_kind", "d.alarm_title as device_alarm_title",
                 "l.id as location_id", "l.uid as location_uid", "l.name as location_name", "l.iana_timezone", "l.notifications_muted as location_muted",
                 "ac.id as account_id", "ac.uid as account_uid", "ac.name as account_name", "ac.notifications_muted as account_muted")
         .first();

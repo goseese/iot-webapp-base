@@ -12,6 +12,18 @@
       </div>
     </div>
 
+    <div class="iot-panel mb-3">
+      <div class="iot-panel__header"><strong>Alarm title</strong></div>
+      <div class="iot-panel__body">
+        <form method="post" action="/devices/<%= uid %>/alarm-title">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <%- include("../partials/alarm-title-field", { f: titleField }) %>
+          <div class="form-text mb-2">Used for every sensor on this device unless a sensor or rule sets its own.</div>
+          <% if (canEdit) { %><button class="btn btn-primary" type="submit">Save</button><% } %>
+        </form>
+      </div>
+    </div>
+
     <% if (chemistryDefault) { %>
     <div class="iot-panel mb-3">
       <div class="iot-panel__header"><strong>Battery</strong></div>
