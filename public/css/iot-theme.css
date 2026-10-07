@@ -526,3 +526,5 @@ a:hover { color: var(--iot-primary-hover); }
 .iot-setting-results small { display: block; color: var(--iot-text-muted); }
 .iot-setting-results .iot-setting-none { padding: .45rem .75rem; color: var(--iot-text-muted); }
 tr.iot-setting-hit { --bs-table-bg-state: var(--iot-nav-active-bg); }
+.iot-table tr.iot-setting-main > td { border-bottom-width: 0; padding-bottom: .25rem; }
+.iot-table tr.iot-setting-desc > td { padding-top: 0; }

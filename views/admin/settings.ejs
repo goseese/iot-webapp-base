@@ -21,11 +21,12 @@ function field(s)
 function row(s)
 {
 %>
-  <tr id="setting-<%= s.key %>">
+  <% var help = (s.description || "") + (s.kind === "int" && s.min !== null ? " (" + s.min + " to " + s.max + ")" : ""); %>
+  <tr id="setting-<%= s.key %>"<%- help ? ' class="iot-setting-main"' : "" %>>
     <td><code><%= s.key %></code><% if (s.needsRestart) { %> <span class="badge text-bg-warning">restart</span><% } %></td>
     <td><% field(s); %></td>
-    <td class="small text-secondary"><%= s.description %><% if (s.kind === "int" && s.min !== null) { %> (<%= s.min %> to <%= s.max %>)<% } %></td>
   </tr>
+  <% if (help) { %><tr class="iot-setting-desc"><td colspan="2" class="small text-secondary"><%= help %></td></tr><% } %>
 <%
 }
 %>
@@ -56,7 +57,7 @@ function row(s)
       <div class="col-md-7 small text-secondary">Pick a driver (it saves right away), fill in its settings below, then send yourself a test. Results, including failures with the provider's reason, are on the alarm notifications log.</div>
     </div>
   </div>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 32%">Setting</th><th>Value</th></tr></thead><tbody>
     <% ["MAIL_FROM_ADDRESS", "MAIL_FROM_NAME"].forEach(function (k) { if (byKey[k]) { row(byKey[k]); } }); %>
   </tbody></table></div>
 </div>
@@ -100,7 +101,7 @@ function row(s)
 <% sections.forEach(function (sec, i) { %>
 <div class="iot-panel<%= i < sections.length - 1 ? " mb-3" : "" %>">
   <% if (group === "email") { %><div class="iot-panel__header"><strong>Support requests</strong> <span class="text-secondary small ms-2">requests are always saved in the app; these decide who is emailed and from which address</span></div><% } else if (sec.title) { %><div class="iot-panel__header"><strong><%= sec.title %></strong></div><% } %>
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 32%">Setting</th><th>Value</th></tr></thead><tbody>
   <% sec.rows.forEach(function (s) { row(s); }); %>
   </tbody></table></div>
 </div>
@@ -115,14 +116,16 @@ document.addEventListener("DOMContentLoaded", function ()
     var shown = [];
     var pick = -1;
 
-    // Scroll to a setting's row and highlight it for a moment.
+    // Scroll to a setting's rows (key and value, then its description) and highlight them for a moment.
     function highlight(key)
     {
         var tr = document.getElementById("setting-" + key);
         if (!tr) { return; }
+        var rows = [tr];
+        if (tr.nextElementSibling && tr.nextElementSibling.classList.contains("iot-setting-desc")) { rows.push(tr.nextElementSibling); }
         tr.scrollIntoView({ block: "center" });
-        tr.classList.add("iot-setting-hit");
-        setTimeout(function () { tr.classList.remove("iot-setting-hit"); }, 2500);
+        rows.forEach(function (r) { r.classList.add("iot-setting-hit"); });
+        setTimeout(function () { rows.forEach(function (r) { r.classList.remove("iot-setting-hit"); }); }, 2500);
     }
 
     // Every word typed must appear in the key or the description (an underscore counts as a space).
