@@ -5,6 +5,7 @@ const { notFoundError } = require("../../middleware/errors");
 const permissions = require("../../permissions");
 const grants = require("../../services/grants");
 const activity = require("../../services/activity");
+const settings = require("../../config/settings");
 const { bits, ceilingAt } = require("./shared");
 
 const router = express.Router();
@@ -24,7 +25,7 @@ async function usersPage(req, res, next)
         const locIds = locations.map((l) => l.id);
         const rows = await knex(T("grants") + " as g").join(T("users") + " as u", "u.id", "g.grantee_id").where("g.grantee_type", "user").whereNull("u.delete_epoch")
             .where(function () { this.where({ "g.scope_type": "account", "g.scope_id": req.account.id }); if (locIds.length) { this.orWhere(function () { this.where("g.scope_type", "location").whereIn("g.scope_id", locIds); }); } })
-            .select("g.id as grant_id", "g.scope_type", "g.scope_id", "g.permission_bits", "u.id as user_id", "u.username", "u.display_name", "u.email", "u.last_login_epoch").orderBy(["u.username", "g.scope_type"]);
+            .select("g.id as grant_id", "g.scope_type", "g.scope_id", "g.permission_bits", "u.id as user_id", "u.username", "u.display_name", "u.email", "u.last_login_epoch", "u.uid as user_uid", "u.mfa_mode").orderBy(["u.username", "g.scope_type"]);
         for (const r of rows) { r.scopeName = r.scope_type === "account" ? req.account.name : (locations.find((l) => l.id === r.scope_id) || {}).name; r.names = permissions.names(r.permission_bits); }
         const pending = canGrant ? await knex(T("invites")).whereNull("accepted_epoch").whereNull("cancelled_epoch").where(function () { this.where({ scope_type: "account", scope_id: req.account.id }); if (locIds.length) { this.orWhere(function () { this.where("scope_type", "location").whereIn("scope_id", locIds); }); } }) : [];
         const now = nowEpoch();
@@ -35,7 +36,11 @@ async function usersPage(req, res, next)
             p.lastMail = await knex(T("notifications")).where({ kind: "invite", address: p.email }).orderBy("epoch", "desc").first();
         }
         // Ceiling: the inviter can only hand out bits they hold at the chosen scope; account scope shown here.
-        res.render("account/users", { title: "Users", rows: rows, pending: pending, locations: locations, canGrant: canGrant, ceiling: b, permissions: permissions });
+        // MFA column, superadmins only (DECISIONS.md "MFA sign in codes"). siteMfa is what Inherit means.
+        const mfa = require("../../services/mfa");
+        const showMfa = !!req.user.is_superadmin;
+        const siteMfa = mfa.envOff() ? "off" : (settings.get("MFA_ENABLED", false) ? "on" : "off");
+        res.render("account/users", { title: "Users", rows: rows, pending: pending, locations: locations, canGrant: canGrant, ceiling: b, permissions: permissions, showMfa: showMfa, siteMfa: siteMfa, mfaEnvOff: mfa.envOff() });
     }
     catch (err) { next(err); }
 }

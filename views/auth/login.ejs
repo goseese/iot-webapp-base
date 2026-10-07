@@ -16,3 +16,39 @@
 
   <button class="btn btn-primary w-100" type="submit">Sign in</button>
 </form>
+
+<% if (locals.mfa) { %>
+<%# Sign in code modal (DECISIONS.md "MFA sign in codes"). Static backdrop and no keyboard: clicking
+    outside or pressing Esc does nothing; Cancel is a link to /login, which drops the pending sign in.
+    The resend form sits outside the code form; its button uses form= so Enter still submits Verify. %>
+<div class="modal fade" id="mfaModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="mfaTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <form method="post" action="/login/mfa" id="mfaForm" novalidate>
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div class="modal-header"><h5 class="modal-title" id="mfaTitle">Enter your sign in code</h5></div>
+      <div class="modal-body">
+        <% if (mfa.error) { %><div class="alert alert-danger py-2" role="alert"><%= mfa.error %></div><% } %>
+        <% if (mfa.info) { %><div class="alert alert-info py-2" role="status"><%= mfa.info %></div><% } %>
+        <p class="mb-1">We sent a code to <strong><%= mfa.sentTo %></strong>.</p>
+        <p class="text-secondary small mb-3">Capital letters do not matter.</p>
+        <label class="form-label visually-hidden" for="mfa_token">Sign in code</label>
+        <input class="form-control form-control-lg text-center text-uppercase" id="mfa_token" name="mfa_token" type="text" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="12" placeholder="ABCD-EFGH" required>
+      </div>
+      <div class="modal-footer">
+        <a class="btn btn-outline-secondary me-auto" href="/login">Cancel</a>
+        <button class="btn btn-outline-secondary" type="submit" form="mfaResendForm">Send a new code</button>
+        <button class="btn btn-primary" type="submit">Verify</button>
+      </div>
+    </form>
+  </div></div>
+</div>
+<form method="post" action="/login/mfa/resend" id="mfaResendForm"><input type="hidden" name="_csrf" value="<%= csrfToken %>"></form>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var el = document.getElementById("mfaModal");
+    el.addEventListener("shown.bs.modal", function () { document.getElementById("mfa_token").focus(); });
+    bootstrap.Modal.getOrCreateInstance(el).show();
+});
+</script>
+<% } %>

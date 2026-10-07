@@ -9,6 +9,7 @@ const mail = require("../services/mail");
 const { knex, T, nowEpoch } = require("../db/knex");
 const { audit } = require("../services/audit");
 const { requireLogin } = require("../middleware/auth");
+const mfa = require("../services/mfa");
 
 const router = express.Router();
 router.use(requireLogin);
@@ -28,12 +29,20 @@ function usernameCooldownEnds(user)
     return user.username_changed_epoch + days * 86400;
 }
 
+// Sign in code channel (DECISIONS.md "MFA sign in codes"): offered only when SMS is part of the site
+// (mfa.SMS_VISIBLE, false in this app) and codes apply to this user. Text message is greyed out
+// when no SMS provider is set up.
+function mfaChoice(user)
+{
+    return { show: mfa.SMS_VISIBLE && mfa.required(user), smsReady: mfa.smsAvailable() };
+}
+
 router.get("/", (req, res) =>
 {
     res.render("profile/index",
     {
         title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: req.user, errors: {},
-        usernameLockedUntil: usernameCooldownEnds(req.user), policy: passwords.describe()
+        usernameLockedUntil: usernameCooldownEnds(req.user), policy: passwords.describe(), mfaChoice: mfaChoice(req.user)
     });
 });
 
@@ -64,9 +73,18 @@ router.post("/",
                 const other = await users.findByLogin(username.toLowerCase());
                 if (other && other.id !== req.user.id) { errors.username = "That username is taken."; }
             }
+            // Only read when the choice is shown, so a crafted post cannot switch a hidden channel.
+            const choice = mfaChoice(req.user);
+            let channel = req.user.mfa_channel;
+            if (choice.show && req.body.mfa_channel !== undefined)
+            {
+                channel = req.body.mfa_channel === "sms" ? "sms" : "email";
+                if (channel === "sms" && !choice.smsReady) { errors.mfa_channel = "Text messages are not set up here, so codes come by email."; }
+                else if (channel === "sms" && !req.user.phone) { errors.mfa_channel = "Add a mobile number to get codes by text."; }
+            }
             if (Object.keys(errors).length > 0)
             {
-                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe() });
+                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe(), mfaChoice: choice });
             }
 
             const patch =
@@ -76,6 +94,7 @@ router.post("/",
                 email_enabled: req.body.email_enabled ? 1 : 0
                 // SMS is hidden in this app: phone and sms_enabled are never taken from a form.
             };
+            if (channel !== req.user.mfa_channel) { patch.mfa_channel = channel; }
             await knex.transaction(async (trx) =>
             {
                 if (username !== req.user.username)
@@ -84,6 +103,10 @@ router.post("/",
                     patch.username_changed_epoch = now;
                     await trx(T("username_history")).insert({ user_id: req.user.id, old_username: req.user.username, changed_epoch: now });
                     await audit(trx, { entityType: "user", entityUid: req.user.uid, entityName: username, field: "username", oldValue: req.user.username, newValue: username, actorType: "user", actorId: req.user.id });
+                }
+                if (patch.mfa_channel)
+                {
+                    await audit(trx, { entityType: "user", entityUid: req.user.uid, entityName: username, field: "mfa_channel", oldValue: req.user.mfa_channel, newValue: patch.mfa_channel, actorType: "user", actorId: req.user.id });
                 }
                 if (email !== req.user.email)
                 {

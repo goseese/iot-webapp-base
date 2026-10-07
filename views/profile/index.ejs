@@ -32,6 +32,23 @@
             <label class="form-check-label" for="email_enabled">Send me alarm emails</label>
           </div>
 
+          <% if (locals.mfaChoice && mfaChoice.show) { var ch = values.mfa_channel === "sms" ? "sms" : "email"; %>
+          <%# Sign in code channel, shown only while SMS is part of the site (services/mfa.js SMS_VISIBLE). %>
+          <fieldset class="mb-4">
+            <legend class="form-label fs-6">Send my sign in codes by</legend>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="mfa_channel" id="mfa_email" value="email" <%= ch === "email" ? "checked" : "" %>>
+              <label class="form-check-label" for="mfa_email">Email</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input<%= errors.mfa_channel ? " is-invalid" : "" %>" type="radio" name="mfa_channel" id="mfa_sms" value="sms" <%= ch === "sms" ? "checked" : "" %> <%= mfaChoice.smsReady ? "" : "disabled" %>>
+              <label class="form-check-label" for="mfa_sms">Text message</label>
+            </div>
+            <% if (!mfaChoice.smsReady) { %><div class="form-text">Text messages are not set up here, so codes come by email.</div><% } %>
+            <% if (errors.mfa_channel) { %><div class="invalid-feedback d-block"><%= errors.mfa_channel %></div><% } %>
+          </fieldset>
+          <% } %>
+
           <button class="btn btn-primary" type="submit">Save changes</button>
         </form>
       </div>

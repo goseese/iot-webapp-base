@@ -11,6 +11,8 @@ const credentials = require("../db/repos/credentials");
 const activity = require("../services/activity");
 const deviceTypes = require("../deviceTypes");
 const deviceFlows = require("../services/deviceFlows");
+const users = require("../db/repos/users");
+const { audit } = require("../services/audit");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -301,6 +303,38 @@ router.post("/settings/:key", async (req, res, next) =>
         res.redirect(back);
     }
     catch (err) { req.flash("danger", err.message); res.redirect("/admin/settings"); }
+});
+
+// Per user MFA override (DECISIONS.md "MFA sign in codes"), from the MFA column on Account > Users.
+// Superadmin only (router.use above). Inherit is stored as NULL. Saves nothing when unchanged.
+const MFA_MODES = { inherit: null, on: "on", off: "off" };
+const mfaLabel = (m) => m || "inherit";
+
+router.post("/users/:uid/mfa", async (req, res, next) =>
+{
+    try
+    {
+        const back = /^\/account\/[0-9a-f-]{36}\/users$/i.test(String(req.body.back || "")) ? req.body.back : "/account";
+        if (!Object.prototype.hasOwnProperty.call(MFA_MODES, req.body.mfa_mode))
+        {
+            req.flash("danger", "Pick Inherit, On or Off.");
+            return res.redirect(back);
+        }
+        const user = await users.findByUid(req.params.uid);
+        if (!user || user.delete_epoch !== null) { return next(notFoundError()); }
+        const from = user.mfa_mode || null;
+        const to = MFA_MODES[req.body.mfa_mode];
+        if (from === to) { return res.redirect(back); }
+        await knex.transaction(async (trx) =>
+        {
+            await users.update(user.id, { mfa_mode: to }, trx);
+            await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "mfa_mode", oldValue: mfaLabel(from), newValue: mfaLabel(to), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+        });
+        await activity.log(req, "user_mfa_mode", { entity_type: "user", entity_uid: user.uid, detail: user.username + ": " + mfaLabel(from) + " to " + mfaLabel(to) });
+        req.flash("success", "Sign in codes for " + user.username + ": " + (to === null ? "inherit the site setting" : to) + ".");
+        res.redirect(back);
+    }
+    catch (err) { next(err); }
 });
 
 // Event log viewer (DECISIONS.md "Event log"). Filters are GET parameters, so a filtered view is a

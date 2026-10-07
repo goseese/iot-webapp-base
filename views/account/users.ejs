@@ -6,7 +6,8 @@
   <div class="iot-panel__header"><strong>Access</strong></div>
   <div class="table-responsive">
     <table class="table iot-table align-middle mb-0">
-      <thead><tr><th>User</th><th>Scope</th><th>Permissions</th><th>Last login</th><th></th></tr></thead>
+      <% var cols = showMfa ? 6 : 5; %>
+      <thead><tr><th>User</th><th>Scope</th><th>Permissions</th><th>Last login</th><% if (showMfa) { %><th<% if (mfaEnvOff) { %> class="iot-hint" title="MFA_ENABLED=0 in .env: sign in codes are off for everyone, including users set to On."<% } %>>MFA</th><% } %><th></th></tr></thead>
       <tbody>
       <% rows.forEach(function (r) { %>
         <tr>
@@ -14,6 +15,20 @@
           <td><span class="badge text-bg-secondary"><%= r.scope_type %></span> <%= r.scopeName %></td>
           <td class="small"><%= r.names.join(", ") %></td>
           <td class="text-secondary small"><%= fmt.ago(r.last_login_epoch, now) %></td>
+          <% if (showMfa) { %>
+          <td>
+            <%# Superadmin only; saves on change (routes/admin.js POST /admin/users/:uid/mfa). %>
+            <form method="post" action="/admin/users/<%= fmt.uid(r.user_uid) %>/mfa">
+              <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+              <input type="hidden" name="back" value="<%= acctBase %>/users">
+              <select class="form-select form-select-sm" name="mfa_mode" aria-label="Sign in codes for <%= r.username %>" onchange="this.form.submit()">
+                <option value="inherit" <%= r.mfa_mode ? "" : "selected" %>>Inherit (site <%= siteMfa %>)</option>
+                <option value="on" <%= r.mfa_mode === "on" ? "selected" : "" %>>On</option>
+                <option value="off" <%= r.mfa_mode === "off" ? "selected" : "" %>>Off</option>
+              </select>
+            </form>
+          </td>
+          <% } %>
           <td class="text-end">
             <% if (canGrant) { %>
             <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#g<%= r.grant_id %>">Edit</button>
@@ -21,7 +36,7 @@
           </td>
         </tr>
         <% if (canGrant) { %>
-        <tr class="collapse" id="g<%= r.grant_id %>"><td colspan="5">
+        <tr class="collapse" id="g<%= r.grant_id %>"><td colspan="<%= cols %>">
           <form method="post" action="<%= acctBase %>/users/grant/<%= r.grant_id %>" class="d-flex flex-wrap gap-3 align-items-center">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <% permissions.BITS.forEach(function (p) { var held = permissions.has(r.permission_bits, p.bit); var allowed = permissions.has(ceiling, p.bit); %>
@@ -33,7 +48,7 @@
         </td></tr>
         <% } %>
       <% }); %>
-      <% if (!rows.length) { %><tr><td colspan="5" class="text-secondary">Only superadmins have access so far.</td></tr><% } %>
+      <% if (!rows.length) { %><tr><td colspan="<%= cols %>" class="text-secondary">Only superadmins have access so far.</td></tr><% } %>
       </tbody>
     </table>
   </div>
