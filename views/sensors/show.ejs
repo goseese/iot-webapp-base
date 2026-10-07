@@ -114,12 +114,17 @@ document.addEventListener("DOMContentLoaded", function ()
 
     var chart = echarts.init(document.getElementById("chart"), null, { renderer: "canvas" });
     var current = null;   // last loaded data, so live points can be appended in place
+    // The view from the URL: from and to (a shared link) fix the window and stop live points;
+    // start and end zoom the first draw. Range buttons go back to the latest readings.
+    var view = iotChartTools.urlState();
+    var fixed = view.from !== null && view.to !== null && view.to > view.from ? { from: view.from, to: view.to } : null;
+    var firstZoom = { start: view.start, end: view.end };
     window.devmonChart =
     {
         sensor: "<%= uid %>",
         append: function (t, v)
         {
-            if (!current) { return; }
+            if (!current || fixed) { return; }
             current.points.push([t, v]);
             while (current.points.length && current.points[0][0] < t - (current.to - current.from)) { current.points.shift(); }
             current.to = t;
@@ -193,10 +198,11 @@ document.addEventListener("DOMContentLoaded", function ()
         return { min: function (e) { return calc(e)[0]; }, max: function (e) { return calc(e)[1]; } };
     }
 
-    function draw(keepZoom)
+    // initial: the zoom to start with, as percentages, when not keeping the current one.
+    function draw(keepZoom, initial)
     {
         var d = current;
-        var zoom = { start: 0, end: 100 };
+        var zoom = initial || { start: 0, end: 100 };
         if (keepZoom)
         {
             var z = (chart.getOption().dataZoom || [])[1];
@@ -236,12 +242,13 @@ document.addEventListener("DOMContentLoaded", function ()
         var id = ++loadId;
         complete = false;
         showNote("");
-        var res = await fetch("/sensors/<%= uid %>/data?range=" + range);
+        var res = await fetch("/sensors/<%= uid %>/data?" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : "range=" + range));
         if (!res.ok) { showNote("Could not load readings."); return; }
         var d = await res.json();
         if (id !== loadId) { return; }
         current = d;
-        draw(false);
+        draw(false, iotChartTools.zoomPct(current.from, current.to, firstZoom.start, firstZoom.end));
+        firstZoom = { start: null, end: null };
         while (d.more && current.points.length < MAX_POINTS)
         {
             showNote("Loading older readings...");
@@ -257,7 +264,7 @@ document.addEventListener("DOMContentLoaded", function ()
         {
             showNote("Showing the newest " + current.points.length.toLocaleString() + " readings, back to " + new Date(current.points[0][0]).toLocaleString(undefined, { timeZone: current.timezone }) + ". Older readings in this range are not loaded.");
         }
-        else { showNote(""); }
+        else { showNote(fixed ? "Shared view: " + iotChartTools.localTime(current.from, current.timezone) + " to " + iotChartTools.localTime(current.to, current.timezone) + ". Click a range for the latest readings." : ""); }
     }
     fitButton.addEventListener("click", function ()
     {
@@ -268,7 +275,7 @@ document.addEventListener("DOMContentLoaded", function ()
     });
     document.querySelectorAll("[data-range]").forEach(function (b)
     {
-        b.addEventListener("click", function () { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); history.replaceState(null, "", "?range=" + b.dataset.range); });
+        b.addEventListener("click", function () { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); fixed = null; firstZoom = { start: null, end: null }; iotChartTools.setUrl({ range: b.dataset.range, from: null, to: null, start: null, end: null }); load(b.dataset.range); });
     });
     window.addEventListener("resize", function () { chart.resize(); });
     // Download: the raw readings inside the zoom window, in the location's timezone and display unit.
@@ -281,6 +288,10 @@ document.addEventListener("DOMContentLoaded", function ()
         var partial = !complete && w[0] < oldest ? "Readings before " + iotChartTools.localTime(oldest, current.timezone) + " are not loaded, so the file starts there." : null;
         return { headers: ["Time (" + current.timezone + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: partial };
     });
+    // Share: a link to this exact view, or a PNG of it; the zoom window follows the URL as it changes.
+    iotChartTools.addShare(document.getElementById("chartFoot"), chart, function () { return current; }, function () { return current ? current.timezone : null; });
+    iotChartTools.trackZoom(chart, function () { return current; });
+    if (fixed) { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); }
     load("<%= range %>");
 });
 </script>

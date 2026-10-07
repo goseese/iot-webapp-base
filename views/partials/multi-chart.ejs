@@ -1,11 +1,13 @@
 <% /* multi-chart(elId, dataUrl, range): ECharts with one y axis per unit. Raw readings arrive in
-      chunks newest first; older chunks load in the background, one series at a time (routes/charts.js). */ %>
+      chunks newest first; older chunks load in the background, one series at a time (routes/charts.js).
+      The view lives in the URL (iot-chart-tools.js); one chart per page owns it. */ %>
 <div id="<%= elId %>" style="height: 440px"></div>
 <div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
 <script>
 document.addEventListener("DOMContentLoaded", function ()
 {
     var el = document.getElementById("<%= elId %>");
+    var panel = el.closest(".iot-panel");
     var chart = echarts.init(el);
     var css = getComputedStyle(document.documentElement);
     function v(n) { return css.getPropertyValue(n).trim(); }
@@ -20,11 +22,20 @@ document.addEventListener("DOMContentLoaded", function ()
         note.classList.toggle("d-none", !text);
     }
 
-    // keepZoom: redraw with the user's zoom window where it is (older chunks arriving).
-    function draw(keepZoom)
+    // The view from the URL: from and to (a shared link) fix the window; start and end zoom the first draw.
+    var view = iotChartTools.urlState();
+    var fixed = view.from !== null && view.to !== null && view.to > view.from ? { from: view.from, to: view.to } : null;
+    var firstZoom = { start: view.start, end: view.end };
+    var buttons = Array.from(panel.querySelectorAll("[data-range]"));
+    var range = buttons.some(function (b) { return b.dataset.range === view.range; }) ? view.range : "<%= range %>";
+    buttons.forEach(function (b) { b.classList.toggle("active", !fixed && b.dataset.range === range); });
+
+    // keepZoom: redraw with the user's zoom window where it is (older chunks arriving);
+    // initial: the zoom to start with, as percentages, when not keeping.
+    function draw(keepZoom, initial)
     {
         var d = current;
-        var zoom = { start: 0, end: 100 };
+        var zoom = initial || { start: 0, end: 100 };
         if (keepZoom)
         {
             var z = (chart.getOption().dataZoom || [])[1];
@@ -53,12 +64,13 @@ document.addEventListener("DOMContentLoaded", function ()
     {
         var id = ++loadId;
         showNote("");
-        var res = await fetch("<%= dataUrl %>?range=" + range);
+        var res = await fetch("<%= dataUrl %>?" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : "range=" + range));
         if (!res.ok) { showNote("Could not load readings."); return; }
         var d = await res.json();
         if (id !== loadId) { return; }
         current = d;
-        draw(false);
+        draw(false, iotChartTools.zoomPct(current.from, current.to, firstZoom.start, firstZoom.end));
+        firstZoom = { start: null, end: null };
         var cut = [];   // series that stopped at MAX_POINTS
         for (var i = 0; i < current.series.length; i++)
         {
@@ -81,13 +93,27 @@ document.addEventListener("DOMContentLoaded", function ()
             s.complete = !more;
             if (more) { cut.push(s.name + " (back to " + new Date(s.points[0][0]).toLocaleString() + ")"); }
         }
-        showNote(cut.length ? "Older readings in this range are not loaded for: " + cut.join("; ") + "." : "");
+        if (cut.length) { showNote("Older readings in this range are not loaded for: " + cut.join("; ") + "."); }
+        else { showNote(fixed ? "Shared view: " + iotChartTools.localTime(current.from) + " to " + iotChartTools.localTime(current.to) + ". Click a range for the latest readings." : ""); }
     }
-    el.closest(".iot-panel").querySelectorAll("[data-range]").forEach(function (b) { b.addEventListener("click", function () { el.closest(".iot-panel").querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); }); });
+    buttons.forEach(function (b)
+    {
+        b.addEventListener("click", function ()
+        {
+            buttons.forEach(function (x) { x.classList.remove("active"); });
+            b.classList.add("active");
+            fixed = null;
+            firstZoom = { start: null, end: null };
+            range = b.dataset.range;
+            iotChartTools.setUrl({ range: range, from: null, to: null, start: null, end: null });
+            load(range);
+        });
+    });
     window.addEventListener("resize", function () { chart.resize(); });
     // Download: the raw readings inside the zoom window, one row per reading with its series, in the
     // browser's timezone (the x axis uses it too; a saved chart can mix locations).
-    iotChartTools.addDownload(document.getElementById("<%= elId %>Foot"), function ()
+    var foot = document.getElementById("<%= elId %>Foot");
+    iotChartTools.addDownload(foot, function ()
     {
         if (!current) { return null; }
         var w = iotChartTools.visibleWindow(chart, current.from, current.to);
@@ -101,6 +127,9 @@ document.addEventListener("DOMContentLoaded", function ()
         var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         return { headers: ["Series", "Time (" + tz + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: short.length ? "Older readings are not loaded for: " + short.join("; ") + ". The file starts where each one does." : null };
     });
-    load("<%= range %>");
+    // Share: a link to this exact view, or a PNG of it; the zoom window follows the URL as it changes.
+    iotChartTools.addShare(foot, chart, function () { return current; }, null);
+    iotChartTools.trackZoom(chart, function () { return current; });
+    load(range);
 });
 </script>

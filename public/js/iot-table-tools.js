@@ -178,7 +178,7 @@
     });
 
     // Shared with iot-chart-tools.js so chart downloads write files the same way tables do.
-    window.iotExport = { toCsv: toCsv, toJson: toJson, download: download };
+    window.iotExport = { toCsv: toCsv, toJson: toJson, download: download, copy: copy };
 
     document.addEventListener("DOMContentLoaded", function ()
     {
