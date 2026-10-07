@@ -21,7 +21,7 @@ function field(s)
 function row(s)
 {
 %>
-  <tr>
+  <tr id="setting-<%= s.key %>">
     <td><code><%= s.key %></code><% if (s.needsRestart) { %> <span class="badge text-bg-warning">restart</span><% } %></td>
     <td><% field(s); %></td>
     <td class="small text-secondary"><%= s.description %><% if (s.kind === "int" && s.min !== null) { %> (<%= s.min %> to <%= s.max %>)<% } %></td>
@@ -29,6 +29,11 @@ function row(s)
 <%
 }
 %>
+
+<div class="iot-setting-search mb-3">
+  <input type="search" class="form-control form-control-sm" id="settingSearch" placeholder="Search all settings by name or description" autocomplete="off" aria-label="Search settings">
+  <div class="iot-setting-results d-none" id="settingResults"></div>
+</div>
 
 <% if (group === "email") { %>
 <div class="iot-panel mb-3">
@@ -92,12 +97,121 @@ function row(s)
 <% }); %>
 <% } %>
 
-<% if (rows.length) { %>
-<div class="iot-panel">
-  <% if (group === "email") { %><div class="iot-panel__header"><strong>Support requests</strong> <span class="text-secondary small ms-2">requests are always saved in the app; these decide who is emailed and from which address</span></div><% } %>
+<% sections.forEach(function (sec, i) { %>
+<div class="iot-panel<%= i < sections.length - 1 ? " mb-3" : "" %>">
+  <% if (group === "email") { %><div class="iot-panel__header"><strong>Support requests</strong> <span class="text-secondary small ms-2">requests are always saved in the app; these decide who is emailed and from which address</span></div><% } else if (sec.title) { %><div class="iot-panel__header"><strong><%= sec.title %></strong></div><% } %>
   <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none"><thead><tr><th style="width: 26%">Setting</th><th style="width: 30%">Value</th><th>Description</th></tr></thead><tbody>
-  <% rows.forEach(function (s) { row(s); }); %>
+  <% sec.rows.forEach(function (s) { row(s); }); %>
   </tbody></table></div>
 </div>
-<% } %>
+<% }); %>
 <p class="text-secondary small mt-3">Values set in <code>.env</code> are shown read only and override the database.</p>
+<script>
+var SETTINGS_INDEX = <%- JSON.stringify(searchIndex).replace(/</g, "\\u003c") %>;
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var box = document.getElementById("settingSearch");
+    var list = document.getElementById("settingResults");
+    var shown = [];
+    var pick = -1;
+
+    // Scroll to a setting's row and highlight it for a moment.
+    function highlight(key)
+    {
+        var tr = document.getElementById("setting-" + key);
+        if (!tr) { return; }
+        tr.scrollIntoView({ block: "center" });
+        tr.classList.add("iot-setting-hit");
+        setTimeout(function () { tr.classList.remove("iot-setting-hit"); }, 2500);
+    }
+
+    // Every word typed must appear in the key or the description (an underscore counts as a space).
+    // Settings whose key holds every word come first.
+    function search(q)
+    {
+        var words = q.toLowerCase().replace(/_/g, " ").split(/\s+/).filter(Boolean);
+        if (!words.length) { return []; }
+        var has = function (text) { return words.every(function (w) { return text.indexOf(w) !== -1; }); };
+        var inKey = function (s) { return has(s.key.toLowerCase().replace(/_/g, " ")); };
+        var hits = SETTINGS_INDEX.filter(function (s) { return has((s.key.replace(/_/g, " ") + " " + s.description).toLowerCase()); });
+        return hits.filter(inKey).concat(hits.filter(function (s) { return !inKey(s); }));
+    }
+
+    function hide()
+    {
+        list.classList.add("d-none");
+    }
+
+    // Same tab: highlight in place. Another tab: load it; the hash check below highlights on arrival.
+    function go(s)
+    {
+        if (s.path === location.pathname)
+        {
+            history.replaceState(null, "", "#setting-" + s.key);
+            hide();
+            highlight(s.key);
+        }
+        else
+        {
+            location.href = s.path + "#setting-" + s.key;
+        }
+    }
+
+    function mark()
+    {
+        Array.prototype.forEach.call(list.querySelectorAll("a"), function (a, i)
+        {
+            a.classList.toggle("active", i === pick);
+            if (i === pick) { a.scrollIntoView({ block: "nearest" }); }
+        });
+    }
+
+    function render()
+    {
+        shown = search(box.value);
+        pick = shown.length ? 0 : -1;
+        list.textContent = "";
+        if (!box.value.trim()) { hide(); return; }
+        if (!shown.length)
+        {
+            var none = document.createElement("div");
+            none.className = "iot-setting-none";
+            none.textContent = "No settings match.";
+            list.appendChild(none);
+        }
+        shown.forEach(function (s)
+        {
+            var a = document.createElement("a");
+            a.href = s.path + "#setting-" + s.key;
+            var code = document.createElement("code");
+            code.textContent = s.key;
+            var tab = document.createElement("span");
+            tab.className = "text-secondary small ms-2";
+            tab.textContent = s.tab;
+            var desc = document.createElement("small");
+            desc.textContent = s.description.length > 140 ? s.description.slice(0, 140) + "..." : s.description;
+            a.appendChild(code);
+            a.appendChild(tab);
+            a.appendChild(desc);
+            a.addEventListener("click", function (e) { e.preventDefault(); go(s); });
+            list.appendChild(a);
+        });
+        list.classList.remove("d-none");
+        mark();
+    }
+
+    box.addEventListener("input", render);
+    box.addEventListener("focus", function () { if (box.value.trim()) { render(); } });
+    box.addEventListener("keydown", function (e)
+    {
+        if (e.key === "ArrowDown" && shown.length) { e.preventDefault(); pick = (pick + 1) % shown.length; mark(); }
+        else if (e.key === "ArrowUp" && shown.length) { e.preventDefault(); pick = (pick - 1 + shown.length) % shown.length; mark(); }
+        else if (e.key === "Enter" && pick >= 0) { e.preventDefault(); go(shown[pick]); }
+        else if (e.key === "Escape") { box.value = ""; hide(); }
+    });
+    document.addEventListener("click", function (e) { if (!e.target.closest(".iot-setting-search")) { hide(); } });
+
+    // Arrived from a search result on another tab.
+    if (location.hash.indexOf("#setting-") === 0) { highlight(decodeURIComponent(location.hash.slice(9))); }
+});
+</script>

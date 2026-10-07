@@ -215,6 +215,49 @@ function settingsTabs(current)
     return GROUPS.map((g) => ({ label: g[1], path: "/admin/settings" + (g[0] === "general" ? "" : "/" + g[0]), active: g[0] === current }));
 }
 
+// Display only: the panels on a settings tab and the order of keys in each. A tab key not listed
+// here shows in an "Other" panel last, so a new setting never disappears. Unlisted tabs keep one table.
+const SECTIONS =
+{
+    general:
+    [
+        ["Site", ["SITE_NAME"]],
+        ["Sign in and sessions", ["SESSION_HOURS", "LOGIN_MAX_FAILURES", "LOGIN_WINDOW_MINUTES", "MFA_ENABLED", "MFA_CODE_MINUTES"]],
+        ["Passwords and invitations", ["PW_MIN_LENGTH", "PW_REQUIRE_UPPER", "PW_REQUIRE_LOWER", "PW_REQUIRE_DIGIT", "PW_REQUIRE_SYMBOL", "RESET_LINK_MINUTES", "INVITE_DAYS", "USERNAME_CHANGE_DAYS"]],
+        ["Alarms and devices", ["ALARM_TITLE_FORMAT", "RENOTIFY_MINUTES", "ONLINE_THRESHOLD_SECS", "COVERAGE_WINDOW_HOURS"]]
+    ],
+    logging:
+    [
+        ["Data retention", ["RETENTION_DAYS_DEFAULT", "REPORT_FILE_DAYS"]],
+        ["Logs and purge", ["EVENT_LOG_DAYS", "DEVICE_FRAMES_HOURS", "RAW_PUBLISH_LOG_DAYS", "PURGE_BATCH_ROWS"]]
+    ]
+};
+
+function settingsSections(group, rows)
+{
+    const left = new Map(rows.map((s) => [s.key, s]));
+    const out = [];
+    for (const [title, keys] of SECTIONS[group] || [])
+    {
+        const list = keys.filter((k) => left.has(k)).map((k) => left.get(k));
+        keys.forEach((k) => left.delete(k));
+        if (list.length) { out.push({ title: title, rows: list }); }
+    }
+    if (left.size) { out.push({ title: out.length ? "Other" : null, rows: Array.from(left.values()) }); }
+    return out;
+}
+
+// Site settings search: every setting shown on some tab, with its tab. Leaves out the SMS group
+// (no tab, SMS is hidden) and the settings of mail drivers other than the chosen one (not shown).
+function settingsIndex(all, mailDrivers, mailChosen)
+{
+    const tabs = new Map(GROUPS);
+    const hidden = new Set(mailDrivers.filter((d) => d.name !== mailChosen).flatMap((d) => d.keys));
+    return all
+        .filter((s) => tabs.has(s.group) && !hidden.has(s.key))
+        .map((s) => ({ key: s.key, description: s.description || "", tab: tabs.get(s.group), path: "/admin/settings" + (s.group === "general" ? "" : "/" + s.group) }));
+}
+
 async function settingsPage(req, res, next)
 {
     try
@@ -243,6 +286,8 @@ async function settingsPage(req, res, next)
         {
             alarmTitleField: alarmTitleField,
             title: "Site settings", group: group, rows: rows.filter((s) => !driverKeys.has(s.key) && !shownAbove.has(s.key)),
+            sections: settingsSections(group, rows.filter((s) => !driverKeys.has(s.key) && !shownAbove.has(s.key))),
+            searchIndex: settingsIndex(all, mailDrivers, mail.chosen().name),
             byKey: Object.fromEntries(all.map((s) => [s.key, s])),
             mailDrivers: mailDrivers, mailChosen: mail.chosen().name, mailActive: mail.active().name, mailFrom: mail.fromAddress(),
             smsDrivers: smsDrivers, smsChosen: settings.get("SMS_DRIVER", "none"),

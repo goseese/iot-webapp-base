@@ -516,3 +516,13 @@ a:hover { color: var(--iot-primary-hover); }
 .iot-nav-scope i { color: var(--iot-primary); }
 .iot-nav-scope--empty { color: var(--iot-text-muted); font-weight: 500; }
 .iot-nav-scope--empty i { color: var(--iot-text-muted); }
+
+/* Site settings search (views/admin/settings.ejs) */
+.iot-setting-search { position: relative; max-width: 34rem; }
+.iot-setting-results { position: absolute; z-index: 1050; left: 0; right: 0; top: 100%; margin-top: .25rem; max-height: 24rem; overflow-y: auto; background: var(--iot-panel-alt); border: 1px solid var(--iot-border-light); border-radius: var(--iot-radius); }
+.iot-setting-results a { display: block; padding: .45rem .75rem; color: var(--iot-text); text-decoration: none; border-bottom: 1px solid var(--iot-border); }
+.iot-setting-results a:last-child { border-bottom: 0; }
+.iot-setting-results a:hover, .iot-setting-results a.active { background: var(--iot-nav-active-bg); }
+.iot-setting-results small { display: block; color: var(--iot-text-muted); }
+.iot-setting-results .iot-setting-none { padding: .45rem .75rem; color: var(--iot-text-muted); }
+tr.iot-setting-hit { --bs-table-bg-state: var(--iot-nav-active-bg); }

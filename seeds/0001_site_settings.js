@@ -18,11 +18,11 @@ const DEFAULTS =
     { key: "LOGIN_WINDOW_MINUTES", value: "15", kind: "int", group: "general", description: "Window for counting failed logins.", min: 1, max: 120 },
     { key: "MFA_ENABLED", value: "0", kind: "bool", group: "general", description: "Sign in codes: after the password, users get a one time code by email and must enter it. Per user On or Off on the account Users page (superadmins) overrides this. MFA_ENABLED=0 in .env turns codes off for everyone, including users set to On (the way back in when mail is broken)." },
     { key: "MFA_CODE_MINUTES", value: "10", kind: "int", group: "general", description: "Minutes a sign in code stays valid.", min: 2, max: 60 },
-    { key: "RETENTION_DAYS_DEFAULT", value: "90", kind: "int", group: "general", description: "Reading retention when a sensor and account both inherit.", min: 1, max: 3650 },
+    { key: "RETENTION_DAYS_DEFAULT", value: "90", kind: "int", group: "logging", description: "Reading retention when a sensor and account both inherit.", min: 1, max: 3650 },
     { key: "COVERAGE_WINDOW_HOURS", value: "24", kind: "int", group: "general", description: "How recently a gateway must have heard a device to count for offline suppression.", min: 1, max: 168 },
     { key: "ONLINE_THRESHOLD_SECS", value: "900", kind: "int", group: "general", description: "Seconds since last contact before a gateway or device shows offline.", min: 60, max: 86400 },
     { key: "RENOTIFY_MINUTES", value: "60", kind: "int", group: "general", description: "Minutes between repeat notifications for an unacknowledged active alarm.", min: 5, max: 1440 },
-    { key: "REPORT_FILE_DAYS", value: "30", kind: "int", group: "general", description: "Days generated report files are kept.", min: 1, max: 365 },
+    { key: "REPORT_FILE_DAYS", value: "30", kind: "int", group: "logging", description: "Days generated report files are kept.", min: 1, max: 365 },
     { key: "ALARM_TITLE_FORMAT", value: "{sensor_name} on {device_name} at {location_name}", kind: "string", group: "general", description: "Alarm title: the email subject after the event word, the first line of the SMS and the API alarm name. Overridden per account, location, device, sensor or alarm rule." },
 
     { key: "EVENT_LOG_DAYS", value: "30", kind: "int", group: "logging", description: "Days of event log kept (every request and the events it records).", min: 1, max: 365 },
