@@ -22,13 +22,15 @@ document.addEventListener("DOMContentLoaded", function ()
         note.classList.toggle("d-none", !text);
     }
 
-    // The view from the URL: from and to (a shared link) fix the window; start and end zoom the first draw.
+    // The view from the URL: from and to (a shared link, Custom with a To) fix the window; from alone
+    // (Custom without a To, Load 30 more days) runs from then up to now; start and end zoom the first draw.
     var view = iotChartTools.urlState();
     var fixed = view.from !== null && view.to !== null && view.to > view.from ? { from: view.from, to: view.to } : null;
+    var since = view.from !== null && view.to === null ? view.from : null;
     var firstZoom = { start: view.start, end: view.end };
     var buttons = Array.from(panel.querySelectorAll("[data-range]"));
     var range = buttons.some(function (b) { return b.dataset.range === view.range; }) ? view.range : "<%= range %>";
-    buttons.forEach(function (b) { b.classList.toggle("active", !fixed && b.dataset.range === range); });
+    buttons.forEach(function (b) { b.classList.toggle("active", !fixed && since === null && b.dataset.range === range); });
 
     // keepZoom: redraw with the user's zoom window where it is (older chunks arriving);
     // initial: the zoom to start with, as percentages, when not keeping.
@@ -64,7 +66,8 @@ document.addEventListener("DOMContentLoaded", function ()
     {
         var id = ++loadId;
         showNote("");
-        var res = await fetch("<%= dataUrl %>?" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : "range=" + range));
+        if (more) { more.disabled = true; }
+        var res = await fetch("<%= dataUrl %>?" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : since !== null ? "from=" + since : "range=" + range));
         if (!res.ok) { showNote("Could not load readings."); return; }
         var d = await res.json();
         if (id !== loadId) { return; }
@@ -75,8 +78,8 @@ document.addEventListener("DOMContentLoaded", function ()
         for (var i = 0; i < current.series.length; i++)
         {
             var s = current.series[i];
-            var more = s.more, nextTo = s.next_to;
-            while (more && s.points.length < MAX_POINTS)
+            var left = s.more, nextTo = s.next_to;
+            while (left && s.points.length < MAX_POINTS)
             {
                 showNote("Loading older readings for " + s.name + "...");
                 res = await fetch("<%= dataUrl %>?range=" + range + "&from=" + Math.floor(current.from / 1000) + "&to=" + nextTo + "&sensor=" + encodeURIComponent(s.uid));
@@ -84,17 +87,91 @@ document.addEventListener("DOMContentLoaded", function ()
                 d = await res.json();
                 if (id !== loadId) { return; }
                 var older = d.series[0];
-                if (!older) { more = false; break; }
+                if (!older) { left = false; break; }
                 s.points = older.points.concat(s.points);
-                more = older.more;
+                left = older.more;
                 nextTo = older.next_to;
                 draw(true);
             }
-            s.complete = !more;
-            if (more) { cut.push(s.name + " (back to " + new Date(s.points[0][0]).toLocaleString() + ")"); }
+            s.complete = !left;
+            if (left) { cut.push(s.name + " (back to " + new Date(s.points[0][0]).toLocaleString() + ")"); }
         }
         if (cut.length) { showNote("Older readings in this range are not loaded for: " + cut.join("; ") + "."); }
-        else { showNote(fixed ? "Shared view: " + iotChartTools.localTime(current.from) + " to " + iotChartTools.localTime(current.to) + ". Click a range for the latest readings." : ""); }
+        else { showNote(fixed ? "Fixed window: " + iotChartTools.localTime(current.from) + " to " + iotChartTools.localTime(current.to) + ". Click a range for the latest readings." : ""); }
+        moreState();
+    }
+
+    // Load 30 more days: the 30 days before the oldest shown (at most a year in all), each series
+    // fetched newest first in chunks and added on the left; the zoom window stays on the same times.
+    var more = null;   // the Load 30 more days button
+    function fullest() { return current ? Math.max.apply(null, current.series.map(function (s) { return s.points.length; }).concat([0])) : 0; }
+    function moreState()
+    {
+        if (!more) { return; }
+        var full = fullest() >= MAX_POINTS;
+        var can = current && !full && iotChartTools.moreFrom(current.from, current.to) !== null;
+        more.disabled = !can;
+        more.title = can ? "Load the 30 days before the oldest day shown" : full ? "The chart holds as many readings as it can (" + MAX_POINTS.toLocaleString() + " per series)." : "A chart window is at most a year.";
+    }
+    async function loadMore()
+    {
+        if (!current) { return; }
+        var newFrom = iotChartTools.moreFrom(current.from, current.to);
+        if (newFrom === null || fullest() >= MAX_POINTS) { return; }
+        var id = ++loadId;
+        var keep = iotChartTools.isZoomed(chart) ? iotChartTools.visibleWindow(chart, current.from, current.to) : null;
+        var zoomTo = function () { return keep ? iotChartTools.zoomPct(current.from, current.to, keep[0] / 1000, keep[1] / 1000) : null; };
+        var oldFrom = Math.floor(current.from / 1000), fromSec = Math.ceil(newFrom / 1000);
+        var added = 0, cut = [];
+        more.disabled = true;
+        current.from = fromSec * 1000;
+        draw(false, zoomTo());
+        for (var i = 0; i < current.series.length; i++)
+        {
+            var s = current.series[i];
+            var left = true, to = oldFrom - 1;
+            while (left && s.points.length < MAX_POINTS)
+            {
+                showNote("Loading older readings for " + s.name + "...");
+                var res = await fetch("<%= dataUrl %>?from=" + fromSec + "&to=" + to + "&sensor=" + encodeURIComponent(s.uid));
+                if (!res.ok) { showNote("Could not load older readings."); moreState(); return; }
+                var d = await res.json();
+                if (id !== loadId) { return; }
+                var older = d.series[0];
+                if (!older) { left = false; break; }
+                s.points = older.points.concat(s.points);
+                added += older.points.length;
+                left = older.more;
+                to = older.next_to;
+                draw(false, zoomTo());
+            }
+            s.complete = s.complete && !left;
+            if (left) { cut.push(s.name + " (back to " + iotChartTools.localTime(s.points[0][0]) + ")"); }
+        }
+        if (fixed) { fixed.from = fromSec; iotChartTools.setUrl({ from: fromSec }); }
+        else
+        {
+            since = fromSec;
+            iotChartTools.setUrl({ range: null, from: fromSec, to: null });
+            buttons.forEach(function (x) { x.classList.remove("active"); });
+            custom.classList.add("active");
+        }
+        if (cut.length) { showNote("Older readings in this range are not loaded for: " + cut.join("; ") + "."); }
+        else if (!added) { showNote("No readings from " + iotChartTools.localTime(fromSec * 1000) + " to " + iotChartTools.localTime(oldFrom * 1000) + "."); }
+        else { showNote(""); }
+        moreState();
+    }
+
+    // Custom: From and To in the browser's timezone; To blank runs up to now, live.
+    function applyCustom(fromSec, toSec)
+    {
+        buttons.forEach(function (x) { x.classList.remove("active"); });
+        custom.classList.add("active");
+        firstZoom = { start: null, end: null };
+        if (toSec === null) { fixed = null; since = fromSec; }
+        else { fixed = { from: fromSec, to: toSec }; since = null; }
+        iotChartTools.setUrl({ range: null, from: fromSec, to: toSec, start: null, end: null });
+        load(range);
     }
     buttons.forEach(function (b)
     {
@@ -102,7 +179,9 @@ document.addEventListener("DOMContentLoaded", function ()
         {
             buttons.forEach(function (x) { x.classList.remove("active"); });
             b.classList.add("active");
+            custom.classList.remove("active");
             fixed = null;
+            since = null;
             firstZoom = { start: null, end: null };
             range = b.dataset.range;
             iotChartTools.setUrl({ range: range, from: null, to: null, start: null, end: null });
@@ -138,6 +217,9 @@ document.addEventListener("DOMContentLoaded", function ()
         return Object.assign(JSON.parse(foot.dataset.chartVars), { chart_name: head ? head.textContent.trim() : "", location_name: namesOf("location_name"), device_name: namesOf("device_name"), sensor_name: namesOf("sensor_name") });
     } });
     iotChartTools.trackZoom(chart, function () { return current; });
+    var custom = iotChartTools.addCustomRange({ group: buttons[0].parentNode, getTimezone: null, getSpan: function () { return current; }, isLive: function () { return !fixed; }, onApply: applyCustom });
+    custom.classList.toggle("active", !!fixed || since !== null);
+    more = iotChartTools.addLoadMore(foot, loadMore);
     load(range);
 });
 </script>

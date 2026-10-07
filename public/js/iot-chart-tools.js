@@ -2,8 +2,11 @@
    - Download: the raw readings inside the zoom window as CSV or JSON.
    - Share: email it from the user's own mail program (image and data attached), copy a link to
      this exact view, or download a PNG of it.
-   - The view in the URL: range (a preset) or from and to pick the data, start and end the zoom
-     window, all whole epoch seconds. One chart per page owns the URL.
+   - The view in the URL: range (a preset) or from and to pick the data (from alone: from then up
+     to now, live), start and end the zoom window, all whole epoch seconds. One chart per page owns
+     the URL.
+   - Custom range (From, To in a dropdown after the range buttons) and Load 30 more days; a window
+     is at most a year (the data routes clamp it too).
    The page's chart script supplies its data; files are written by iot-table-tools.js
    (window.iotExport), the same way table downloads are. */
 (function ()
@@ -110,6 +113,102 @@
                 setUrl({ start: Math.floor(w[0] / 1000), end: Math.ceil(w[1] / 1000) });
             }, 400);
         });
+    }
+
+    // ---- Custom range and Load 30 more days
+
+    var DAY_MS = 86400000;
+    var MAX_SPAN_MS = 366 * DAY_MS;   // the longest window (Jeff, Oct 2026); the data routes clamp it too
+    var MORE_DAYS = 30;               // Load more steps back a fixed 30 days (Jeff)
+
+    // The UTC offset of tz (the browser's when null) at ms, in ms.
+    function tzOffset(ms, tz)
+    {
+        if (!tz) { return -new Date(ms).getTimezoneOffset() * 60000; }
+        var p = {};
+        new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+            .formatToParts(new Date(ms)).forEach(function (x) { p[x.type] = x.value; });
+        return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) - (ms - ms % 1000);
+    }
+    // A datetime-local value ("2026-10-07T09:30") read as wall clock time in tz, in ms; null if it
+    // is not one. Two passes so a time next to a daylight saving change lands on the right offset.
+    function fromLocalInput(str, tz)
+    {
+        var m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(str || ""));
+        if (!m) { return null; }
+        var wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+        return wall - tzOffset(wall - tzOffset(wall, tz), tz);
+    }
+    function toLocalInput(ms, tz) { return localTime(ms, tz).slice(0, 16).replace(" ", "T"); }
+
+    // From (ms) for one more step back: 30 days before from, but not more than a year before to.
+    // Null when the year is used up.
+    function moreFrom(fromMs, toMs)
+    {
+        var f = Math.max(fromMs - MORE_DAYS * DAY_MS, toMs - MAX_SPAN_MS);
+        return f < fromMs - 1000 ? f : null;
+    }
+
+    // A Custom button after the range buttons: From and To (To blank: up to now, live), in the
+    // chart's timezone. o: { group (the range buttons' btn-group), getTimezone() IANA name or null,
+    // getSpan() { from, to } ms, isLive() true when the chart runs up to now, onApply(fromSec,
+    // toSec or null) }. Returns the button so the page can mark it active.
+    function addCustomRange(o)
+    {
+        var wrap = document.createElement("div");
+        wrap.className = "btn-group btn-group-sm";
+        wrap.innerHTML = '<button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" data-range-custom>Custom</button>' +
+            '<div class="dropdown-menu dropdown-menu-end p-3" style="min-width: 17rem">' +
+              '<label class="form-label small mb-1">From</label><input type="datetime-local" class="form-control form-control-sm mb-2" data-custom-from>' +
+              '<label class="form-label small mb-1">To <span class="text-secondary">(blank: up to now)</span></label><input type="datetime-local" class="form-control form-control-sm mb-2" data-custom-to>' +
+              '<div class="form-text mb-2" data-custom-tz></div>' +
+              '<div class="form-text text-danger d-none mb-2" data-custom-error></div>' +
+              '<button type="button" class="btn btn-sm btn-primary w-100" data-custom-apply>Apply</button>' +
+            '</div>';
+        o.group.parentNode.insertBefore(wrap, o.group.nextSibling);
+        var btn = wrap.querySelector("[data-range-custom]"), fromIn = wrap.querySelector("[data-custom-from]"), toIn = wrap.querySelector("[data-custom-to]");
+        var tzLine = wrap.querySelector("[data-custom-tz]"), err = wrap.querySelector("[data-custom-error]");
+        function tz() { return o.getTimezone ? o.getTimezone() : null; }
+        function fail(text) { err.textContent = text; err.classList.remove("d-none"); }
+        btn.addEventListener("show.bs.dropdown", function ()
+        {
+            var s = o.getSpan();
+            tzLine.textContent = "Times in " + (tz() || Intl.DateTimeFormat().resolvedOptions().timeZone) + ". At most a year.";
+            err.classList.add("d-none");
+            if (s)
+            {
+                fromIn.value = toLocalInput(s.from, tz());
+                toIn.value = o.isLive && o.isLive() ? "" : toLocalInput(s.to, tz());
+            }
+        });
+        wrap.querySelector("[data-custom-apply]").addEventListener("click", function ()
+        {
+            var f = fromLocalInput(fromIn.value, tz());
+            var t = toIn.value ? fromLocalInput(toIn.value, tz()) : null;
+            var now = Date.now();
+            if (f === null) { return fail("Enter a From date and time."); }
+            if (toIn.value && t === null) { return fail("To is not a date and time."); }
+            if (t !== null && t > now) { t = null; }   // a To in the future is up to now
+            var end = t === null ? now : t;
+            if (f >= end) { return fail("From must be before To."); }
+            if (end - f > MAX_SPAN_MS) { return fail("The window can be at most a year."); }
+            bootstrap.Dropdown.getOrCreateInstance(btn).hide();
+            o.onApply(Math.floor(f / 1000), t === null ? null : Math.floor(t / 1000));
+        });
+        return btn;
+    }
+
+    // "Load 30 more days" in the footer, after Share. Returns the button; the page sets disabled.
+    function addLoadMore(container, onClick)
+    {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn btn-sm btn-outline-secondary iot-chart-more";
+        b.innerHTML = '<i class="fa-solid fa-clock-rotate-left me-1"></i>Load 30 more days';
+        var after = container.querySelector(".iot-chart-share") || container.querySelector(".iot-chart-dl");
+        container.insertBefore(b, after ? after.nextSibling : container.firstChild);
+        b.addEventListener("click", onClick);
+        return b;
     }
 
     // ---- Download
@@ -537,5 +636,5 @@
         });
     }
 
-    window.iotChartTools = { visibleWindow: visibleWindow, localTime: localTime, urlState: urlState, setUrl: setUrl, zoomPct: zoomPct, trackZoom: trackZoom, addDownload: addDownload, addShare: addShare, viewLink: viewLink };
+    window.iotChartTools = { visibleWindow: visibleWindow, isZoomed: isZoomed, localTime: localTime, urlState: urlState, setUrl: setUrl, zoomPct: zoomPct, trackZoom: trackZoom, addDownload: addDownload, addShare: addShare, viewLink: viewLink, addCustomRange: addCustomRange, addLoadMore: addLoadMore, moreFrom: moreFrom, fromLocalInput: fromLocalInput, toLocalInput: toLocalInput, MAX_SPAN_MS: MAX_SPAN_MS };
 })();

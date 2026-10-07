@@ -103,6 +103,7 @@ router.get("/:uid", loadSensor, async (req, res, next) =>
 // The first request covers the range up to now. While more is true, the chart asks again
 // with the same from and to = next_to (epoch seconds) for the next older chunk.
 const CHART_CHUNK = 10000;
+const CHART_MAX_SPAN = 366 * 86400;
 
 // Same check as epochOf() in routes/api.js: whole epoch seconds, anything else is ignored.
 function epochParam(v)
@@ -123,6 +124,8 @@ router.get("/:uid/data", loadSensor, async (req, res, next) =>
         let from = epochParam(req.query.from);
         if (to === null || to > now) { to = now; }
         if (from === null || from > to) { from = to - span; }
+        // A window is at most a year (Jeff, Oct 2026; iot-chart-tools.js MAX_SPAN_MS).
+        if (to - from > CHART_MAX_SPAN) { from = to - CHART_MAX_SPAN; }
 
         // One row past the chunk tells us there is more. The oldest second in the chunk may be
         // split across two requests, so it is left whole for the next one (the API's next_from

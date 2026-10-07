@@ -101,6 +101,7 @@ router.get("/charts/:uid/edit", loadChart, async (req, res, next) =>
 // request gives every series its newest chunk. While a series has more, the chart asks again with
 // sensor=<its uid>, the same from, and to = that series' next_to (epoch seconds).
 const CHART_CHUNK = 10000;
+const CHART_MAX_SPAN = 366 * 86400;
 
 // Same check as epochOf() in routes/api.js: whole epoch seconds, anything else is ignored.
 function epochParam(v)
@@ -121,6 +122,8 @@ router.get("/charts/:uid/data", loadChart, async (req, res, next) =>
         let from = epochParam(req.query.from);
         if (to === null || to > now) { to = now; }
         if (from === null || from > to) { from = to - span; }
+        // A window is at most a year (Jeff, Oct 2026; iot-chart-tools.js MAX_SPAN_MS).
+        if (to - from > CHART_MAX_SPAN) { from = to - CHART_MAX_SPAN; }
         // Only compared against the chart's own sensor list, never put in a query.
         const only = req.query.sensor ? String(req.query.sensor).toLowerCase() : null;
         const allowed = await visibleSensors(req);
