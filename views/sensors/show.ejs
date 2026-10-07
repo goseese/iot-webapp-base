@@ -24,7 +24,7 @@
       </div>
     </div>
   </div>
-  <div class="iot-panel__body"><div id="chart" style="height: 380px"></div></div>
+  <div class="iot-panel__body"><div id="chart" style="height: 380px"></div><div class="d-flex align-items-center gap-2 mt-2" id="chartFoot"><div class="form-text m-0 d-none" id="chartNote"></div></div></div>
 </div>
 
 <% var canEdit = permissions.has(bits, permissions.byName.edit); var ownDesc = sensor.description ? sensor.description : null; var shownDesc = ownDesc || descriptionDefault; %>
@@ -216,14 +216,48 @@ document.addEventListener("DOMContentLoaded", function ()
                 { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl", start: zoom.start, end: zoom.end },
                 { type: "slider", xAxisIndex: 0, start: zoom.start, end: zoom.end, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
             ],
-            series: [{ type: "line", showSymbol: false, data: d.points, lineStyle: { color: v("--iot-primary"), width: 2 }, markArea: { silent: true, data: bands(d.rules) }, markLine: { silent: true, symbol: "none", data: marks } }]
+            series: [{ type: "line", showSymbol: false, sampling: "minmax", data: d.points, lineStyle: { color: v("--iot-primary"), width: 2 }, markArea: { silent: true, data: bands(d.rules) }, markLine: { silent: true, symbol: "none", data: marks } }]
         }, true);
+    }
+    // Readings arrive newest first in chunks: the newest chunk draws at once, older chunks load
+    // behind it and are added on the left, keeping the zoom window where it is. Clicking another
+    // range starts a new load and the older one stops at its next chunk.
+    var MAX_POINTS = 100000;   // per series; past this the note says how far back the chart goes
+    var loadId = 0;
+    var complete = false;   // every reading in the range is loaded (no more chunks, ceiling not hit)
+    var note = document.getElementById("chartNote");
+    function showNote(text)
+    {
+        note.textContent = text || "";
+        note.classList.toggle("d-none", !text);
     }
     async function load(range)
     {
+        var id = ++loadId;
+        complete = false;
+        showNote("");
         var res = await fetch("/sensors/<%= uid %>/data?range=" + range);
-        current = await res.json();
+        if (!res.ok) { showNote("Could not load readings."); return; }
+        var d = await res.json();
+        if (id !== loadId) { return; }
+        current = d;
         draw(false);
+        while (d.more && current.points.length < MAX_POINTS)
+        {
+            showNote("Loading older readings...");
+            res = await fetch("/sensors/<%= uid %>/data?range=" + range + "&from=" + Math.floor(current.from / 1000) + "&to=" + d.next_to);
+            if (!res.ok) { showNote("Could not load older readings."); return; }
+            d = await res.json();
+            if (id !== loadId) { return; }
+            current.points = d.points.concat(current.points);
+            draw(true);
+        }
+        complete = !d.more;
+        if (d.more)
+        {
+            showNote("Showing the newest " + current.points.length.toLocaleString() + " readings, back to " + new Date(current.points[0][0]).toLocaleString(undefined, { timeZone: current.timezone }) + ". Older readings in this range are not loaded.");
+        }
+        else { showNote(""); }
     }
     fitButton.addEventListener("click", function ()
     {
@@ -237,6 +271,16 @@ document.addEventListener("DOMContentLoaded", function ()
         b.addEventListener("click", function () { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); history.replaceState(null, "", "?range=" + b.dataset.range); });
     });
     window.addEventListener("resize", function () { chart.resize(); });
+    // Download: the raw readings inside the zoom window, in the location's timezone and display unit.
+    iotChartTools.addDownload(document.getElementById("chartFoot"), function ()
+    {
+        if (!current) { return null; }
+        var w = iotChartTools.visibleWindow(chart, current.from, current.to);
+        var rows = current.points.filter(function (p) { return p[0] >= w[0] && p[0] <= w[1]; }).map(function (p) { return [iotChartTools.localTime(p[0], current.timezone), Math.round(p[0] / 1000), p[1], current.unit]; });
+        var oldest = current.points.length ? current.points[0][0] : current.to;
+        var partial = !complete && w[0] < oldest ? "Readings before " + iotChartTools.localTime(oldest, current.timezone) + " are not loaded, so the file starts there." : null;
+        return { headers: ["Time (" + current.timezone + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: partial };
+    });
     load("<%= range %>");
 });
 </script>

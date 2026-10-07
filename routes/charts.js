@@ -95,34 +95,60 @@ router.get("/charts/:uid/edit", loadChart, async (req, res, next) =>
     catch (err) { next(err); }
 });
 
-// Multi-series data: each series in its own display unit; the client puts one axis per unit.
+// Multi-series data: raw readings, each series in its own display unit; the client puts one axis
+// per unit. Sent in chunks newest first, like the sensor chart (routes/sensors.js): the first
+// request gives every series its newest chunk. While a series has more, the chart asks again with
+// sensor=<its uid>, the same from, and to = that series' next_to (epoch seconds).
+const CHART_CHUNK = 10000;
+
+// Same check as epochOf() in routes/api.js: whole epoch seconds, anything else is ignored.
+function epochParam(v)
+{
+    if (v === undefined || v === null || v === "") { return null; }
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n >= 0 && n < 1e11 ? n : null;
+}
+
 router.get("/charts/:uid/data", loadChart, async (req, res, next) =>
 {
     try
     {
         const spans = { "1h": 3600, "6h": 21600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400, "90d": 90 * 86400 };
         const span = spans[req.query.range || req.def.range] || spans["24h"];
-        const to = nowEpoch();
-        const from = to - span;
+        const now = nowEpoch();
+        let to = epochParam(req.query.to);
+        let from = epochParam(req.query.from);
+        if (to === null || to > now) { to = now; }
+        if (from === null || from > to) { from = to - span; }
+        // Only compared against the chart's own sensor list, never put in a query.
+        const only = req.query.sensor ? String(req.query.sensor).toLowerCase() : null;
         const allowed = await visibleSensors(req);
         const series = [];
         for (const uid of req.def.sensors || [])
         {
+            if (only && String(uid).toLowerCase() !== only) { continue; }
             const meta = allowed.find((s) => String(s.uid).toLowerCase() === String(uid).toLowerCase());
             // A hidden sensor stays in the chart's definition (so Unhide brings it back) but draws no series.
             if (!meta || meta.is_hidden) { continue; }
             const sensor = await knex(T("sensors")).where({ uid: uid }).first();
             const unit = await display.resolveUnit(sensor, { id: meta.location_id, account_id: meta.account_id });
-            const rows = await sensorsExt.readings(sensor.id, from, to, 20000);
-            const step = Math.max(1, Math.ceil(rows.length / 1500));
-            const points = [];
-            for (let i = 0; i < rows.length; i += step)
+
+            // Same chunk rule as the sensor chart: the oldest second is left whole for the next request.
+            const rows = await sensorsExt.readings(sensor.id, from, to, CHART_CHUNK + 1);
+            let page = rows;
+            let more = false;
+            let nextTo = null;
+            if (rows.length > CHART_CHUNK)
             {
-                const chunk = rows.slice(i, i + step);
-                const avg = chunk.reduce((a, r) => a + r.value, 0) / chunk.length;
-                points.push([Number(chunk[chunk.length - 1].epoch) * 1000, Number(metrics.fromCanonical(sensor.metric, avg, unit).toFixed(4))]);
+                const cut = Number(rows[0].epoch);
+                more = true;
+                page = rows.slice(1).filter((r) => Number(r.epoch) > cut);
+                if (page.length) { nextTo = cut; }
+                else { page = rows.slice(1); nextTo = cut - 1; }
             }
-            series.push({ name: meta.device_name + " / " + meta.name, unit: unit, precision: metrics.precision(sensor.metric, unit), points: points });
+
+            const points = page.map((r) => [Number(r.epoch) * 1000, Number(metrics.fromCanonical(sensor.metric, r.value, unit).toFixed(4))]);
+            series.push({ uid: String(meta.uid).toLowerCase(), name: meta.device_name + " / " + meta.name, unit: unit, precision: metrics.precision(sensor.metric, unit), points: points, more: more, next_to: nextTo });
         }
         res.json({ from: from * 1000, to: to * 1000, series: series });
     }

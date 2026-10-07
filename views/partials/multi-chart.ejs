@@ -1,5 +1,7 @@
-<% /* multi-chart(elId, dataUrl, range): ECharts with one y axis per unit */ %>
+<% /* multi-chart(elId, dataUrl, range): ECharts with one y axis per unit. Raw readings arrive in
+      chunks newest first; older chunks load in the background, one series at a time (routes/charts.js). */ %>
 <div id="<%= elId %>" style="height: 440px"></div>
+<div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
 <script>
 document.addEventListener("DOMContentLoaded", function ()
 {
@@ -8,9 +10,26 @@ document.addEventListener("DOMContentLoaded", function ()
     var css = getComputedStyle(document.documentElement);
     function v(n) { return css.getPropertyValue(n).trim(); }
     var palette = [v("--iot-primary"), v("--iot-success"), v("--iot-warning"), v("--iot-danger"), v("--iot-info"), "#a78bfa", "#f472b6", "#fb923c"];
-    async function load(range)
+    var MAX_POINTS = 100000;   // per series; past this the note says how far back that series goes
+    var current = null;        // { from, to, series } as loaded so far
+    var loadId = 0;
+    var note = document.getElementById("<%= elId %>Note");
+    function showNote(text)
     {
-        var d = await (await fetch("<%= dataUrl %>?range=" + range)).json();
+        note.textContent = text || "";
+        note.classList.toggle("d-none", !text);
+    }
+
+    // keepZoom: redraw with the user's zoom window where it is (older chunks arriving).
+    function draw(keepZoom)
+    {
+        var d = current;
+        var zoom = { start: 0, end: 100 };
+        if (keepZoom)
+        {
+            var z = (chart.getOption().dataZoom || [])[1];
+            if (z) { zoom = { start: z.start, end: z.end }; }
+        }
         var units = []; d.series.forEach(function (s) { if (units.indexOf(s.unit) < 0) { units.push(s.unit); } });
         chart.setOption({
             animation: false, color: palette,
@@ -21,14 +40,67 @@ document.addEventListener("DOMContentLoaded", function ()
             yAxis: units.map(function (u, i) { return { type: "value", scale: true, name: u, position: i === 0 ? "left" : "right", offset: i > 1 ? (i - 1) * 44 : 0, axisLabel: { color: v("--iot-text-muted") }, splitLine: { show: i === 0, lineStyle: { color: v("--iot-border") } } }; }),
             // zoom window: slider with a preview of the first series, drag inside to pan, pinch or ctrl + wheel to zoom
             dataZoom: [
-                { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl" },
-                { type: "slider", xAxisIndex: 0, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
+                { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl", start: zoom.start, end: zoom.end },
+                { type: "slider", xAxisIndex: 0, start: zoom.start, end: zoom.end, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
             ],
-            series: d.series.map(function (s) { return { name: s.name, type: "line", showSymbol: false, yAxisIndex: units.indexOf(s.unit), data: s.points, lineStyle: { width: 2 }, tooltip: { valueFormatter: function (x) { return Number(x).toFixed(s.precision) + " " + s.unit; } } }; })
+            series: d.series.map(function (s) { return { name: s.name, type: "line", showSymbol: false, sampling: "minmax", yAxisIndex: units.indexOf(s.unit), data: s.points, lineStyle: { width: 2 }, tooltip: { valueFormatter: function (x) { return Number(x).toFixed(s.precision) + " " + s.unit; } } }; })
         }, true);
     }
-    el.parentElement.querySelectorAll("[data-range]").forEach(function (b) { b.addEventListener("click", function () { el.parentElement.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); }); });
+
+    // Newest chunk of every series draws at once; then each series that has more loads its older
+    // chunks, added on the left. Clicking another range starts a new load and this one stops.
+    async function load(range)
+    {
+        var id = ++loadId;
+        showNote("");
+        var res = await fetch("<%= dataUrl %>?range=" + range);
+        if (!res.ok) { showNote("Could not load readings."); return; }
+        var d = await res.json();
+        if (id !== loadId) { return; }
+        current = d;
+        draw(false);
+        var cut = [];   // series that stopped at MAX_POINTS
+        for (var i = 0; i < current.series.length; i++)
+        {
+            var s = current.series[i];
+            var more = s.more, nextTo = s.next_to;
+            while (more && s.points.length < MAX_POINTS)
+            {
+                showNote("Loading older readings for " + s.name + "...");
+                res = await fetch("<%= dataUrl %>?range=" + range + "&from=" + Math.floor(current.from / 1000) + "&to=" + nextTo + "&sensor=" + encodeURIComponent(s.uid));
+                if (!res.ok) { showNote("Could not load older readings."); return; }
+                d = await res.json();
+                if (id !== loadId) { return; }
+                var older = d.series[0];
+                if (!older) { more = false; break; }
+                s.points = older.points.concat(s.points);
+                more = older.more;
+                nextTo = older.next_to;
+                draw(true);
+            }
+            s.complete = !more;
+            if (more) { cut.push(s.name + " (back to " + new Date(s.points[0][0]).toLocaleString() + ")"); }
+        }
+        showNote(cut.length ? "Older readings in this range are not loaded for: " + cut.join("; ") + "." : "");
+    }
+    el.closest(".iot-panel").querySelectorAll("[data-range]").forEach(function (b) { b.addEventListener("click", function () { el.closest(".iot-panel").querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); b.classList.add("active"); load(b.dataset.range); }); });
     window.addEventListener("resize", function () { chart.resize(); });
+    // Download: the raw readings inside the zoom window, one row per reading with its series, in the
+    // browser's timezone (the x axis uses it too; a saved chart can mix locations).
+    iotChartTools.addDownload(document.getElementById("<%= elId %>Foot"), function ()
+    {
+        if (!current) { return null; }
+        var w = iotChartTools.visibleWindow(chart, current.from, current.to);
+        var rows = [], short = [];
+        current.series.forEach(function (s)
+        {
+            s.points.forEach(function (p) { if (p[0] >= w[0] && p[0] <= w[1]) { rows.push([s.name, iotChartTools.localTime(p[0]), Math.round(p[0] / 1000), p[1], s.unit]); } });
+            var oldest = s.points.length ? s.points[0][0] : current.to;
+            if (!s.complete && w[0] < oldest) { short.push(s.name + " (from " + iotChartTools.localTime(oldest) + ")"); }
+        });
+        var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return { headers: ["Series", "Time (" + tz + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: short.length ? "Older readings are not loaded for: " + short.join("; ") + ". The file starts where each one does." : null };
+    });
     load("<%= range %>");
 });
 </script>

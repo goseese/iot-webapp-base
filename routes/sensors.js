@@ -98,26 +98,50 @@ router.get("/:uid", loadSensor, async (req, res, next) =>
     catch (err) { next(err); }
 });
 
-// Chart data in display units. range: 1h, 24h, 7d, 30d; larger windows are bucketed by the chart step.
+// Chart data in display units: raw readings, never averaged, sent in chunks newest first.
+// The first request covers the range up to now. While more is true, the chart asks again
+// with the same from and to = next_to (epoch seconds) for the next older chunk.
+const CHART_CHUNK = 10000;
+
+// Same check as epochOf() in routes/api.js: whole epoch seconds, anything else is ignored.
+function epochParam(v)
+{
+    if (v === undefined || v === null || v === "") { return null; }
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n >= 0 && n < 1e11 ? n : null;
+}
+
 router.get("/:uid/data", loadSensor, async (req, res, next) =>
 {
     try
     {
         const spans = { "1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400 };
         const span = spans[req.query.range] || spans["24h"];
-        const to = nowEpoch();
-        const from = to - span;
-        const rows = await sensorsExt.readings(req.sensor.id, from, to, 20000);
-        const step = Math.max(1, Math.ceil(rows.length / 2000));
-        const points = [];
-        for (let i = 0; i < rows.length; i += step)
+        const now = nowEpoch();
+        let to = epochParam(req.query.to);
+        let from = epochParam(req.query.from);
+        if (to === null || to > now) { to = now; }
+        if (from === null || from > to) { from = to - span; }
+
+        // One row past the chunk tells us there is more. The oldest second in the chunk may be
+        // split across two requests, so it is left whole for the next one (the API's next_from
+        // rule, reversed). A chunk that is all one second keeps it and steps one second back.
+        const rows = await sensorsExt.readings(req.sensor.id, from, to, CHART_CHUNK + 1);
+        let page = rows;
+        let more = false;
+        let nextTo = null;
+        if (rows.length > CHART_CHUNK)
         {
-            const chunk = rows.slice(i, i + step);
-            const avg = chunk.reduce((a, r) => a + r.value, 0) / chunk.length;
-            points.push([Number(chunk[chunk.length - 1].epoch) * 1000, Number(toDisplay(req, avg).toFixed(4))]);
+            const cut = Number(rows[0].epoch);
+            more = true;
+            page = rows.slice(1).filter((r) => Number(r.epoch) > cut);
+            if (page.length) { nextTo = cut; }
+            else { page = rows.slice(1); nextTo = cut - 1; }
         }
+
+        const points = page.map((r) => [Number(r.epoch) * 1000, Number(toDisplay(req, r.value).toFixed(4))]);
         const rules = (await sensorsExt.rules(req.sensor.id)).filter((r) => r.rule_kind === "threshold" && r.is_enabled).map((r) => ({ direction: r.direction, severity: r.severity, value: toDisplay(req, r.threshold) }));
-        res.json({ unit: req.unit, timezone: req.location.iana_timezone, points: points, rules: rules, from: from * 1000, to: to * 1000 });
+        res.json({ unit: req.unit, timezone: req.location.iana_timezone, points: points, rules: rules, from: from * 1000, to: to * 1000, more: more, next_to: nextTo });
     }
     catch (err) { next(err); }
 });

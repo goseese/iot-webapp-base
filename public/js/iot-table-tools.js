@@ -177,6 +177,9 @@
         };
     });
 
+    // Shared with iot-chart-tools.js so chart downloads write files the same way tables do.
+    window.iotExport = { toCsv: toCsv, toJson: toJson, download: download };
+
     document.addEventListener("DOMContentLoaded", function ()
     {
         document.querySelectorAll("table.iot-table").forEach(function (t) { if (t.tHead && t.tHead.rows.length && !toolsOff(t)) { addDownload(t); } });

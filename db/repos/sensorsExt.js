@@ -9,9 +9,12 @@ function context(uid)
         .first();
 }
 
-function readings(sensorId, fromEpoch, toEpoch, limit)
+// Newest first, so a capped window always holds the latest readings.
+// Returned oldest first, the order the charts draw in.
+async function readings(sensorId, fromEpoch, toEpoch, limit)
 {
-    return knex(T("readings")).where({ sensor_id: sensorId }).where("epoch", ">=", fromEpoch).where("epoch", "<=", toEpoch).orderBy("epoch").limit(limit || 5000).select("epoch", "value");
+    const rows = await knex(T("readings")).where({ sensor_id: sensorId }).where("epoch", ">=", fromEpoch).where("epoch", "<=", toEpoch).orderBy("epoch", "desc").limit(limit || 5000).select("epoch", "value");
+    return rows.reverse();
 }
 
 function rules(sensorId)
