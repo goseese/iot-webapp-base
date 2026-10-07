@@ -148,7 +148,7 @@ router.get("/charts/:uid/data", loadChart, async (req, res, next) =>
             }
 
             const points = page.map((r) => [Number(r.epoch) * 1000, Number(metrics.fromCanonical(sensor.metric, r.value, unit).toFixed(4))]);
-            series.push({ uid: String(meta.uid).toLowerCase(), name: meta.device_name + " / " + meta.name, unit: unit, precision: metrics.precision(sensor.metric, unit), points: points, more: more, next_to: nextTo });
+            series.push({ uid: String(meta.uid).toLowerCase(), name: meta.device_name + " / " + meta.name, location_name: meta.location_name, device_name: meta.device_name, sensor_name: meta.name, unit: unit, precision: metrics.precision(sensor.metric, unit), points: points, more: more, next_to: nextTo });
         }
         res.json({ from: from * 1000, to: to * 1000, series: series });
     }

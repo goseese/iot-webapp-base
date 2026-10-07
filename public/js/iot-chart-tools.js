@@ -1,6 +1,7 @@
 /* Chart tools for every chart panel, at the bottom left under the chart:
    - Download: the raw readings inside the zoom window as CSV or JSON.
-   - Share: copy a link to this exact view, or download a PNG of it.
+   - Share: email it from the user's own mail program (image and data attached), copy a link to
+     this exact view, or download a PNG of it.
    - The view in the URL: range (a preset) or from and to pick the data, start and end the zoom
      window, all whole epoch seconds. One chart per page owns the URL.
    The page's chart script supplies its data; files are written by iot-table-tools.js
@@ -162,64 +163,286 @@
 
     // The chart as drawn, at twice its size, on the panel color, with the page and panel titles and
     // the window (in tz, the browser's when null) above it, so it reads on its own in an email.
+    function pngBlob(chart, container, s, tz)
+    {
+        return new Promise(function (resolve)
+        {
+            var css = getComputedStyle(document.documentElement);
+            var bg = css.getPropertyValue("--iot-panel").trim() || "#ffffff";
+            var fg = css.getPropertyValue("--iot-text").trim() || "#000000";
+            var muted = css.getPropertyValue("--iot-text-muted").trim() || fg;
+            var zone = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+            var ratio = 2;
+            var img = new Image();
+            img.onload = function ()
+            {
+                var t = titles(container);
+                var w = visibleWindow(chart, s.from, s.to);
+                var head = 56 * ratio;
+                var c = document.createElement("canvas");
+                c.width = img.width;
+                c.height = img.height + head;
+                var g = c.getContext("2d");
+                g.fillStyle = bg;
+                g.fillRect(0, 0, c.width, c.height);
+                g.fillStyle = fg;
+                g.font = "600 " + (16 * ratio) + "px system-ui, sans-serif";
+                g.fillText([t.page, t.panel].filter(Boolean).join(" / "), 16 * ratio, 24 * ratio);
+                g.fillStyle = muted;
+                g.font = (12 * ratio) + "px system-ui, sans-serif";
+                g.fillText(localTime(w[0], zone) + " to " + localTime(w[1], zone) + " (" + zone + ")", 16 * ratio, 44 * ratio);
+                g.drawImage(img, 0, head);
+                c.toBlob(function (blob) { resolve(blob); }, "image/png");
+            };
+            img.src = chart.getDataURL({ type: "png", pixelRatio: ratio, backgroundColor: bg });
+        });
+    }
+    function saveBlob(blob, name)
+    {
+        var a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    }
     function png(chart, container, s, tz)
     {
-        var css = getComputedStyle(document.documentElement);
-        var bg = css.getPropertyValue("--iot-panel").trim() || "#ffffff";
-        var fg = css.getPropertyValue("--iot-text").trim() || "#000000";
-        var muted = css.getPropertyValue("--iot-text-muted").trim() || fg;
-        var zone = tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
-        var ratio = 2;
-        var img = new Image();
-        img.onload = function ()
-        {
-            var t = titles(container);
-            var w = visibleWindow(chart, s.from, s.to);
-            var head = 56 * ratio;
-            var c = document.createElement("canvas");
-            c.width = img.width;
-            c.height = img.height + head;
-            var g = c.getContext("2d");
-            g.fillStyle = bg;
-            g.fillRect(0, 0, c.width, c.height);
-            g.fillStyle = fg;
-            g.font = "600 " + (16 * ratio) + "px system-ui, sans-serif";
-            g.fillText([t.page, t.panel].filter(Boolean).join(" / "), 16 * ratio, 24 * ratio);
-            g.fillStyle = muted;
-            g.font = (12 * ratio) + "px system-ui, sans-serif";
-            g.fillText(localTime(w[0], zone) + " to " + localTime(w[1], zone) + " (" + zone + ")", 16 * ratio, 44 * ratio);
-            g.drawImage(img, 0, head);
-            c.toBlob(function (blob)
-            {
-                var a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = fileName(container, w[0], w[1]) + ".png";
-                document.body.appendChild(a); a.click(); a.remove();
-                setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-            }, "image/png");
-        };
-        img.src = chart.getDataURL({ type: "png", pixelRatio: ratio, backgroundColor: bg });
+        var w = visibleWindow(chart, s.from, s.to);
+        pngBlob(chart, container, s, tz).then(function (blob) { saveBlob(blob, fileName(container, w[0], w[1]) + ".png"); });
     }
 
-    // Puts the control after Download. getSpan() returns the chart's { from, to } in ms;
-    // getTimezone() the IANA name for the PNG caption, or null for the browser's.
-    function addShare(container, chart, getSpan, getTimezone)
+    // ---- a one file zip: deflate from the browser's CompressionStream, CRC-32 here
+
+    var crcTable = null;
+    function crc32(bytes)
+    {
+        if (!crcTable)
+        {
+            crcTable = new Uint32Array(256);
+            for (var n = 0; n < 256; n++)
+            {
+                var c = n;
+                for (var k = 0; k < 8; k++) { c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; }
+                crcTable[n] = c >>> 0;
+            }
+        }
+        var crc = 0xFFFFFFFF;
+        for (var i = 0; i < bytes.length; i++) { crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8); }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+    function canZip() { return typeof CompressionStream === "function"; }
+    // Local header, deflated data, central directory, end record (PKWARE APPNOTE 4.3), UTF-8 name.
+    async function zipOne(name, text)
+    {
+        var data = new TextEncoder().encode(text);
+        var packed = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer());
+        var fname = new TextEncoder().encode(name);
+        var crc = crc32(data);
+        var d = new Date();
+        var time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+        var date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+        var local = new DataView(new ArrayBuffer(30));
+        local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true); local.setUint16(8, 8, true);
+        local.setUint16(10, time, true); local.setUint16(12, date, true); local.setUint32(14, crc, true);
+        local.setUint32(18, packed.length, true); local.setUint32(22, data.length, true); local.setUint16(26, fname.length, true); local.setUint16(28, 0, true);
+        var central = new DataView(new ArrayBuffer(46));
+        central.setUint32(0, 0x02014b50, true); central.setUint16(4, 20, true); central.setUint16(6, 20, true); central.setUint16(8, 0x0800, true); central.setUint16(10, 8, true);
+        central.setUint16(12, time, true); central.setUint16(14, date, true); central.setUint32(16, crc, true);
+        central.setUint32(20, packed.length, true); central.setUint32(24, data.length, true); central.setUint16(28, fname.length, true);
+        var end = new DataView(new ArrayBuffer(22));
+        var cdOffset = 30 + fname.length + packed.length;
+        end.setUint32(0, 0x06054b50, true); end.setUint16(8, 1, true); end.setUint16(10, 1, true);
+        end.setUint32(12, 46 + fname.length, true); end.setUint32(16, cdOffset, true);
+        return new Blob([local, fname, packed, central, fname, end], { type: "application/zip" });
+    }
+
+    // ---- Email: the user's own mail program, through the system share sheet (Web Share with files)
+
+    // The tokens a name can use: the alarm title ones that fit a chart (services/alarms/title.js
+    // TOKEN_HELP) plus chart_name and window. Rendered by iot-title.js like an alarm title field.
+    var NAME_TOKENS =
+    [
+        ["chart_name", "Chart name"], ["window", "Time window in view"], ["site_name", "Site name"], ["account_name", "Account name"],
+        ["location_name", "Location name"], ["device_name", "Device name"], ["sensor_name", "Sensor name"]
+    ];
+    function renderName(template, vars)
+    {
+        return String(template).replace(/\{([a-z_]+)\}/g, function (whole, k) { return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k] === null || vars[k] === undefined ? "" : vars[k]) : whole; }).replace(/\s+/g, " ").trim();
+    }
+    function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+    // Whether the share sheet takes a file of this name and type. Chrome and Edge only take a fixed
+    // list (png and csv yes, zip and json no: chrome/browser/webshare/share_service_impl.cc).
+    function shareTakes(name, type)
+    {
+        try { return !!(navigator.canShare && navigator.canShare({ files: [new File(["x"], name, { type: type })] })); }
+        catch (e) { return false; }
+    }
+    var FORMATS =
+    [
+        { key: "csv", label: "CSV", ext: ".csv", type: "text/csv" },
+        { key: "json", label: "JSON", ext: ".json", type: "application/json" },
+        { key: "csvzip", label: "CSV in a .zip", ext: ".csv.zip", type: "application/zip", zip: true },
+        { key: "jsonzip", label: "JSON in a .zip", ext: ".json.zip", type: "application/zip", zip: true }
+    ];
+
+    var emailSeq = 0;
+    function emailDialog(container, o)
+    {
+        var id = "iotChartEmail" + (++emailSeq);
+        var m = document.createElement("div");
+        m.className = "modal fade";
+        m.id = id;
+        m.tabIndex = -1;
+        m.innerHTML =
+            '<div class="modal-dialog"><div class="modal-content">' +
+            '<div class="modal-header"><h5 class="modal-title">Email this chart</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>' +
+            '<div class="modal-body">' +
+              '<div class="mb-3" data-title-field data-title-prefix="none" data-sample="{}">' +
+                '<label class="form-label" for="' + id + 'Name">Name</label>' +
+                '<div class="input-group"><input class="form-control" id="' + id + 'Name" maxlength="200" autocomplete="off" data-title-input>' +
+                '<button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" data-bs-popper-config=\'{"strategy":"fixed"}\' aria-expanded="false" title="Insert a token at the cursor">Tokens</button>' +
+                '<ul class="dropdown-menu dropdown-menu-end" style="max-height: 22rem; overflow-y: auto;">' +
+                NAME_TOKENS.map(function (t) { return '<li><button type="button" class="dropdown-item py-1" data-title-token="' + t[0] + '"><code>{' + t[0] + '}</code><span class="d-block small text-secondary">' + t[1] + '</span></button></li>'; }).join("") +
+                '</ul></div>' +
+                '<div class="form-text text-break">Preview: <span style="color: var(--iot-text)" data-title-preview></span></div>' +
+                '<div class="form-text text-warning d-none" data-title-unknown></div>' +
+              '</div>' +
+              '<div class="mb-3"><label class="form-label" for="' + id + 'Comment">Comment</label><textarea class="form-control" id="' + id + 'Comment" rows="4" maxlength="4000"></textarea></div>' +
+              '<div class="mb-2"><label class="form-label" for="' + id + 'Format">Data file</label><select class="form-select" id="' + id + 'Format"></select></div>' +
+              '<div class="form-text" data-email-about></div>' +
+              '<div class="form-text text-warning d-none" data-email-fallback>This browser cannot attach files to an email. Download the image and the data, then open the email and attach them.</div>' +
+            '</div>' +
+            '<div class="modal-footer">' +
+              '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>' +
+              '<button type="button" class="btn btn-outline-secondary d-none" data-email="png"><i class="fa-solid fa-download me-1"></i>Image</button>' +
+              '<button type="button" class="btn btn-outline-secondary d-none" data-email="data"><i class="fa-solid fa-download me-1"></i>Data</button>' +
+              '<button type="button" class="btn btn-primary" data-email="send" disabled>Preparing...</button>' +
+            '</div>' +
+            '</div></div>';
+        document.body.appendChild(m);
+
+        var nameIn = m.querySelector("[data-title-input]"), field = m.querySelector("[data-title-field]");
+        var comment = m.querySelector("textarea"), format = m.querySelector("select");
+        var send = m.querySelector('[data-email="send"]'), about = m.querySelector("[data-email-about]"), fallbackNote = m.querySelector("[data-email-fallback]");
+        var state = null;   // what the dialog was opened on: { s, d, vars, link, png, data, share }
+        var prepId = 0;
+
+        function body()
+        {
+            var lines = [renderName(nameIn.value || o.nameTemplate, state.vars)];
+            if (comment.value.trim()) { lines.push("", comment.value.trim()); }
+            lines.push("", "View this chart on " + (state.vars.site_name || "the site") + " (sign in needed):", state.link);
+            lines.push("", "Attached: the chart image and " + state.d.rows.length.toLocaleString() + " readings" + (state.data ? " (" + state.data.name + ")" : "") + ".");
+            if (state.d.partial) { lines.push(state.d.partial); }
+            return lines.join("\n");
+        }
+
+        // Builds the image and the data file once per opening (and per format change), so the
+        // Email button can call navigator.share straight from the click: browsers only allow it
+        // during the click's user activation.
+        async function prepare()
+        {
+            var my = ++prepId;
+            send.disabled = true;
+            if (state.share) { send.textContent = "Preparing..."; }
+            var f = FORMATS.filter(function (x) { return x.key === format.value; })[0];
+            var base = fileName(container, state.w[0], state.w[1]);
+            var inner = f.key.indexOf("json") === 0 ? iotExport.toJson(state.d.headers, state.d.rows) : iotExport.toCsv(state.d.headers, state.d.rows);
+            var dataBlob = f.zip ? await zipOne(base + f.ext.replace(".zip", ""), inner) : new Blob([inner], { type: f.type });
+            var image = state.png || await pngBlob(o.chart, container, state.s, o.getTimezone ? o.getTimezone() : null);
+            if (my !== prepId) { return; }
+            state.png = image;
+            state.data = new File([dataBlob], base + f.ext, { type: f.type });
+            state.image = new File([image], base + ".png", { type: "image/png" });
+            send.disabled = false;
+            send.textContent = state.share ? "Email..." : "Open email";
+        }
+
+        format.addEventListener("change", prepare);
+        m.querySelector('[data-email="png"]').addEventListener("click", function () { if (state && state.image) { saveBlob(state.image, state.image.name); } });
+        m.querySelector('[data-email="data"]').addEventListener("click", function () { if (state && state.data) { saveBlob(state.data, state.data.name); } });
+        send.addEventListener("click", function ()
+        {
+            if (!state || !state.data) { return; }
+            var subject = renderName(nameIn.value || o.nameTemplate, state.vars);
+            if (state.share)
+            {
+                navigator.share({ files: [state.image, state.data], title: subject, text: body() }).then(function ()
+                {
+                    bootstrap.Modal.getOrCreateInstance(m).hide();
+                }, function (err)
+                {
+                    if (err && err.name === "AbortError") { return; }   // the user closed the share sheet
+                    if (window.iotFlash) { iotFlash("danger", "Could not open the share sheet: " + (err && err.message ? err.message : err)); }
+                });
+            }
+            else
+            {
+                var a = document.createElement("a");
+                a.href = "mailto:?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body());
+                document.body.appendChild(a); a.click(); a.remove();
+            }
+        });
+
+        return function open()
+        {
+            var s = o.getSpan();
+            var d = s ? o.getData() : null;
+            if (!d || !d.rows.length)
+            {
+                if (window.iotFlash) { iotFlash("warning", "No readings in view to email."); }
+                return;
+            }
+            var w = visibleWindow(o.chart, s.from, s.to);
+            var tz = o.getTimezone ? o.getTimezone() : null;
+            var vars = Object.assign({}, o.getVars ? o.getVars() : {}, { window: localTime(w[0], tz).slice(0, 16) + " to " + localTime(w[1], tz).slice(0, 16) });
+            var share = !!navigator.share && shareTakes("chart.png", "image/png");
+            state = { s: s, d: d, w: w, vars: vars, link: viewLink(o.chart, s), share: share, png: null, data: null, image: null };
+            field.dataset.sample = JSON.stringify(vars);
+            if (!nameIn.value) { nameIn.value = o.nameTemplate; }
+            nameIn.dispatchEvent(new Event("input", { bubbles: true }));
+            // Formats this browser can attach (share sheet) or build (zip needs CompressionStream).
+            var keep = format.value;
+            format.innerHTML = FORMATS.map(function (f)
+            {
+                var ok = (!f.zip || canZip()) && (!share || shareTakes("data" + f.ext, f.type));
+                return '<option value="' + f.key + '"' + (ok ? "" : " disabled") + '>' + esc(f.label) + (ok ? "" : share ? " (cannot attach here, use Download)" : " (not in this browser)") + '</option>';
+            }).join("");
+            format.value = keep && !format.querySelector('option[value="' + keep + '"]').disabled ? keep : "csv";
+            about.textContent = "Attaches the chart image and the " + d.rows.length.toLocaleString() + " readings in view. The link opens this view for people who can sign in to " + (vars.site_name || "the site") + ".";
+            fallbackNote.classList.toggle("d-none", share);
+            m.querySelectorAll('[data-email="png"], [data-email="data"]').forEach(function (b) { b.classList.toggle("d-none", share); });
+            bootstrap.Modal.getOrCreateInstance(m).show();
+            prepare();
+        };
+    }
+
+    // Puts the control after Download. o: { chart, getSpan() the chart's { from, to } in ms,
+    // getTimezone() IANA name or null for the browser's, getData() as for Download, getVars() the
+    // token values, nameTemplate the default Name }.
+    function addShare(container, o)
     {
         var wrap = document.createElement("div");
         wrap.className = "dropup iot-chart-share";
         wrap.innerHTML = '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="Share this view"><i class="fa-solid fa-share-nodes me-1"></i>Share</button>' +
-            '<ul class="dropdown-menu"><li><a class="dropdown-item" href="#" data-share="link">Copy link to this view</a></li><li><a class="dropdown-item" href="#" data-share="png">Download PNG</a></li></ul>';
+            '<ul class="dropdown-menu"><li><a class="dropdown-item" href="#" data-share="email">Email...</a></li><li><a class="dropdown-item" href="#" data-share="link">Copy link to this view</a></li><li><a class="dropdown-item" href="#" data-share="png">Download PNG</a></li></ul>';
         var dl = container.querySelector(".iot-chart-dl");
         container.insertBefore(wrap, dl ? dl.nextSibling : container.firstChild);
+        var openEmail = null;
         wrap.addEventListener("click", function (e)
         {
             var a = e.target.closest("[data-share]");
             if (!a) { return; }
             e.preventDefault();
-            var s = getSpan();
+            var s = o.getSpan();
             if (!s) { return; }
-            if (a.dataset.share === "link") { iotExport.copy(viewLink(chart, s), "a link to this view"); }
-            else { png(chart, container, s, getTimezone ? getTimezone() : null); }
+            if (a.dataset.share === "email")
+            {
+                if (!openEmail) { openEmail = emailDialog(container, o); }
+                openEmail();
+            }
+            else if (a.dataset.share === "link") { iotExport.copy(viewLink(o.chart, s), "a link to this view"); }
+            else { png(o.chart, container, s, o.getTimezone ? o.getTimezone() : null); }
         });
     }
 

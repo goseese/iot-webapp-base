@@ -53,7 +53,9 @@
         if (!input || !preview) { return; }
         var vars = sampleOf(wrap);
         var template = input.value.trim() || input.placeholder;
-        preview.textContent = String(vars.severity || "alarm").toUpperCase() + ": " + render(template, vars);
+        // data-title-prefix="none": no severity in front (the chart email Name, iot-chart-tools.js).
+        var prefix = wrap.dataset.titlePrefix === "none" ? "" : String(vars.severity || "alarm").toUpperCase() + ": ";
+        preview.textContent = prefix + render(template, vars);
         var unknown = unknownTokens(template, vars);
         if (warn)
         {

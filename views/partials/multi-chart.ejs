@@ -2,7 +2,7 @@
       chunks newest first; older chunks load in the background, one series at a time (routes/charts.js).
       The view lives in the URL (iot-chart-tools.js); one chart per page owns it. */ %>
 <div id="<%= elId %>" style="height: 440px"></div>
-<div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
+<div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: account ? account.name : "" }) %>"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
 <script>
 document.addEventListener("DOMContentLoaded", function ()
 {
@@ -113,7 +113,7 @@ document.addEventListener("DOMContentLoaded", function ()
     // Download: the raw readings inside the zoom window, one row per reading with its series, in the
     // browser's timezone (the x axis uses it too; a saved chart can mix locations).
     var foot = document.getElementById("<%= elId %>Foot");
-    iotChartTools.addDownload(foot, function ()
+    var dataInView = function ()
     {
         if (!current) { return null; }
         var w = iotChartTools.visibleWindow(chart, current.from, current.to);
@@ -126,9 +126,17 @@ document.addEventListener("DOMContentLoaded", function ()
         });
         var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         return { headers: ["Series", "Time (" + tz + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: short.length ? "Older readings are not loaded for: " + short.join("; ") + ". The file starts where each one does." : null };
-    });
-    // Share: a link to this exact view, or a PNG of it; the zoom window follows the URL as it changes.
-    iotChartTools.addShare(foot, chart, function () { return current; }, null);
+    };
+    iotChartTools.addDownload(foot, dataInView);
+    // Share: email it (image and data attached), a link to this exact view, or a PNG of it; the zoom
+    // window follows the URL as it changes. Location, device and sensor names are the series' own,
+    // joined when they differ; chart_name is the panel title.
+    function namesOf(key) { var u = []; (current ? current.series : []).forEach(function (s) { if (s[key] && u.indexOf(s[key]) < 0) { u.push(s[key]); } }); return u.join(", "); }
+    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: null, getData: dataInView, nameTemplate: "{chart_name}, {window}", getVars: function ()
+    {
+        var head = panel.querySelector(".iot-panel__header strong");
+        return Object.assign(JSON.parse(foot.dataset.chartVars), { chart_name: head ? head.textContent.trim() : "", location_name: namesOf("location_name"), device_name: namesOf("device_name"), sensor_name: namesOf("sensor_name") });
+    } });
     iotChartTools.trackZoom(chart, function () { return current; });
     load(range);
 });
