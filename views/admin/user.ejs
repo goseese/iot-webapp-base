@@ -7,7 +7,9 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
   <h5 class="mb-0"><%= u.display_name || u.username %></h5>
   <span class="text-secondary small"><%= u.username %>, <%= u.email %></span>
   <% if (u.is_superadmin) { %><span class="badge text-bg-secondary">superadmin</span><% } %>
-  <span class="iot-status iot-status--<%= u.disabled_epoch ? "offline" : "online" %> ms-auto"><%= u.disabled_epoch ? "offline" : "online" %></span>
+  <%# The event log filtered to this user (routes/admin.js GET /logs: who=u<user id>), over its longest period. %>
+  <a class="small ms-auto" href="/admin/logs?range=30d&amp;who=u<%= u.id %>"><i class="fa-solid fa-list me-1"></i>Show all activity</a>
+  <span class="iot-status iot-status--<%= u.disabled_epoch ? "offline" : "online" %> ms-3"><%= u.disabled_epoch ? "offline" : "online" %></span>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-4">
