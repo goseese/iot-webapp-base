@@ -27,6 +27,12 @@ function validate(t)
     {
         throw new Error("device type " + t.slug + ": unknown batteryChemistry " + t.batteryChemistry);
     }
+    // apiWrite: true lets POST /api/v1 readings reach devices of this type (DECISIONS "API writes
+    // need apiWrite"). Absent means false: radio data only.
+    if (t.apiWrite !== undefined && typeof t.apiWrite !== "boolean")
+    {
+        throw new Error("device type " + t.slug + ": apiWrite must be true or false");
+    }
     for (const ch of t.channels)
     {
         if (!t.legacyChannelIds && !CHANNEL_ID.test(ch.id))

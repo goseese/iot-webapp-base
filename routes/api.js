@@ -270,6 +270,8 @@ router.post("/readings", async (req, res, next) =>
             const l = d ? await knex(T("locations")).where({ id: d.location_id }).first() : null;
             if (!l || !permissions.has(apiAuth.bitsAt(req, l), permissions.byName.api_write)) { rejected.push({ index: i, error: "sensor not found or not writable" }); continue; }
             if (d.kind !== "direct" && d.kind !== "asset") { rejected.push({ index: i, error: "only direct devices accept API readings" }); continue; }
+            const tr = await knex(T("device_types")).where({ id: d.device_type_id }).first();
+            if (!tr || !deviceTypes.get(tr.slug).apiWrite) { rejected.push({ index: i, error: "this device type does not accept API readings" }); continue; }
             if (typeof it.value !== "number" || !Number.isFinite(it.value)) { rejected.push({ index: i, error: "value must be a finite number" }); continue; }
             const m = metrics.get(s.metric);
             const unit = it.unit || m.canonical;
@@ -311,6 +313,8 @@ router.post("/devices/:uid/readings", async (req, res, next) =>
         if (!l || !permissions.has(apiAuth.bitsAt(req, l), permissions.byName.api_write)) { return res.status(404).json({ error: "Device not found" }); }
         const typeRow = await knex(T("device_types")).where({ id: d.device_type_id }).first();
         const type = deviceTypes.get(typeRow.slug);
+        // Only types that declare apiWrite take API readings (DECISIONS "API writes need apiWrite").
+        if (!type.apiWrite) { return res.status(403).json({ error: "This device type does not accept API readings" }); }
 
         const items = Array.isArray(req.body) ? req.body : (req.body && typeof req.body === "object" ? [req.body] : null);
         if (!items || !items.length) { return res.status(400).json({ error: "Body must be { epoch?, data: { channel: value } } or an array of them" }); }
