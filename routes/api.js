@@ -293,6 +293,77 @@ router.post("/readings", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// Readings for one device, by channel (architecture 12): one object or an array of
+// { epoch?, data: { channel: value, ... } }, canonical units. The whole request is checked before
+// anything is stored: an unknown channel rejects it and lists the valid channels; a bad value, a
+// missing data object or an epoch more than 5 minutes ahead rejects it with the object's index.
+// Backdated epochs are fine (buffered uploads; the hot column guard keeps the current value). A
+// channel that already has a reading at that epoch is skipped as a duplicate, so a retried upload
+// stores nothing twice. Each object then enters the pipeline at stage 2, exactly like a frame. Any live,
+// unarchived device kind is accepted; a direct device is its own gateway, others keep the gateway
+// that last heard them (POST /readings, by sensor, stays limited to direct devices).
+router.post("/devices/:uid/readings", async (req, res, next) =>
+{
+    try
+    {
+        const d = await knex(T("devices")).where({ uid: req.params.uid }).whereNull("delete_epoch").first();
+        const l = d && !d.is_archived ? await knex(T("locations")).where({ id: d.location_id }).whereNull("delete_epoch").first() : null;
+        if (!l || !permissions.has(apiAuth.bitsAt(req, l), permissions.byName.api_write)) { return res.status(404).json({ error: "Device not found" }); }
+        const typeRow = await knex(T("device_types")).where({ id: d.device_type_id }).first();
+        const type = deviceTypes.get(typeRow.slug);
+
+        const items = Array.isArray(req.body) ? req.body : (req.body && typeof req.body === "object" ? [req.body] : null);
+        if (!items || !items.length) { return res.status(400).json({ error: "Body must be { epoch?, data: { channel: value } } or an array of them" }); }
+        const max = settings.get("API_MAX_OBJECTS", 1000);
+        if (items.length > max) { return res.status(413).json({ error: "At most " + max + " objects per request" }); }
+
+        const now = nowEpoch();
+        const valid = type.channels.filter((c) => !c.perGateway).map((c) => c.id);
+        const objects = [];
+        for (let i = 0; i < items.length; i++)
+        {
+            const it = items[i];
+            if (!it || typeof it !== "object" || Array.isArray(it) || !it.data || typeof it.data !== "object" || Array.isArray(it.data) || !Object.keys(it.data).length)
+            {
+                return res.status(400).json({ error: "data must be an object of channel values", index: i });
+            }
+            const unknown = Object.keys(it.data).filter((c) => !deviceTypes.channelDef(type, c));
+            if (unknown.length) { return res.status(400).json({ error: "Unknown channel " + unknown.join(", "), index: i, valid_channels: valid }); }
+            const bad = Object.keys(it.data).filter((c) => typeof it.data[c] !== "boolean" && !(typeof it.data[c] === "number" && Number.isFinite(it.data[c])));
+            if (bad.length) { return res.status(400).json({ error: "Values must be finite numbers or booleans: " + bad.join(", "), index: i }); }
+            let epoch = now;
+            if (it.epoch !== undefined && it.epoch !== null)
+            {
+                epoch = Math.floor(Number(it.epoch));
+                if (!Number.isFinite(epoch) || epoch < 0) { return res.status(400).json({ error: "epoch must be epoch seconds", index: i }); }
+                if (epoch > now + 300) { return res.status(400).json({ error: "epoch is more than 5 minutes in the future", index: i }); }
+            }
+            objects.push({ epoch: epoch, data: it.data });
+        }
+
+        const results = [];
+        let accepted = 0;
+        let deduped = 0;
+        for (let i = 0; i < objects.length; i++)
+        {
+            const o = objects[i];
+            const sensors = await knex(T("sensors")).where({ device_id: d.id }).whereNull("delete_epoch").whereIn("channel_id", Object.keys(o.data)).select("id", "channel_id");
+            const stored = sensors.length ? new Set((await knex(T("readings")).whereIn("sensor_id", sensors.map((x) => x.id)).where({ epoch: o.epoch }).select("sensor_id")).map((r) => r.sensor_id)) : new Set();
+            const dupes = sensors.filter((x) => stored.has(x.id)).map((x) => x.channel_id);
+            const values = Object.fromEntries(Object.entries(o.data).filter((e) => !dupes.includes(e[0])));
+            let r = { accepted: [], skipped: [] };
+            if (Object.keys(values).length) { r = await pipeline.ingest({ device: d, type: type, epoch: o.epoch, values: values, canonical: true, gatewayId: d.kind === "direct" ? d.id : undefined }); }
+            const n = r.accepted.filter((a) => Object.prototype.hasOwnProperty.call(values, a.channel)).length;
+            accepted += n;
+            deduped += dupes.length;
+            results.push({ index: i, epoch: o.epoch, accepted: n, deduped: dupes, skipped: r.skipped.filter((c) => Object.prototype.hasOwnProperty.call(values, c)) });
+        }
+        await activity.log(req, "api_device_readings", { entity_type: "device", entity_uid: d.uid, detail: objects.length + " objects, " + accepted + " values accepted, " + deduped + " duplicates" });
+        res.json({ device: uidOf(d.uid), accepted: accepted, deduped: deduped, results: results });
+    }
+    catch (err) { next(err); }
+});
+
 // Alarms raised between from and to (inclusive), oldest first, active or cleared, in the locations the
 // key can view, deleted sensors and devices included (DECISIONS "API range paging"). severity is the
 // current (or final) severity; highest_severity is the worst it reached, from its events, because the

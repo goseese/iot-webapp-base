@@ -121,11 +121,19 @@ function endpoints(s)
       },
       {
         id: "post-readings", method: "POST", path: "/readings", perm: "API write",
-        about: "Send readings for direct devices (devices that report over the API rather than through a pod or gateway; pods do not accept API readings). The body is an array, or { \"readings\": [...] }. Each item names a sensor uid and a value; unit is optional and defaults to the metric's canonical unit; epoch is optional and defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " items per request. Accepted values go through the same pipeline as pod data, so alarm rules apply.",
+        about: "Send single readings by sensor uid, for direct devices (devices that report over the API rather than through a pod or gateway). To send a device's readings by channel, or a batch, use POST /devices/<uid>/readings. The body is an array, or { \"readings\": [...] }. Each item names a sensor uid and a value; unit is optional and defaults to the metric's canonical unit; epoch is optional and defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " items per request. Accepted values go through the same pipeline as pod data, so alarm rules apply.",
         params: [],
         example: CURL_POST + "-d '[{ \"sensor\": \"" + SEN + "\", \"value\": 12.1, \"unit\": \"V\", \"epoch\": 1791295200 }]' \\\n  \"" + apiBase + "/readings\"",
         response: { accepted: 1, rejected: [] },
         note: "Items that fail are listed with their position: { \"index\": 3, \"error\": \"only direct devices accept API readings\" }. Status 400 when the body is not an array of readings, 413 when it has too many, 422 when nothing is accepted."
+      },
+      {
+        id: "device-readings", method: "POST", path: "/devices/<uid>/readings", perm: "API write",
+        about: "Send readings for one device by channel: the usual way to upload, and the one for a batch of buffered readings. The body is one object or an array of them, each { \"epoch\": optional, \"data\": { channel: value, ... } }. Channels are the device type's channel ids (as on the device's sensors, for example vin or int-temp). Values are numbers (or true and false) in the canonical unit. epoch defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " objects per request. The whole request is checked before anything is stored. A sensor appears with its channel's first value. A channel that already has a reading at that epoch is counted as deduped and not stored again, so a retried upload is safe. Accepted values go through the same pipeline as pod data, so alarm rules apply.",
+        params: [],
+        example: CURL_POST + "-d '[{ \"epoch\": 1791295140, \"data\": { \"vin\": 12.1, \"int-temp\": 24.5 } }, { \"epoch\": 1791295200, \"data\": { \"vin\": 12.08 } }]' \\\n  \"" + apiBase + "/devices/" + DEV + "/readings\"",
+        response: { device: DEV, accepted: 3, deduped: 0, results: [{ index: 0, epoch: 1791295140, accepted: 2, deduped: [], skipped: [] }, { index: 1, epoch: 1791295200, accepted: 1, deduped: [], skipped: [] }] },
+        note: "Status 400 when a channel is unknown (the reply lists valid_channels), a value is not a number, data is missing or an epoch is too far ahead; index names the object, and nothing is stored. 413 when there are too many objects, 404 when the device does not exist, is archived or the key may not write to it. skipped lists channels the device has but does not take now (a disabled sensor)."
       },
       {
         id: "active-alarms", method: "GET", path: "/alarms/active", perm: "View",
@@ -224,7 +232,7 @@ function endpoints(s)
 const PERMISSIONS =
 [
     ["View", "Read locations, devices, sensors, readings, alarms, alarm rules and the rule change log."],
-    ["API write", "Send readings for direct devices."],
+    ["API write", "Send readings: by device and channel, or by sensor for direct devices."],
     ["Acknowledge alarms", "Acknowledge active alarms."],
     ["Clear alarms", "Clear active alarms by hand."]
 ];
