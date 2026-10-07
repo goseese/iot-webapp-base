@@ -42,7 +42,7 @@ router.get("/", (req, res) =>
     res.render("profile/index",
     {
         title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: req.user, errors: {},
-        usernameLockedUntil: usernameCooldownEnds(req.user), policy: passwords.describe(), mfaChoice: mfaChoice(req.user)
+        usernameLockedUntil: usernameCooldownEnds(req.user), policy: passwords.describe(), mfaChoice: mfaChoice(req.user), smsVisible: mfa.SMS_VISIBLE
     });
 });
 
@@ -84,7 +84,7 @@ router.post("/",
             }
             if (Object.keys(errors).length > 0)
             {
-                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe(), mfaChoice: choice });
+                return res.status(422).render("profile/index", { title: "Profile", navTrail: TRAIL, navSub: tabs("/profile"), values: Object.assign({}, req.user, req.body), errors: errors, usernameLockedUntil: lockedUntil, policy: passwords.describe(), mfaChoice: choice, smsVisible: mfa.SMS_VISIBLE });
             }
 
             const patch =
@@ -92,8 +92,10 @@ router.post("/",
                 display_name: req.body.display_name.trim() || null,
                 email: email,
                 email_enabled: req.body.email_enabled ? 1 : 0
-                // SMS is hidden in this app: phone and sms_enabled are never taken from a form.
+                // SMS is hidden in this app: phone is never taken from a form, and sms_enabled only
+                // while SMS is part of the site (mfa.SMS_VISIBLE), so a crafted post cannot turn it on.
             };
+            if (mfa.SMS_VISIBLE) { patch.sms_enabled = req.body.sms_enabled ? 1 : 0; }
             if (channel !== req.user.mfa_channel) { patch.mfa_channel = channel; }
             await knex.transaction(async (trx) =>
             {

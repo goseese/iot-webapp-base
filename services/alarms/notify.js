@@ -171,6 +171,21 @@ function displayValue(ctx, value)
     return v.toFixed(metrics.precision(ctx.metric, unit)) + (unit ? " " + unit : "");
 }
 
+// "2026-10-06 09:55 PM (Chicago CDT)" in the location's timezone. The abbreviation is whatever
+// Intl gives for that moment (CDT or CST), or an offset such as GMT+2 where en-US has none.
+function whenText(epoch, tz)
+{
+    let zone = "UTC";
+    try { new Intl.DateTimeFormat("en-US", { timeZone: tz }); zone = tz || "UTC"; }
+    catch (err) { zone = "UTC"; }
+    const parts = {};
+    new Intl.DateTimeFormat("en-US", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: true, timeZoneName: "short" })
+        .formatToParts(new Date(epoch * 1000)).forEach((p) => { parts[p.type] = p.value; });
+    const city = zone.indexOf("/") >= 0 ? zone.split("/").pop().replace(/_/g, " ") : "";
+    const label = city ? city + " " + parts.timeZoneName : parts.timeZoneName;
+    return parts.year + "-" + parts.month + "-" + parts.day + " " + parts.hour + ":" + parts.minute + " " + parts.dayPeriod + " (" + label + ")";
+}
+
 // The alarm title (services/alarms/title.js), resolved once per notification run. A title problem
 // must never stop an alarm going out: log it and fall back to plain names.
 async function titleFor(ctx, rule)
@@ -201,7 +216,8 @@ function bodyFor(ctx, eventKind, severity, value, comment, actionUrl, ladderNote
         "Event: " + eventKind.replace("_", " ") + (severity ? ", severity " + severity : ""),
         "Direction: " + ctx.direction,
         value !== null && value !== undefined ? "Value: " + displayValue(ctx, value) : null,
-        "Since: " + new Date(ctx.raised_epoch * 1000).toISOString(),
+        "Alarm time: " + whenText(ctx.raised_epoch, ctx.iana_timezone),
+        eventKind === "cleared" && ctx.cleared_epoch ? "Cleared: " + whenText(ctx.cleared_epoch, ctx.iana_timezone) : null,
         comment ? "Note: " + comment : null,
         "",
         actionUrl ? "Acknowledge, ignore or clear: " + actionUrl : null,

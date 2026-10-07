@@ -1,0 +1,158 @@
+<%
+// One user (routes/admin.js GET /admin/users/:uid). Read only for now; the actions are added card
+// by card (DECISIONS.md "Administration > Users").
+function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
+%>
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h5 class="mb-0"><%= u.display_name || u.username %></h5>
+  <span class="text-secondary small"><%= u.username %>, <%= u.email %></span>
+  <% if (u.is_superadmin) { %><span class="badge text-bg-secondary">superadmin</span><% } %>
+  <span class="iot-status iot-status--<%= u.disabled_epoch ? "offline" : "online" %> ms-auto"><%= u.disabled_epoch ? "offline" : "online" %></span>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-4">
+    <div class="iot-panel h-100">
+      <div class="iot-panel__header"><strong>Sign in</strong></div>
+      <div class="iot-panel__body"><table class="table table-sm mb-0"><tbody>
+        <tr><th class="text-secondary fw-normal">Status</th><td>
+          <%= u.disabled_epoch ? "Offline since " + when(u.disabled_epoch) + (disabledBy ? " by " + disabledBy : "") : "Online" %>
+          <% if (u.disabled_epoch || u.id !== currentUser.id) { %>
+          <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/offline" class="mt-1">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% if (u.disabled_epoch) { %>
+            <button class="btn btn-sm btn-outline-secondary" name="action" value="online" type="submit">Put back online</button>
+            <% } else { %>
+            <button class="btn btn-sm btn-outline-danger" name="action" value="offline" type="submit">Put offline</button>
+            <div class="form-text">They cannot sign in and any open session ends. Alarm email still follows Alerts.</div>
+            <% } %>
+          </form>
+          <% } %>
+        </td></tr>
+        <tr><th class="text-secondary fw-normal<%= mfaInfo.envOff ? " iot-hint" : "" %>"<% if (mfaInfo.envOff) { %> title="MFA_ENABLED=0 in .env: sign in codes are off for everyone, including users set to On."<% } %>>Sign in codes</th><td>
+          <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/mfa">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="back" value="/admin/users/<%= fmt.uid(u.uid) %>">
+            <select class="form-select form-select-sm" name="mfa_mode" aria-label="Sign in codes for <%= u.username %>" onchange="this.form.submit()">
+              <option value="inherit" <%= u.mfa_mode ? "" : "selected" %>>Inherit (site <%= mfaInfo.siteMfa %>)</option>
+              <option value="on" <%= u.mfa_mode === "on" ? "selected" : "" %>>On</option>
+              <option value="off" <%= u.mfa_mode === "off" ? "selected" : "" %>>Off</option>
+            </select>
+          </form>
+          <div class="form-text"><%= mfaInfo.required ? "A code is needed to sign in." : "No code needed to sign in." %></div>
+        </td></tr>
+        <tr><th class="text-secondary fw-normal">Last login</th><td><%= when(u.last_login_epoch) %></td></tr>
+        <tr><th class="text-secondary fw-normal">Password set</th><td><%= u.must_set_password ? "Must set a password" : when(u.password_changed_epoch) %></td></tr>
+        <tr><th class="text-secondary fw-normal">Created</th><td><%= when(u.created_epoch) %></td></tr>
+      </tbody></table>
+      <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/reset-link" class="mt-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="btn btn-sm btn-outline-secondary" type="submit" <%= u.disabled_epoch ? "disabled" : "" %>><i class="fa-solid fa-envelope me-1"></i>Send reset link</button>
+        <div class="form-text">Emails <%= u.email %> the same link Forgot password sends.</div>
+      </form></div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="iot-panel h-100">
+      <div class="iot-panel__header"><strong>Alerts</strong></div>
+      <div class="iot-panel__body">
+      <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/alerts" class="mb-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="email_enabled" name="email_enabled" value="1" <%= u.email_enabled ? "checked" : "" %>><label class="form-check-label" for="email_enabled">Alarm email</label></div>
+        <% if (smsVisible) { %><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="sms_enabled" name="sms_enabled" value="1" <%= u.sms_enabled ? "checked" : "" %>><label class="form-check-label" for="sms_enabled">Alarm SMS</label></div><% } %>
+        <button class="btn btn-sm btn-primary mt-2" type="submit">Save</button>
+      </form>
+      <table class="table table-sm mb-0"><tbody>
+        <tr><th class="text-secondary fw-normal">Alarm email</th><td><%= u.email_enabled ? "On" : "Off" %><%= u.email_bounced ? ", address bounced" : "" %><%= u.email_paused_until_epoch && u.email_paused_until_epoch > now ? ", paused until " + fmt.epoch(u.email_paused_until_epoch) : "" %></td></tr>
+        <% if (smsVisible) { %>
+        <tr><th class="text-secondary fw-normal">Alarm SMS</th><td><%= u.sms_enabled ? "On" : "Off" %><%= u.phone ? "" : ", no phone number" %><%= u.sms_paused_until_epoch && u.sms_paused_until_epoch > now ? ", paused until " + fmt.epoch(u.sms_paused_until_epoch) : "" %></td></tr>
+        <% } %>
+      </tbody></table>
+      <div class="form-text mt-2">The user can turn these back on in their profile.</div></div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="iot-panel h-100">
+      <div class="iot-panel__header"><strong>Chart email</strong></div>
+      <div class="iot-panel__body"><table class="table table-sm mb-0"><tbody>
+        <tr><th class="text-secondary fw-normal">Sent, last 24 h</th><td><%= shares.sent %> of <%= shares.limit %><%= shares.limit === 0 ? " (sending off)" : "" %></td></tr>
+        <tr><th class="text-secondary fw-normal">Daily limit</th><td><%= u.chart_email_daily_limit === null ? "Site setting (" + shares.siteLimit + ")" : u.chart_email_daily_limit + " (own limit)" %></td></tr>
+        <% var onceActive = u.chart_email_limit_once !== null && Number(u.chart_email_limit_once_until) > now; %>
+        <tr><th class="text-secondary fw-normal">One time</th><td><%= onceActive ? u.chart_email_limit_once + " until " + fmt.epoch(u.chart_email_limit_once_until) : "none" %></td></tr>
+      </tbody></table>
+      <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/chart-limit" class="mt-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="form-label small mb-1" for="limit_permanent">Daily limit</label>
+        <div class="input-group input-group-sm">
+          <input class="form-control" type="number" min="0" max="10000" step="1" id="limit_permanent" name="limit" value="<%= u.chart_email_daily_limit === null ? "" : u.chart_email_daily_limit %>" placeholder="Site setting (<%= shares.siteLimit %>)">
+          <button class="btn btn-outline-secondary" name="kind" value="permanent" type="submit">Save</button>
+        </div>
+        <div class="form-text">Blank uses the site setting; 0 turns sending off.</div>
+      </form>
+      <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/chart-limit" class="mt-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="form-label small mb-1" for="limit_once">One time limit, next 24 hours</label>
+        <div class="input-group input-group-sm">
+          <input class="form-control" type="number" min="0" max="10000" step="1" id="limit_once" name="limit" required>
+          <button class="btn btn-outline-secondary" name="kind" value="once" type="submit">Set</button>
+        </div>
+      </form>
+      <% if (onceActive) { %>
+      <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/chart-limit" class="mt-2">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="btn btn-sm btn-outline-secondary" name="kind" value="end_once" type="submit">End one time limit</button>
+      </form>
+      <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="iot-panel">
+  <div class="iot-panel__header d-flex align-items-center"><strong>Access</strong> <span class="text-secondary small ms-2"><%= grantRows.length %> grant<%= grantRows.length === 1 ? "" : "s" %><%= u.is_superadmin ? "; a superadmin sees everything without grants" : "" %></span>
+    <button class="btn btn-sm btn-primary ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#addAccess"><i class="fa-solid fa-plus me-1"></i>Add access</button></div>
+  <div class="collapse" id="addAccess"><div class="iot-panel__body border-bottom">
+    <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/grants">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <label class="form-label small" for="add_scope">Account or location</label>
+      <select class="form-select form-select-sm mb-2" id="add_scope" name="scope" required>
+        <option value="">Pick one</option>
+        <% scopeAccounts.forEach(function (a) { %>
+        <optgroup label="<%= a.name %>">
+          <option value="a:<%= fmt.uid(a.uid) %>"><%= a.name %> (whole account)</option>
+          <% a.locations.forEach(function (l) { %><option value="l:<%= fmt.uid(l.uid) %>"><%= l.name %></option><% }); %>
+        </optgroup>
+        <% }); %>
+      </select>
+      <div class="d-flex flex-wrap gap-3 align-items-center">
+        <% permissions.BITS.forEach(function (p) { %>
+        <div class="form-check form-check-inline" title="<%= p.description %>"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="add_<%= p.name %>" <%= p.name === "view" ? "checked" : "" %>><label class="form-check-label small" for="add_<%= p.name %>"><%= p.label %></label></div>
+        <% }); %>
+        <button class="btn btn-sm btn-primary" type="submit">Add</button>
+      </div>
+    </form>
+  </div></div>
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0">
+    <thead><tr><th>Account</th><th>Location</th><th>Permissions</th><th>Granted</th><th></th></tr></thead>
+    <tbody>
+    <% if (!grantRows.length) { %><tr><td colspan="5" class="text-secondary">No accounts or locations.</td></tr><% } %>
+    <% grantRows.forEach(function (g) { %>
+      <tr>
+        <td><a href="/account/<%= fmt.uid(g.account_uid) %>/users"><%= g.account_name %></a></td>
+        <td><% if (g.location_name) { %><a href="/locations/<%= fmt.uid(g.location_uid) %>"><%= g.location_name %></a><% } else { %><span class="text-secondary">whole account</span><% } %></td>
+        <td class="small"><%= g.all ? "Full access" : g.names.join(", ") %></td>
+        <td class="text-secondary small"><%= fmt.ago(g.created_epoch, now) %></td>
+        <td class="text-end"><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#g<%= g.grant_id %>">Edit</button></td>
+      </tr>
+      <tr class="collapse" id="g<%= g.grant_id %>"><td colspan="5">
+        <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/grants/<%= g.grant_id %>" class="d-flex flex-wrap gap-3 align-items-center">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <% permissions.BITS.forEach(function (p) { %>
+          <div class="form-check form-check-inline" title="<%= p.description %>"><input class="form-check-input" type="checkbox" name="perms" value="<%= p.name %>" id="p<%= g.grant_id %>_<%= p.name %>" <%= permissions.has(g.permission_bits, p.bit) ? "checked" : "" %>><label class="form-check-label small" for="p<%= g.grant_id %>_<%= p.name %>"><%= p.label %></label></div>
+          <% }); %>
+          <button class="btn btn-sm btn-primary" type="submit">Save</button>
+          <button class="btn btn-sm btn-outline-danger" type="submit" name="action" value="remove" onclick="return confirm('Remove this access?')">Remove</button>
+        </form>
+      </td></tr>
+    <% }); %>
+    </tbody>
+  </table></div>
+</div>

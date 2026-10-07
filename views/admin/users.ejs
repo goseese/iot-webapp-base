@@ -1,0 +1,48 @@
+<%
+// Administration > Users (routes/admin.js GET /admin/users). Sorting, search and paging are done
+// on the server; each header is a link, so the table is never sorted by iot-sort.js.
+function th(key, label)
+{
+    var state = f.sort === key ? (f.dir === "asc" ? "ascending" : "descending") : "none";
+    return '<th class="iot-sortable" aria-sort="' + state + '"><a class="text-reset text-decoration-none" href="' + sortLink(key) + '">' + label + '</a></th>';
+}
+var first = total ? (f.page - 1) * pageSize + 1 : 0;
+var last = Math.min(f.page * pageSize, total);
+%>
+<form class="row g-2 mb-3 align-items-end" method="get" action="/admin/users">
+  <div class="col-12 col-md-5"><label class="form-label small" for="q">Search username, name or email</label><input class="form-control form-control-sm" id="q" name="q" value="<%= f.q %>" maxlength="80" autocomplete="off"></div>
+  <% if (f.sort !== "user") { %><input type="hidden" name="sort" value="<%= f.sort %>"><% } %>
+  <% if (f.dir !== "asc") { %><input type="hidden" name="dir" value="<%= f.dir %>"><% } %>
+  <div class="col-auto"><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-magnifying-glass me-1"></i>Search</button></div>
+  <% if (f.q) { %><div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="<%= link({ q: "", page: 1 }) %>">Clear</a></div><% } %>
+</form>
+<div class="iot-panel">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0">
+    <thead><tr><%- th("user", "User") %><%- th("name", "Name") %><%- th("email", "Email") %><%- th("access", "Access") %><%- th("login", "Last login") %><th>MFA</th><%- th("shares", "Chart emails (24 h)") %><%- th("status", "Status") %></tr></thead>
+    <tbody>
+    <% if (!rows.length) { %><tr><td colspan="8" class="text-secondary">No users<%= f.q ? " match " + f.q : "" %>.</td></tr><% } %>
+    <% rows.forEach(function (r) { %>
+      <tr class="<%= r.disabled_epoch ? "text-secondary" : "" %>">
+        <td><a href="/admin/users/<%= fmt.uid(r.uid) %>"><%= r.username %></a><% if (r.is_superadmin) { %> <span class="badge text-bg-secondary">superadmin</span><% } %></td>
+        <td><%= r.display_name || "" %></td>
+        <td class="small"><%= r.email %></td>
+        <td class="small"><%= r.account_grants %> account<%= r.account_grants === 1 ? "" : "s" %>, <%= r.location_grants %> location<%= r.location_grants === 1 ? "" : "s" %></td>
+        <td class="text-secondary small"><%= fmt.ago(r.last_login_epoch, now) %></td>
+        <td class="small"><%= r.mfa_mode ? (r.mfa_mode === "on" ? "On" : "Off") : "Inherit (site " + siteMfa + ")" %></td>
+        <td class="small"><%= r.shares_24h %> of <%= r.shareLimit %><%= r.shareLimit === 0 ? " (off)" : "" %></td>
+        <td><span class="iot-status iot-status--<%= r.disabled_epoch ? "offline" : "online" %>"><%= r.disabled_epoch ? "offline" : "online" %></span></td>
+      </tr>
+    <% }); %>
+    </tbody>
+  </table></div>
+</div>
+<div class="d-flex align-items-center justify-content-between mt-2 small text-secondary">
+  <div><%= total ? first + " to " + last + " of " + total : "0" %> user<%= total === 1 ? "" : "s" %></div>
+  <% if (pages > 1) { %>
+  <div class="d-flex align-items-center gap-2">
+    <% if (f.page > 1) { %><a class="btn btn-outline-secondary btn-sm" href="<%= link({ page: f.page - 1 }) %>">Previous</a><% } else { %><span class="btn btn-outline-secondary btn-sm disabled">Previous</span><% } %>
+    <span>Page <%= f.page %> of <%= pages %></span>
+    <% if (f.page < pages) { %><a class="btn btn-outline-secondary btn-sm" href="<%= link({ page: f.page + 1 }) %>">Next</a><% } else { %><span class="btn btn-outline-secondary btn-sm disabled">Next</span><% } %>
+  </div>
+  <% } %>
+</div>

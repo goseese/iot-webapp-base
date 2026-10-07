@@ -15,7 +15,8 @@ async function loadUser(req, res, next)
             const user = await users.findById(req.session.userId);
             // A password change invalidates every session started before it (architecture 4.2).
             const stale = user && user.password_changed_epoch && req.session.loginEpoch && req.session.loginEpoch < user.password_changed_epoch;
-            if (!user || user.delete_epoch !== null || stale)
+            // A user put offline (Administration > Users) loses every open session at its next request.
+            if (!user || user.delete_epoch !== null || stale || user.disabled_epoch)
             {
                 return req.session.destroy(() => res.redirect("/login"));
             }

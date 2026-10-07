@@ -15,6 +15,9 @@ const { nowEpoch } = require("../db/knex");
 
 const router = express.Router();
 const AUTH = { layout: "layouts/auth" };
+// Administration > Users can put a user offline (users.disabled_epoch). Said only after a correct
+// password or inside a pending sign in, so it tells nobody who does not hold the password.
+const OFFLINE_MESSAGE = "This account is turned off. Contact your administrator.";
 
 function startSession(req, user, opts)
 {
@@ -94,6 +97,11 @@ router.post("/login",
             }
             const user = await users.findByLogin(login);
             if (!user || !(await passwords.verify(req.body.password, user.password_hash))) { return fail("bad credentials"); }
+            if (user.disabled_epoch)
+            {
+                await activity.log(req, "login_refused", Object.assign(mfaActor(user), { outcome: "denied", detail: "user offline" }));
+                return renderLogin(req, res, 403, req.body.login, OFFLINE_MESSAGE);
+            }
 
             const returnTo = req.session.returnTo || null;
             if (mfa.required(user))
@@ -135,6 +143,7 @@ router.post("/login/mfa", async (req, res, next) =>
         if (!p) { return res.redirect("/login"); }
         const user = await users.findById(p.userId);
         if (!user || user.delete_epoch !== null) { delete req.session.mfa; return res.redirect("/login"); }
+        if (user.disabled_epoch) { delete req.session.mfa; return renderLogin(req, res, 403, p.login, OFFLINE_MESSAGE); }
         if (await activity.loginLocked(p.login, req.ip))
         {
             delete req.session.mfa;
@@ -166,6 +175,7 @@ router.post("/login/mfa/resend", async (req, res, next) =>
         if (!p) { return res.redirect("/login"); }
         const user = await users.findById(p.userId);
         if (!user || user.delete_epoch !== null) { delete req.session.mfa; return res.redirect("/login"); }
+        if (user.disabled_epoch) { delete req.session.mfa; return renderLogin(req, res, 403, p.login, OFFLINE_MESSAGE); }
         const r = await mfa.resend(p, user);
         if (r.status === "sent")
         {
@@ -206,28 +216,21 @@ router.post("/forgot-password", body("login").trim().isLength({ min: 1, max: 254
     {
         const login = (req.body.login || "").trim().toLowerCase();
         const user = login ? await users.findByLogin(login) : null;
-        if (user)
+        // An offline user gets no link; the page says the same as always.
+        if (user && !user.disabled_epoch)
         {
-            const minutes = settings.get("RESET_LINK_MINUTES", 60);
-            const token = await tokens.issue("password_reset", "user", user.id, minutes * 60);
-            await mail.send(
-            {
-                kind: "reset", to: user.email, recipientType: "user", recipientId: user.id,
-                subject: settings.siteName() + " password reset",
-                text: "Use this link to sign in and set a new password:\n\n" + env.appUrl + "/reset/" + token +
-                      "\n\nIt expires in " + minutes + " minutes. If you did not ask for this, ignore this message.\n"
-            });
+            await require("../services/resetLink").send(user);
         }
-        await activity.log(req, "password_reset_requested", { actor_name: login.slice(0, 80) });
+        await activity.log(req, "password_reset_requested", Object.assign({ actor_name: login.slice(0, 80) }, user && user.disabled_epoch ? { outcome: "denied", detail: "user offline, not sent" } : {}));
         res.render("auth/forgot", Object.assign({ title: "Reset password", sent: true }, AUTH));
     }
     catch (err) { next(err); }
 });
 
 // Dead reset link: a friendly page that never says why, and the reason in the activity log.
-async function resetLinkDead(req, res, row)
+async function resetLinkDead(req, res, row, why)
 {
-    const reason = row ? "account deleted" : await tokens.deadReason("password_reset", req.params.token);
+    const reason = why || (row ? "account deleted" : await tokens.deadReason("password_reset", req.params.token));
     await activity.log(req, "password_reset_link_invalid",
     {
         actor_name: row ? "user " + row.subject_id : null, outcome: "denied", detail: reason
@@ -252,6 +255,7 @@ router.get("/reset/:token", async (req, res, next) =>
         const row = await tokens.peek("password_reset", req.params.token);
         const user = row ? await users.findById(row.subject_id) : null;
         if (!user || user.delete_epoch !== null) { return resetLinkDead(req, res, row); }
+        if (user.disabled_epoch) { return resetLinkDead(req, res, row, "user offline"); }
         res.render("auth/reset-confirm", Object.assign({ title: "Reset password", token: req.params.token, user: { username: user.username } }, AUTH));
     }
     catch (err) { next(err); }
@@ -266,6 +270,7 @@ router.post("/reset/:token", async (req, res, next) =>
         const row = await tokens.consume("password_reset", req.params.token);
         const user = row ? await users.findById(row.subject_id) : null;
         if (!user || user.delete_epoch !== null) { return resetLinkDead(req, res, row); }
+        if (user.disabled_epoch) { return resetLinkDead(req, res, row, "user offline"); }
         await startSession(req, user, { mustSetPassword: true });
         req.user = user;
         await activity.log(req, "login_via_reset_link");

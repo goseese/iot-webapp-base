@@ -97,6 +97,7 @@ function manageItems(user, account, support)
                 children:
                 [
                     { label: "Accounts", path: "/admin/accounts" },
+                    { label: "Users", path: "/admin/users" },
                     { label: "Unknown devices", path: "/admin/unknown-devices" },
                     { label: "Firmware", path: "/admin/firmware" },
                     { label: "Site settings", path: "/admin/settings" },

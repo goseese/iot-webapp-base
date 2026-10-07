@@ -17,6 +17,7 @@ const { audit } = require("../services/audit");
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
 router.param("uid", require("../middleware/account").uidParam);
+router.param("grantId", require("../middleware/account").intParam);
 router.use(requireSuperadmin);
 
 router.get("/", (req, res) => res.redirect("/admin/accounts"));
@@ -352,6 +353,381 @@ router.post("/settings/:key", async (req, res, next) =>
 });
 
 // Per user MFA override (DECISIONS.md "MFA sign in codes"), from the MFA column on Account > Users.
+// Administration > Users (DECISIONS.md "Administration > Users"): every live user, searched,
+// sorted and paged on the server. Filters are GET parameters, so a view is a shareable link.
+// USER_SORTS maps the sort parameter to fixed SQL; nothing from the query reaches orderByRaw.
+const USER_PAGE = 25;
+const USER_SORTS =
+{
+    user: "u.username",
+    name: "u.display_name",
+    email: "u.email",
+    access: "grant_count",
+    login: "u.last_login_epoch",
+    shares: "shares_24h",
+    status: "(u.disabled_epoch is not null)"
+};
+
+// Grants counted on the list, leaving out deleted accounts and locations (as the user page does).
+const ACCOUNT_GRANTS = "(select count(*) from " + T("grants") + " g join " + T("accounts") + " a on a.id = g.scope_id" +
+    " where g.grantee_type = 'user' and g.grantee_id = u.id and g.scope_type = 'account' and a.delete_epoch is null)";
+const LOCATION_GRANTS = "(select count(*) from " + T("grants") + " g join " + T("locations") + " l on l.id = g.scope_id join " + T("accounts") + " a on a.id = l.account_id" +
+    " where g.grantee_type = 'user' and g.grantee_id = u.id and g.scope_type = 'location' and l.delete_epoch is null and a.delete_epoch is null)";
+
+router.get("/users", async (req, res, next) =>
+{
+    try
+    {
+        const str = (v) => (typeof v === "string" ? v.trim() : "");
+        const f =
+        {
+            q: str(req.query.q).slice(0, 80),
+            sort: Object.prototype.hasOwnProperty.call(USER_SORTS, req.query.sort) ? req.query.sort : "user",
+            dir: req.query.dir === "desc" ? "desc" : "asc",
+            page: /^\d{1,6}$/.test(str(req.query.page)) ? Math.max(1, Number(req.query.page)) : 1
+        };
+        const now = require("../db/knex").nowEpoch();
+        const base = () =>
+        {
+            const b = knex(T("users") + " as u").whereNull("u.delete_epoch");
+            if (f.q)
+            {
+                const like = "%" + f.q.replace(/[\\%_]/g, "\\$&") + "%";   // escape LIKE wildcards; backslash is the Postgres default escape
+                b.where(function () { this.where("u.username", "ilike", like).orWhere("u.display_name", "ilike", like).orWhere("u.email", "ilike", like); });
+            }
+            return b;
+        };
+        const total = Number((await base().count({ n: "*" }).first()).n);
+        const pages = Math.max(1, Math.ceil(total / USER_PAGE));
+        if (f.page > pages) { f.page = pages; }
+        const rows = await base()
+            .select("u.id", "u.uid", "u.username", "u.display_name", "u.email", "u.is_superadmin", "u.last_login_epoch", "u.mfa_mode", "u.disabled_epoch",
+                "u.chart_email_daily_limit", "u.chart_email_limit_once", "u.chart_email_limit_once_until",
+                knex.raw(ACCOUNT_GRANTS + "::int as account_grants"),
+                knex.raw(LOCATION_GRANTS + "::int as location_grants"),
+                knex.raw("(" + ACCOUNT_GRANTS + " + " + LOCATION_GRANTS + ")::int as grant_count"),
+                knex.raw("(select count(*) from " + T("chart_emails") + " c where c.user_id = u.id and c.outcome = 'sent' and c.epoch > ?)::int as shares_24h", [now - 86400]))
+            .orderByRaw(USER_SORTS[f.sort] + " " + f.dir + " nulls last")
+            .orderBy("u.username")
+            .limit(USER_PAGE)
+            .offset((f.page - 1) * USER_PAGE);
+        const chartEmail = require("../services/chartEmail");
+        for (const r of rows) { r.shareLimit = chartEmail.limitFor(r); }
+        const mfa = require("../services/mfa");
+        const link = (extra) =>
+        {
+            const p = new URLSearchParams();
+            const v = Object.assign({}, f, extra || {});
+            if (v.q) { p.set("q", v.q); }
+            if (v.sort !== "user") { p.set("sort", v.sort); }
+            if (v.dir !== "asc") { p.set("dir", v.dir); }
+            if (v.page > 1) { p.set("page", String(v.page)); }
+            const s = p.toString();
+            return "/admin/users" + (s ? "?" + s : "");
+        };
+        // A header link sorts by that column; on the current column it flips the direction.
+        const sortLink = (key) => link({ sort: key, dir: f.sort === key && f.dir === "asc" ? "desc" : "asc", page: 1 });
+        res.render("admin/users",
+        {
+            title: "Users",
+            rows: rows,
+            f: f,
+            total: total,
+            pages: pages,
+            pageSize: USER_PAGE,
+            link: link,
+            sortLink: sortLink,
+            siteMfa: mfa.envOff() ? "off" : (settings.get("MFA_ENABLED", false) ? "on" : "off")
+        });
+    }
+    catch (err) { next(err); }
+});
+
+// One user (Administration > Users): sign in, alerts, chart email and every grant. Read only here;
+// the actions on it post to /admin/users/<uid>/... A deleted user is not found.
+router.get("/users/:uid", async (req, res, next) =>
+{
+    try
+    {
+        const user = await users.findByUid(req.params.uid);
+        if (!user || user.delete_epoch !== null) { return next(notFoundError()); }
+        const now = require("../db/knex").nowEpoch();
+        const permissions = require("../permissions");
+        const mfa = require("../services/mfa");
+        const chartEmail = require("../services/chartEmail");
+        const accountGrants = await knex(T("grants") + " as g").join(T("accounts") + " as a", "a.id", "g.scope_id")
+            .where({ "g.grantee_type": "user", "g.grantee_id": user.id, "g.scope_type": "account" }).whereNull("a.delete_epoch")
+            .select("g.id as grant_id", "g.scope_type", "g.permission_bits", "g.created_epoch", "a.name as account_name", "a.uid as account_uid", knex.raw("null as location_name"), knex.raw("null as location_uid"));
+        const locationGrants = await knex(T("grants") + " as g").join(T("locations") + " as l", "l.id", "g.scope_id").join(T("accounts") + " as a", "a.id", "l.account_id")
+            .where({ "g.grantee_type": "user", "g.grantee_id": user.id, "g.scope_type": "location" }).whereNull("l.delete_epoch").whereNull("a.delete_epoch")
+            .select("g.id as grant_id", "g.scope_type", "g.permission_bits", "g.created_epoch", "a.name as account_name", "a.uid as account_uid", "l.name as location_name", "l.uid as location_uid");
+        // Account first, then its locations under it.
+        const grantRows = accountGrants.concat(locationGrants).sort((x, y) => x.account_name.localeCompare(y.account_name) || (x.location_name || "").localeCompare(y.location_name || ""));
+        for (const g of grantRows) { g.names = permissions.names(g.permission_bits); g.all = BigInt(g.permission_bits) === permissions.ALL; }
+        const sent = Number((await knex(T("chart_emails")).where({ user_id: user.id, outcome: "sent" }).where("epoch", ">", now - 86400).count({ n: "*" }).first()).n);
+        const disabledBy = user.disabled_by ? await users.findById(user.disabled_by) : null;
+        // For Add access: every live account with its live locations.
+        const scopeAccounts = await knex(T("accounts")).whereNull("delete_epoch").orderBy("name").select("id", "uid", "name");
+        const scopeLocations = await knex(T("locations")).whereNull("delete_epoch").orderBy("name").select("account_id", "uid", "name");
+        for (const a of scopeAccounts) { a.locations = scopeLocations.filter((l) => l.account_id === a.id); }
+        res.render("admin/user",
+        {
+            title: user.username,
+            navTrail: [{ label: "Administration", path: "/admin" }, { label: "Users", path: "/admin/users" }, { label: user.username, path: "/admin/users/" + String(user.uid).toLowerCase() }],
+            u: user,
+            grantRows: grantRows,
+            disabledBy: disabledBy ? disabledBy.username : null,
+            shares: { sent: sent, limit: chartEmail.limitFor(user), siteLimit: Number(settings.get("CHART_EMAIL_DAILY_LIMIT", 20)) },
+            mfaInfo: { required: mfa.required(user), siteMfa: mfa.envOff() ? "off" : (settings.get("MFA_ENABLED", false) ? "on" : "off"), envOff: mfa.envOff() },
+            smsVisible: mfa.SMS_VISIBLE,
+            scopeAccounts: scopeAccounts,
+            permissions: permissions
+        });
+    }
+    catch (err) { next(err); }
+});
+
+// Actions on one user (Administration > Users). Each loads a live user (deleted is not found),
+// changes one thing, and returns to the user's page with a confirmation.
+const userPage = (user) => "/admin/users/" + String(user.uid).toLowerCase();
+
+async function liveUser(req)
+{
+    const user = await users.findByUid(req.params.uid);
+    return user && user.delete_epoch === null ? user : null;
+}
+
+// The same email Forgot password sends (services/resetLink.js); the link is never shown here.
+router.post("/users/:uid/reset-link", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        // The link would be refused (routes/auth.js), so it is not sent.
+        if (user.disabled_epoch) { req.flash("danger", user.username + " is offline. Put them back online before sending a reset link."); return res.redirect(userPage(user)); }
+        const sent = await require("../services/resetLink").send(user);
+        await activity.log(req, "password_reset_sent", { entity_type: "user", entity_uid: user.uid, outcome: sent.ok ? "ok" : "failed", detail: user.username + (sent.ok ? "" : ": " + String(sent.reason || "").slice(0, 200)) });
+        if (sent.ok) { req.flash("success", "Password reset link sent to " + user.email + "."); }
+        else { req.flash("danger", "The reset link could not be sent: " + (sent.reason || "unknown error").slice(0, 200)); }
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
+// Offline or back online (users.disabled_epoch). Offline stops signing in only: password, sign in
+// code and reset link are refused and open sessions end (middleware/auth.js loadUser). Alarm email
+// still follows the Alerts switches. A superadmin cannot put themselves offline.
+router.post("/users/:uid/offline", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        const action = req.body.action;
+        if (action !== "offline" && action !== "online") { req.flash("danger", "Pick offline or online."); return res.redirect(userPage(user)); }
+        if (action === "offline" && user.id === req.user.id) { req.flash("danger", "You cannot put yourself offline."); return res.redirect(userPage(user)); }
+        const isOffline = !!user.disabled_epoch;
+        if ((action === "offline") === isOffline) { return res.redirect(userPage(user)); }
+        const now = require("../db/knex").nowEpoch();
+        const patch = action === "offline" ? { disabled_epoch: now, disabled_by: req.user.id } : { disabled_epoch: null, disabled_by: null };
+        await knex.transaction(async (trx) =>
+        {
+            await users.update(user.id, patch, trx);
+            await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "status", oldValue: isOffline ? "offline" : "online", newValue: action, actorType: "user", actorId: req.user.id, actorName: req.user.username });
+        });
+        await activity.log(req, "user_" + action, { entity_type: "user", entity_uid: user.uid, detail: user.username });
+        req.flash("success", user.username + (action === "offline" ? " is offline and cannot sign in." : " is back online."));
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
+// Alarm email and SMS on or off. The user can turn either back on in their profile. sms_enabled is
+// read only when SMS is part of the site (mfa.SMS_VISIBLE; DECISIONS.md "SMS is hidden, not removed").
+router.post("/users/:uid/alerts", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        const patch = { email_enabled: req.body.email_enabled === "1" };
+        if (require("../services/mfa").SMS_VISIBLE) { patch.sms_enabled = req.body.sms_enabled === "1"; }
+        const changed = Object.keys(patch).filter((k) => !!user[k] !== patch[k]);
+        if (!changed.length) { return res.redirect(userPage(user)); }
+        const onOff = (v) => (v ? "on" : "off");
+        await knex.transaction(async (trx) =>
+        {
+            await users.update(user.id, patch, trx);
+            for (const k of changed)
+            {
+                await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: k, oldValue: onOff(!!user[k]), newValue: onOff(patch[k]), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            }
+        });
+        const detail = changed.map((k) => k + " " + onOff(!!user[k]) + " to " + onOff(patch[k])).join(", ");
+        await activity.log(req, "user_alerts", { entity_type: "user", entity_uid: user.uid, detail: user.username + ": " + detail });
+        req.flash("success", "Alerts for " + user.username + ": " + changed.map((k) => (k === "email_enabled" ? "email " : "SMS ") + onOff(patch[k])).join(", ") + ".");
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
+// Chart email daily limit (DECISIONS.md "Chart email from the site"). kind:
+//   permanent  the user's own limit (users.chart_email_daily_limit); blank goes back to the site setting
+//   once       a limit for the next 24 hours that replaces the normal one, then lapses on its own
+//   end_once   ends a one time limit now
+// Limits are whole numbers from 0 (sending off) to CHART_LIMIT_MAX.
+const CHART_LIMIT_MAX = 10000;
+
+router.post("/users/:uid/chart-limit", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        const kind = req.body.kind;
+        const raw = String(req.body.limit || "").trim();
+        const valid = /^\d{1,5}$/.test(raw) && Number(raw) <= CHART_LIMIT_MAX;
+        const now = require("../db/knex").nowEpoch();
+        let patch = null;
+        let field = null;
+        let from = null;
+        let to = null;
+        if (kind === "permanent")
+        {
+            if (raw !== "" && !valid) { req.flash("danger", "The daily limit is a whole number from 0 to " + CHART_LIMIT_MAX + ", or blank for the site setting."); return res.redirect(userPage(user)); }
+            const value = raw === "" ? null : Number(raw);
+            if (value === (user.chart_email_daily_limit === null ? null : Number(user.chart_email_daily_limit))) { return res.redirect(userPage(user)); }
+            patch = { chart_email_daily_limit: value };
+            field = "chart_email_daily_limit";
+            from = user.chart_email_daily_limit === null ? "site setting" : String(user.chart_email_daily_limit);
+            to = value === null ? "site setting" : String(value);
+        }
+        else if (kind === "once")
+        {
+            if (!valid) { req.flash("danger", "The one time limit is a whole number from 0 to " + CHART_LIMIT_MAX + "."); return res.redirect(userPage(user)); }
+            patch = { chart_email_limit_once: Number(raw), chart_email_limit_once_until: now + 86400 };
+            field = "chart_email_limit_once";
+            from = user.chart_email_limit_once !== null && Number(user.chart_email_limit_once_until) > now ? String(user.chart_email_limit_once) : "none";
+            to = raw + " for 24 h";
+        }
+        else if (kind === "end_once")
+        {
+            if (user.chart_email_limit_once === null) { return res.redirect(userPage(user)); }
+            patch = { chart_email_limit_once: null, chart_email_limit_once_until: null };
+            field = "chart_email_limit_once";
+            from = String(user.chart_email_limit_once);
+            to = "none";
+        }
+        else { req.flash("danger", "Pick a limit to change."); return res.redirect(userPage(user)); }
+        await knex.transaction(async (trx) =>
+        {
+            await users.update(user.id, patch, trx);
+            await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: field, oldValue: from, newValue: to, actorType: "user", actorId: req.user.id, actorName: req.user.username });
+        });
+        await activity.log(req, "user_chart_limit", { entity_type: "user", entity_uid: user.uid, detail: user.username + ": " + field + " " + from + " to " + to });
+        const limit = require("../services/chartEmail").limitFor(Object.assign({}, user, patch), now);
+        req.flash("success", "Chart email limit for " + user.username + " is now " + limit + " a day" + (kind === "once" ? " for the next 24 hours." : "."));
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
+// Access (grants) on one user, Administration > Users. Superadmins only, so there is no ceiling:
+// any permission can be given. Audit rows match Account > Users (routes/account/users.js):
+// grant_added, grant_<scope>:<id> for an edit, grant_removed.
+function scopeLabel(account, location)
+{
+    return location ? account.name + " / " + location.name : account.name + " (whole account)";
+}
+
+// scope is "a:<account uid>" or "l:<location uid>" from the Add access select.
+router.post("/users/:uid/grants", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        const permissions = require("../permissions");
+        const { isUuid } = require("../middleware/account");
+        const m = /^([al]):(.+)$/.exec(String(req.body.scope || ""));
+        if (!m || !isUuid(m[2])) { req.flash("danger", "Pick an account or location."); return res.redirect(userPage(user)); }
+        let account = null;
+        let location = null;
+        if (m[1] === "a")
+        {
+            account = await knex(T("accounts")).where({ uid: m[2] }).whereNull("delete_epoch").first();
+        }
+        else
+        {
+            location = await knex(T("locations")).where({ uid: m[2] }).whereNull("delete_epoch").first();
+            account = location ? await knex(T("accounts")).where({ id: location.account_id }).whereNull("delete_epoch").first() : null;
+        }
+        if (!account) { req.flash("danger", "That account or location no longer exists."); return res.redirect(userPage(user)); }
+        const requested = permissions.bitsOf([].concat(req.body.perms || []));
+        if (requested === 0n) { req.flash("danger", "Pick at least one permission."); return res.redirect(userPage(user)); }
+        const key = { grantee_type: "user", grantee_id: user.id, scope_type: location ? "location" : "account", scope_id: location ? location.id : account.id };
+        const label = scopeLabel(account, location);
+        const duplicate = () => { req.flash("warning", user.username + " already has access to " + label + ". Use Edit in the list to change it."); return res.redirect(userPage(user)); };
+        if (await knex(T("grants")).where(key).first()) { return duplicate(); }
+        try
+        {
+            await knex.transaction(async (trx) =>
+            {
+                await trx(T("grants")).insert(Object.assign({ permission_bits: requested.toString(), created_epoch: require("../db/knex").nowEpoch(), created_by: req.user.id }, key));
+                await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "grant_added", newValue: key.scope_type + ":" + key.scope_id + " " + permissions.names(requested).join(","), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            });
+        }
+        catch (err)
+        {
+            // Two adds at once: the second insert hits ux_grants_scope.
+            if (require("../db/knex").isUniqueViolation(err)) { return duplicate(); }
+            throw err;
+        }
+        await activity.log(req, "user_added", { entity_type: "user", entity_uid: user.uid, detail: user.username + " @ " + label });
+        req.flash("success", user.username + " now has access to " + label + ".");
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
+// Edit a grant's permissions, or remove it (action=remove). The grant must be this user's.
+router.post("/users/:uid/grants/:grantId", async (req, res, next) =>
+{
+    try
+    {
+        const user = await liveUser(req);
+        if (!user) { return next(notFoundError()); }
+        const permissions = require("../permissions");
+        const g = await knex(T("grants")).where({ id: Number(req.params.grantId), grantee_type: "user", grantee_id: user.id }).first();
+        if (!g) { return next(notFoundError()); }
+        if (req.body.action === "remove")
+        {
+            await knex.transaction(async (trx) =>
+            {
+                await trx(T("grants")).where({ id: g.id }).del();
+                await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "grant_removed", oldValue: g.scope_type + ":" + g.scope_id + " " + permissions.names(g.permission_bits).join(","), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            });
+            req.flash("success", "Access removed for " + user.username + ".");
+        }
+        else
+        {
+            const requested = permissions.bitsOf([].concat(req.body.perms || []));
+            if (requested === 0n) { req.flash("danger", "Pick at least one permission, or use Remove."); return res.redirect(userPage(user)); }
+            if (requested === BigInt(g.permission_bits)) { return res.redirect(userPage(user)); }
+            await knex.transaction(async (trx) =>
+            {
+                await trx(T("grants")).where({ id: g.id }).update({ permission_bits: requested.toString() });
+                await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "grant_" + g.scope_type + ":" + g.scope_id, oldValue: permissions.names(g.permission_bits).join(","), newValue: permissions.names(requested).join(","), actorType: "user", actorId: req.user.id, actorName: req.user.username });
+            });
+            req.flash("success", "Permissions saved for " + user.username + ".");
+        }
+        await activity.log(req, "grant_changed", { entity_type: "user", entity_uid: user.uid });
+        res.redirect(userPage(user));
+    }
+    catch (err) { next(err); }
+});
+
 // Superadmin only (router.use above). Inherit is stored as NULL. Saves nothing when unchanged.
 const MFA_MODES = { inherit: null, on: "on", off: "off" };
 const mfaLabel = (m) => m || "inherit";
@@ -360,7 +736,8 @@ router.post("/users/:uid/mfa", async (req, res, next) =>
 {
     try
     {
-        const back = /^\/account\/[0-9a-f-]{36}\/users$/i.test(String(req.body.back || "")) ? req.body.back : "/account";
+        // Back to Account > Users or to the user's own Administration > Users page, nowhere else.
+        const back = /^\/(account\/[0-9a-f-]{36}\/users|admin\/users\/[0-9a-f-]{36})$/i.test(String(req.body.back || "")) ? req.body.back : "/account";
         if (!Object.prototype.hasOwnProperty.call(MFA_MODES, req.body.mfa_mode))
         {
             req.flash("danger", "Pick Inherit, On or Off.");

@@ -38,9 +38,13 @@ function upload(req, res, next)
     });
 }
 
-// The user's own limit when set (users.chart_email_daily_limit), else the site setting.
-function limitFor(user)
+// A one time limit while it lasts (users.chart_email_limit_once until chart_email_limit_once_until,
+// set on Administration > Users), else the user's own limit when set
+// (users.chart_email_daily_limit), else the site setting.
+function limitFor(user, now)
 {
+    const at = now || Math.floor(Date.now() / 1000);
+    if (user.chart_email_limit_once !== null && user.chart_email_limit_once !== undefined && Number(user.chart_email_limit_once_until) > at) { return Number(user.chart_email_limit_once); }
     if (user.chart_email_daily_limit !== null && user.chart_email_daily_limit !== undefined) { return Number(user.chart_email_daily_limit); }
     return Number(settings.get("CHART_EMAIL_DAILY_LIMIT", 20));
 }
@@ -94,7 +98,7 @@ async function send(req, input)
     if (!isPng(input.image)) { return { status: 400, body: { ok: false, error: "The chart image is missing. Reload the page and try again." } }; }
     if (!input.series.length) { return { status: 400, body: { ok: false, error: "This chart has no sensors you can see." } }; }
 
-    const limit = limitFor(user);
+    const limit = limitFor(user, now);
     const used = await sentInLastDay(user.id, now);
     if (used >= limit)
     {

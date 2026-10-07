@@ -31,6 +31,13 @@
             <input class="form-check-input" type="checkbox" id="email_enabled" name="email_enabled" value="1" <%= values.email_enabled ? "checked" : "" %>>
             <label class="form-check-label" for="email_enabled">Send me alarm emails</label>
           </div>
+          <% if (locals.smsVisible) { %>
+          <%# Shown only while SMS is part of the site (services/mfa.js SMS_VISIBLE). %>
+          <div class="form-check form-switch mb-4">
+            <input class="form-check-input" type="checkbox" id="sms_enabled" name="sms_enabled" value="1" <%= values.sms_enabled ? "checked" : "" %>>
+            <label class="form-check-label" for="sms_enabled">Send me alarm text messages</label>
+          </div>
+          <% } %>
 
           <% if (locals.mfaChoice && mfaChoice.show) { var ch = values.mfa_channel === "sms" ? "sms" : "email"; %>
           <%# Sign in code channel, shown only while SMS is part of the site (services/mfa.js SMS_VISIBLE). %>
