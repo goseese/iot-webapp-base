@@ -10,6 +10,7 @@ const metrics = require("../metrics");
 const display = require("../services/display");
 const sensorsExt = require("../db/repos/sensorsExt");
 const { useAccount } = require("../middleware/account");
+const chartEmail = require("../services/chartEmail");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -192,6 +193,34 @@ router.post("/charts/:uid", loadChart, body("name").trim().isLength({ min: 1, ma
         await knex(T("charts")).where({ id: req.chart.id }).update(patch);
         req.flash("success", "Chart saved.");
         res.redirect("/analytics/charts/" + req.params.uid);
+    }
+    catch (err) { next(err); }
+});
+
+// Share > Email... > Send from the site (services/chartEmail.js) for a saved chart or a dashboard tab:
+// every series the viewer can see, as the chart draws them; times in the browser's timezone (tz).
+router.post("/charts/:uid/email", loadChart, chartEmail.upload, async (req, res, next) =>
+{
+    try
+    {
+        const allowed = await visibleSensors(req);
+        const series = [];
+        for (const uid of req.def.sensors || [])
+        {
+            const meta = allowed.find((s) => String(s.uid).toLowerCase() === String(uid).toLowerCase());
+            if (!meta || meta.is_hidden) { continue; }
+            const sensor = await knex(T("sensors")).where({ uid: uid }).first();
+            const unit = await display.resolveUnit(sensor, { id: meta.location_id, account_id: meta.account_id });
+            series.push({ id: sensor.id, name: meta.device_name + " / " + meta.name, unit: unit, toDisplay: (v) => metrics.fromCanonical(sensor.metric, v, unit) });
+        }
+        const uid = String(req.chart.uid).toLowerCase();
+        const r = await chartEmail.send(req,
+        {
+            accountId: req.chart.account_id, source: "chart", sensorId: null, chartId: req.chart.id, uid: uid,
+            title: req.chart.name, tz: chartEmail.tzOf(req.body.tz), series: series,
+            path: "/analytics/charts/" + uid, from: epochParam(req.body.window_from), to: epochParam(req.body.window_to), image: req.file ? req.file.buffer : null
+        });
+        res.status(r.status).json(r.body);
     }
     catch (err) { next(err); }
 });

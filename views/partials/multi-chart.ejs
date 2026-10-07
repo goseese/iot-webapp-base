@@ -2,7 +2,7 @@
       chunks newest first; older chunks load in the background, one series at a time (routes/charts.js).
       The view lives in the URL (iot-chart-tools.js); one chart per page owns it. */ %>
 <div id="<%= elId %>" style="height: 440px"></div>
-<div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: account ? account.name : "" }) %>"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
+<div class="d-flex align-items-center gap-2 mt-2" id="<%= elId %>Foot" data-csrf="<%= typeof csrfToken !== "undefined" ? csrfToken : "" %>" data-email-url="<%= dataUrl.replace(/\/data$/, "/email") %>" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: account ? account.name : "" }) %>"><div class="form-text m-0 d-none" id="<%= elId %>Note"></div></div>
 <script>
 document.addEventListener("DOMContentLoaded", function ()
 {
@@ -132,7 +132,7 @@ document.addEventListener("DOMContentLoaded", function ()
     // window follows the URL as it changes. Location, device and sensor names are the series' own,
     // joined when they differ; chart_name is the panel title.
     function namesOf(key) { var u = []; (current ? current.series : []).forEach(function (s) { if (s[key] && u.indexOf(s[key]) < 0) { u.push(s[key]); } }); return u.join(", "); }
-    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: null, getData: dataInView, nameTemplate: "{chart_name}, {window}", getVars: function ()
+    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: null, getData: dataInView, nameTemplate: "{chart_name}, {window}", emailUrl: foot.dataset.emailUrl, csrf: foot.dataset.csrf, siteName: JSON.parse(foot.dataset.chartVars).site_name, getVars: function ()
     {
         var head = panel.querySelector(".iot-panel__header strong");
         return Object.assign(JSON.parse(foot.dataset.chartVars), { chart_name: head ? head.textContent.trim() : "", location_name: namesOf("location_name"), device_name: namesOf("device_name"), sensor_name: namesOf("sensor_name") });

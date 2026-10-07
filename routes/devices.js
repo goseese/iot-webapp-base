@@ -48,6 +48,7 @@ function tabs(req, current)
         : [{ label: "Sensors", path: base }, { label: "Tags", path: base + "/tags" }];
     if (hasConfig(req)) { list.push({ label: "Config", path: base + "/config" }); }
     if (allowedCommands(req).length > 0) { list.push({ label: "Commands", path: base + "/commands" }); }
+    list.push({ label: "API", path: base + "/api" });
     list.push({ label: "Settings", path: base + "/settings" });
     return list.map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
 }
@@ -422,6 +423,24 @@ router.post("/:uid/tags", loadDevice, async (req, res, next) =>
         });
         req.flash("success", "Tags saved.");
         res.redirect("/devices/" + req.params.uid + "/tags");
+    }
+    catch (err) { next(err); }
+});
+
+// API tab (DECISIONS "API tabs"): ready to run API calls for this device, from services/apiDocs.js.
+// The POST shows only when the device type takes API readings (apiWrite).
+router.get("/:uid/api", loadDevice, async (req, res, next) =>
+{
+    try
+    {
+        const apiDocs = require("../services/apiDocs");
+        const type = req.typeModule;
+        const sensors = await knex(T("sensors")).where({ device_id: req.device.id }).whereNull("delete_epoch")
+            .orderBy([{ column: "sort_order", order: "asc" }, { column: "name", order: "asc" }]).select("uid", "name");
+        const page = { kind: "device",
+            device: { uid: String(req.device.uid).toLowerCase(), apiWrite: !!(type && type.apiWrite), channels: type ? type.channels.filter((c) => !c.perGateway).map((c) => c.id) : [] },
+            sensors: sensors.map((x) => ({ uid: String(x.uid).toLowerCase(), name: x.name })) };
+        res.render("devices/api", { title: req.device.name, api: apiDocs.pageCalls(apiDocs.site(), page), docsBase: req.acctBase + "/api/docs", navTrail: trail(req), navSub: tabs(req, "API") });
     }
     catch (err) { next(err); }
 });

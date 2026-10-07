@@ -16,6 +16,7 @@ const tagsRepo = require("../db/repos/tags");
 const title = require("../services/alarms/title");
 const ruleLog = require("../services/alarms/ruleLog");
 const ruleHistory = require("../services/alarms/ruleHistory");
+const chartEmail = require("../services/chartEmail");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -64,7 +65,7 @@ function trail(req, extra)
 function tabs(req, current)
 {
     const base = "/sensors/" + String(req.sensor.uid).toLowerCase();
-    return [{ label: "Overview", path: base }, { label: "Alarm rules", path: base + "/rules" }, { label: "Tags", path: base + "/tags" }, { label: "Settings", path: base + "/settings" }].map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
+    return [{ label: "Overview", path: base }, { label: "Alarm rules", path: base + "/rules" }, { label: "Tags", path: base + "/tags" }, { label: "API", path: base + "/api" }, { label: "Settings", path: base + "/settings" }].map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
 }
 
 // The device type channel's description: the default a sensor shows until it has its own.
@@ -142,6 +143,26 @@ router.get("/:uid/data", loadSensor, async (req, res, next) =>
         const points = page.map((r) => [Number(r.epoch) * 1000, Number(toDisplay(req, r.value).toFixed(4))]);
         const rules = (await sensorsExt.rules(req.sensor.id)).filter((r) => r.rule_kind === "threshold" && r.is_enabled).map((r) => ({ direction: r.direction, severity: r.severity, value: toDisplay(req, r.threshold) }));
         res.json({ unit: req.unit, timezone: req.location.iana_timezone, points: points, rules: rules, from: from * 1000, to: to * 1000, more: more, next_to: nextTo });
+    }
+    catch (err) { next(err); }
+});
+
+// Share > Email... > Send from the site (services/chartEmail.js): the readings in the posted window
+// and the chart image the browser drew. View is enough: the same image and readings download.
+router.post("/:uid/email", loadSensor, chartEmail.upload, async (req, res, next) =>
+{
+    try
+    {
+        const s = req.sensor;
+        const uid = String(s.uid).toLowerCase();
+        const r = await chartEmail.send(req,
+        {
+            accountId: req.location.account_id, source: "sensor", sensorId: s.id, chartId: null, uid: uid,
+            title: s.name + " on " + s.device_name, tz: chartEmail.tzOf(req.location.iana_timezone),
+            series: [{ id: s.id, name: s.name, unit: req.unit, toDisplay: (v) => toDisplay(req, v) }],
+            path: "/sensors/" + uid, from: epochParam(req.body.window_from), to: epochParam(req.body.window_to), image: req.file ? req.file.buffer : null
+        });
+        res.status(r.status).json(r.body);
     }
     catch (err) { next(err); }
 });
@@ -378,6 +399,25 @@ router.post("/:uid/tags", loadSensor, need("edit"), async (req, res, next) =>
         });
         req.flash("success", "Tags saved.");
         res.redirect(back);
+    }
+    catch (err) { next(err); }
+});
+
+// API tab (DECISIONS "API tabs"): ready to run API calls for this sensor, from services/apiDocs.js,
+// with one change log call per live rule. The POST shows only when the device type takes API readings.
+router.get("/:uid/api", loadSensor, async (req, res, next) =>
+{
+    try
+    {
+        const apiDocs = require("../services/apiDocs");
+        const s = req.sensor;
+        const type = deviceTypes.all[s.device_type_slug];
+        const rules = await knex(T("alarm_rules")).where({ sensor_id: s.id }).whereNull("delete_epoch")
+            .orderBy([{ column: "rule_kind", order: "asc" }, { column: "direction", order: "asc" }, { column: "threshold", order: "asc" }]).select("uid", "rule_kind", "direction", "severity");
+        const page = { kind: "sensor", sensor: { uid: String(s.uid).toLowerCase(), channel: s.channel_id },
+            device: { uid: String(s.device_uid).toLowerCase(), apiWrite: !!(type && type.apiWrite) },
+            rules: rules.map((r) => ({ uid: String(r.uid).toLowerCase(), label: (r.rule_kind === "no_data" ? "no data" : r.direction) + ", " + r.severity })) };
+        res.render("sensors/api", { title: s.name, api: apiDocs.pageCalls(apiDocs.site(), page), docsBase: req.acctBase + "/api/docs", navTrail: trail(req, "API"), navSub: tabs(req, "API") });
     }
     catch (err) { next(err); }
 });

@@ -67,3 +67,30 @@ test("typedValue types every field of a whole rule snapshot", () =>
     const snap = JSON.stringify({ rule_kind: "threshold", threshold: "10", is_enabled: "1", use_default_group: "0", exceed_secs: "300", channel_policy: "{\"raise\":{\"email\":true,\"sms\":false}}", alert_groups: null, reason: "sensor deleted" });
     assert.deepEqual(h.typedValue("deleted", snap), { rule_kind: "threshold", threshold: 10, is_enabled: true, use_default_group: false, exceed_secs: 300, channel_policy: { raise: { email: true, sms: false } }, alert_groups: null, reason: "sensor deleted" });
 });
+
+test("missingScope asks for one of the allowed filters", () =>
+{
+    assert.equal(h.missingScope({ location: "x" }, ["location", "device", "sensor"]), null);
+    assert.equal(h.missingScope({ sensor: "x", limit: "5" }, ["location", "device", "sensor"]), null);
+    assert.equal(h.missingScope({}, ["location", "device", "sensor"]), "One of location, device or sensor is required (a uid).");
+    assert.equal(h.missingScope({ location: "" }, ["account", "location"]), "One of account or location is required (a uid).");
+    assert.equal(h.missingScope({ limit: "5" }, ["rule"]), "rule is required (a uid).");
+    assert.equal(h.missingScope(undefined, ["rule"]), "rule is required (a uid).");
+});
+
+test("minutesOf takes whole minutes from 1 to ten years", () =>
+{
+    assert.equal(h.minutesOf("1440"), 1440);
+    assert.equal(h.minutesOf("1"), 1);
+    assert.equal(h.minutesOf("5256000"), 5256000);
+    for (const bad of [undefined, null, "", " ", "0", "-5", "1.5", "abc", "5256001", "1e3x"]) { assert.equal(h.minutesOf(bad), null, String(bad)); }
+});
+
+test("flagOf reads yes and no, else the default", () =>
+{
+    for (const v of ["1", "true", "YES", " yes "]) { assert.equal(h.flagOf(v, false), true, v); }
+    for (const v of ["0", "false", "No"]) { assert.equal(h.flagOf(v, true), false, v); }
+    assert.equal(h.flagOf(undefined, true), true);
+    assert.equal(h.flagOf("maybe", true), true);
+    assert.equal(h.flagOf("", false), false);
+});

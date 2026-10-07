@@ -27,7 +27,8 @@ function monitorItems(loc)
                 { label: "Active", path: base + "/alarms/active" },
                 { label: "History", path: base + "/alarms/history" },
                 { label: "Rules", path: base + "/alarms/rules" },
-                { label: "Notifications", path: base + "/alarms/notifications" }
+                { label: "Notifications", path: base + "/alarms/notifications" },
+                { label: "API", path: base + "/alarms/api" }
             ]
         },
         { label: "Users", path: base + "/users", icon: "fa-users" },

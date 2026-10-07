@@ -16,7 +16,7 @@ const logger = require("../config/logger");
 const alarmTitle = require("../services/alarms/title");
 const ruleHistory = require("../services/alarms/ruleHistory");
 const { isUuid } = require("../middleware/account");
-const { worse, pageByEpoch, limitOf, parseJson, typedValue } = require("../services/apiHelpers");
+const { worse, pageByEpoch, limitOf, parseJson, typedValue, missingScope, minutesOf, flagOf } = require("../services/apiHelpers");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -138,6 +138,16 @@ function applyScopeFilters(req, q, locs)
     return true;
 }
 
+// The locations an account filter names: the key's visible locations in that account (account uid).
+// null when the uid is malformed or names no account the key can see, so the caller answers an empty list.
+async function accountLocationIds(v, locs)
+{
+    if (!isUuid(String(v))) { return null; }
+    const a = await knex(T("accounts")).where({ uid: String(v) }).first();
+    const ids = a ? Array.from(locs.values()).filter((l) => l.account_id === a.id).map((l) => l.id) : [];
+    return ids.length ? ids : null;
+}
+
 // An epoch query parameter as whole seconds, or null when absent or not a sane epoch. A fraction or
 // 1e21 would otherwise reach a BIGINT column and fail in Postgres as a 500.
 function epochOf(v)
@@ -166,6 +176,46 @@ router.get("/devices", async (req, res, next) =>
         if (req.query.location) { const l = Array.from(locs.values()).find((x) => uidOf(x.uid) === String(req.query.location).toLowerCase()); if (!l) { return res.json({ devices: [] }); } q.where("d.location_id", l.id); }
         const rows = await q;
         res.json({ devices: rows.map((d) => ({ uid: uidOf(d.uid), name: d.name, type: d.type, kind: d.kind, hardware_id: d.hardware_id, location: uidOf(locs.get(d.location_id).uid), last_seen_epoch: d.last_seen_epoch === null ? null : Number(d.last_seen_epoch), is_offline: !!d.is_offline })) });
+    }
+    catch (err) { next(err); }
+});
+
+// Devices that have not reported for at least minutes (DECISIONS "API silent devices"), in one account or
+// location: live, not archived and not set offline by hand. Devices that never reported are included
+// unless include_never_seen is no. Longest silent first, never seen ahead of all. Registered before
+// /devices/:uid so "silent" is not read as a uid.
+router.get("/devices/silent", async (req, res, next) =>
+{
+    try
+    {
+        const scopeErr = missingScope(req.query, ["account", "location"]);
+        if (scopeErr) { return res.status(400).json({ error: scopeErr }); }
+        const minutes = minutesOf(req.query.minutes);
+        if (minutes === null) { return res.status(400).json({ error: "minutes is required: a whole number of minutes, at least 1." }); }
+        const includeNever = flagOf(req.query.include_never_seen, true);
+        const now = nowEpoch();
+        const cutoff = now - minutes * 60;
+        const none = () => res.json({ minutes: minutes, cutoff_epoch: cutoff, devices: [] });
+        const locs = await locationsMap(req);
+        if (!locs.size) { return none(); }
+        const q = knex(T("devices") + " as d").join(T("device_types") + " as t", "t.id", "d.device_type_id").whereIn("d.location_id", Array.from(locs.keys()))
+            .whereNull("d.delete_epoch").where("d.is_archived", false).where("d.is_offline", false)
+            .where(function () { this.where("d.last_seen_epoch", "<=", cutoff); if (includeNever) { this.orWhereNull("d.last_seen_epoch"); } })
+            .select("d.*", "t.slug as type").orderBy("d.last_seen_epoch", "asc", "first").orderBy("d.name", "asc");
+        if (req.query.account !== undefined)
+        {
+            const ids = await accountLocationIds(req.query.account, locs);
+            if (!ids) { return none(); }
+            q.whereIn("d.location_id", ids);
+        }
+        if (!applyScopeFilters(req, q, locs)) { return none(); }
+        const rows = await q;
+        res.json({ minutes: minutes, cutoff_epoch: cutoff, devices: rows.map((d) =>
+        {
+            const seen = num(d.last_seen_epoch);
+            return { uid: uidOf(d.uid), name: d.name, type: d.type, kind: d.kind, hardware_id: d.hardware_id, location: uidOf(locs.get(d.location_id).uid),
+                last_seen_epoch: seen, silent_secs: seen === null ? null : now - seen };
+        }) });
     }
     catch (err) { next(err); }
 });
@@ -376,6 +426,8 @@ router.get("/alarms/history", async (req, res, next) =>
 {
     try
     {
+        const scopeErr = missingScope(req.query, ["location", "device", "sensor"]);
+        if (scopeErr) { return res.status(400).json({ error: scopeErr }); }
         const now = nowEpoch();
         const { from, to } = rangeOf(req);
         const limit = limitOf(req.query.limit, 500, 1000);
@@ -407,14 +459,25 @@ router.get("/alarms/history", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// Alarms active now in one account, location, device or sensor (DECISIONS "API queries are scoped").
 router.get("/alarms/active", async (req, res, next) =>
 {
     try
     {
+        const scopeErr = missingScope(req.query, ["account", "location", "device", "sensor"]);
+        if (scopeErr) { return res.status(400).json({ error: scopeErr }); }
         const locs = await locationsMap(req);
         if (!locs.size) { return res.json({ alarms: [] }); }
-        const rows = await knex(T("alarms") + " as a").join(T("sensors") + " as s", "s.id", "a.sensor_id").join(T("devices") + " as d", "d.id", "s.device_id")
+        const q = knex(T("alarms") + " as a").join(T("sensors") + " as s", "s.id", "a.sensor_id").join(T("devices") + " as d", "d.id", "s.device_id")
             .whereIn("d.location_id", Array.from(locs.keys())).whereNull("a.cleared_epoch").select(ALARM_LIST_COLUMNS);
+        if (req.query.account !== undefined)
+        {
+            const ids = await accountLocationIds(req.query.account, locs);
+            if (!ids) { return res.json({ alarms: [] }); }
+            q.whereIn("d.location_id", ids);
+        }
+        if (!applyScopeFilters(req, q, locs)) { return res.json({ alarms: [] }); }
+        const rows = await q;
         const names = await alarmNames(rows, locs);
         res.json({ alarms: rows.map((a) => ({ uid: uidOf(a.uid), name: names.get(a.id), severity: a.severity, direction: a.direction, raised_epoch: Number(a.raised_epoch), acknowledged: !!a.acked_epoch, suppressed: !!a.suppressed_by,
             sensor: uidOf(a.sensor_uid), sensor_name: a.sensor_name, device: uidOf(a.device_uid), device_name: a.device_name, location: uidOf(locs.get(a.location_id).uid), trigger_value: a.trigger_value })) });
@@ -483,6 +546,8 @@ router.get("/alarm-rules", async (req, res, next) =>
 {
     try
     {
+        const scopeErr = missingScope(req.query, ["location", "device", "sensor"]);
+        if (scopeErr) { return res.status(400).json({ error: scopeErr }); }
         const locs = await locationsMap(req);
         if (!locs.size) { return res.json({ rules: [] }); }
         const q = knex(T("alarm_rules") + " as r").join(T("sensors") + " as s", "s.id", "r.sensor_id").join(T("devices") + " as d", "d.id", "s.device_id")
@@ -509,15 +574,21 @@ router.get("/alarm-rules", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
-// The alarm rule change log (services/alarms/ruleLog.js): audit rows keyed to rules, between from and to,
-// oldest first, for rules in the locations the key can view, deleted rules, sensors and devices included.
+// The alarm rule change log (services/alarms/ruleLog.js) of one rule (DECISIONS "API queries are
+// scoped"): audit rows keyed to that rule, between from and to, oldest first, when the rule is in a
+// location the key can view; deleted rules, sensors and devices included.
 // Values come back typed; the display text comes from services/alarms/ruleHistory.js, so the API and
 // the sensor page word a change the same way. Paged like the other range endpoints.
 router.get("/alarm-rules/changes", async (req, res, next) =>
 {
     try
     {
-        const { from, to } = rangeOf(req);
+        const scopeErr = missingScope(req.query, ["rule"]);
+        if (scopeErr) { return res.status(400).json({ error: scopeErr }); }
+        // The rule's whole history unless from is given (DECISIONS "API queries are scoped").
+        const range = rangeOf(req);
+        const to = range.to;
+        const from = epochOf(req.query.from) === null ? 0 : range.from;
         const limit = limitOf(req.query.limit, 500, 1000);
         const none = () => res.json({ from: from, to: to, truncated: false, next_from: null, changes: [] });
         const locs = await locationsMap(req);
@@ -526,7 +597,8 @@ router.get("/alarm-rules/changes", async (req, res, next) =>
             .where("x.entity_type", "alarm_rule").whereIn("d.location_id", Array.from(locs.keys())).where("x.epoch", ">=", from).where("x.epoch", "<=", to)
             .select("x.*", "r.uid as rule_uid", "s.uid as sensor_uid", "s.name as sensor_name", "s.metric", "s.display_unit", "d.uid as device_uid", "d.name as device_name", "d.location_id")
             .orderBy([{ column: "x.epoch", order: "asc" }, { column: "x.id", order: "asc" }]).limit(limit + 1);
-        if (!applyScopeFilters(req, q, locs)) { return none(); }
+        if (!isUuid(String(req.query.rule))) { return none(); }
+        q.where("r.uid", String(req.query.rule));
         const pg = pageByEpoch(await q, limit, "epoch");
         const out = [];
         for (const x of pg.rows)

@@ -43,5 +43,6 @@
     </div>
   </div>
 </div>
+<div class="mt-3"><%- include("../partials/api-usage", { api: api, docsBase: docsBase, collapsed: true }) %></div>
 <%- include("../partials/alarm-action-modal", { reasons: reasons, back: "/alarms/" + fmt.uid(a.uid) }) %>
 <%- include("../partials/notification-modal") %>

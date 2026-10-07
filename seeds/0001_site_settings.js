@@ -22,6 +22,7 @@ const DEFAULTS =
     { key: "COVERAGE_WINDOW_HOURS", value: "24", kind: "int", group: "general", description: "How recently a gateway must have heard a device to count for offline suppression.", min: 1, max: 168 },
     { key: "ONLINE_THRESHOLD_SECS", value: "900", kind: "int", group: "general", description: "Seconds since last contact before a gateway or device shows offline.", min: 60, max: 86400 },
     { key: "RENOTIFY_MINUTES", value: "60", kind: "int", group: "general", description: "Minutes between repeat notifications for an unacknowledged active alarm.", min: 5, max: 1440 },
+    { key: "CHART_EMAIL_DAILY_LIMIT", value: "20", kind: "int", group: "general", description: "Chart emails one user may send from the site in 24 hours (Share > Email... > Send from the site). A user's own limit, when set, overrides this. 0 turns sending from the site off.", min: 0, max: 1000 },
     { key: "REPORT_FILE_DAYS", value: "30", kind: "int", group: "logging", description: "Days generated report files are kept.", min: 1, max: 365 },
     { key: "ALARM_TITLE_FORMAT", value: "{sensor_name} on {device_name} at {location_name}", kind: "string", group: "general", description: "Alarm title: the email subject after the event word, the first line of the SMS and the API alarm name. Overridden per account, location, device, sensor or alarm rule." },
 

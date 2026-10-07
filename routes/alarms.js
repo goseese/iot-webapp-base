@@ -100,6 +100,20 @@ lists.get("/rules", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
+// API page (DECISIONS "API tabs"): ready to run alarm API calls for this location, and active alarms
+// for its whole account, from services/apiDocs.js.
+lists.get("/api", async (req, res, next) =>
+{
+    try
+    {
+        if (!req.scope) { return next(notFoundError()); }
+        const apiDocs = require("../services/apiDocs");
+        const page = { kind: "location", location: { uid: String(req.scope.uid).toLowerCase() }, account: req.account ? { uid: String(req.account.uid).toLowerCase() } : null };
+        res.render("alarms/api", { title: "Alarm API", api: apiDocs.pageCalls(apiDocs.site(), page), docsBase: req.acctBase + "/api/docs" });
+    }
+    catch (err) { next(err); }
+});
+
 // "Why didn't I get it": every send decision for alarms in visible locations (architecture 8.6).
 lists.get("/notifications", async (req, res, next) =>
 {
@@ -178,6 +192,7 @@ router.get("/:uid", loadAlarm, async (req, res, next) =>
         res.render("alarms/show", {
             title: a.sensor_name + " " + a.direction.replace("_", " "), alarm: a, value: notify.displayValue(a, a.trigger_value), events: events, notifications: notifications, escalations: escalations,
             canAck: permissions.has(req.bits, permissions.byName.ack_alarm), canClear: permissions.has(req.bits, permissions.byName.clear_alarm), reasons: reasons.map((r) => r.label),
+            api: require("../services/apiDocs").pageCalls(require("../services/apiDocs").site(), { kind: "alarm", alarm: { uid: String(a.uid).toLowerCase(), active: !a.cleared_epoch } }), docsBase: req.acctBase + "/api/docs",
             navTrail: [{ label: "Account", path: "/account" }, { label: a.location_name, path: "/locations/" + String(a.location_uid).toLowerCase() }, { label: "Alarms", path: "/locations/" + String(a.location_uid).toLowerCase() + "/alarms/active" }, { label: a.sensor_name, path: "/sensors/" + String(a.sensor_uid).toLowerCase() }, { label: "Alarm", path: "", isCurrent: true }]
         });
     }

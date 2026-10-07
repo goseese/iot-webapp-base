@@ -80,6 +80,19 @@ function endpoints(s)
         note: "kind is gateway (controller and account pods), node (target pods) or direct."
       },
       {
+        id: "silent-devices", method: "GET", path: "/devices/silent", perm: "View",
+        about: "Devices that have not reported for at least minutes, in one account or location: live devices that are not archived and not set offline by hand. Devices that have never reported are included, with last_seen_epoch null, unless include_never_seen is no. Longest silent first; devices that never reported come ahead of all.",
+        params: [
+          ["account", "An account uid: the locations in it the key can view. One of account or location is required."],
+          ["location", "A location uid."],
+          ["minutes", "Required. A whole number of minutes, at least 1: devices silent this long or longer. 1440 is 24 hours."],
+          ["include_never_seen", "Optional. yes (the default) or no."]
+        ],
+        example: CURL + "\"" + apiBase + "/devices/silent?location=" + LOC + "&minutes=1440\"",
+        response: { minutes: 1440, cutoff_epoch: 1791208800, devices: [{ uid: DEV, name: "Pod 3", type: "target_accel", kind: "node", hardware_id: "A1B2C3D4E5F6", location: LOC, last_seen_epoch: 1791100000, silent_secs: 195200 }] },
+        note: "cutoff_epoch is now less minutes; a device last seen at or before it is listed. silent_secs is null for a device that never reported. Status 400 without account or location, or without a valid minutes. An account or location the key cannot see returns an empty list."
+      },
+      {
         id: "device", method: "GET", path: "/devices/<uid>", perm: "View",
         about: "One device with every sensor's latest value and alarm status. alarm_status is \"ok\" or the worst severity among active alarms (info, warning, alarm, emergency); the device's alarm_status is the worst over its sensors. active_alarms lists each active alarm, oldest first; its uid works with the alarm endpoints below. The location's alarm_mode is active, muted (alarms recorded, nobody notified) or offline (no alarms evaluated).",
         params: [],
@@ -137,11 +150,16 @@ function endpoints(s)
       },
       {
         id: "active-alarms", method: "GET", path: "/alarms/active", perm: "View",
-        about: "Alarms that are active now, in the locations the key can view." + NAME_NOTE,
-        params: [],
-        example: CURL + "\"" + apiBase + "/alarms/active\"",
+        about: "Alarms that are active now, in one account, location, device or sensor." + NAME_NOTE,
+        params: [
+          ["account", "Alarms in every location of the account that the key can view (account uid). One of account, location, device or sensor is required; given together they narrow each other."],
+          ["location", "This location's alarms (location uid)."],
+          ["device", "This device's alarms (device uid)."],
+          ["sensor", "This sensor's alarms (sensor uid)."]
+        ],
+        example: CURL + "\"" + apiBase + "/alarms/active?location=" + LOC + "\"",
         response: { alarms: [{ uid: ALM, name: NAME, severity: "alarm", direction: "lower", raised_epoch: 1791294000, acknowledged: false, suppressed: false, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC, trigger_value: 0.4 }] },
-        note: "trigger_value is in the canonical unit. direction is upper, lower or no_data."
+        note: "trigger_value is in the canonical unit. direction is upper, lower or no_data. Status 400 without account, location, device or sensor; one the key cannot see returns an empty list."
       },
       {
         id: "alarm-history", method: "GET", path: "/alarms/history", perm: "View",
@@ -149,9 +167,9 @@ function endpoints(s)
         params: [
           ["from", "Optional. Start, epoch seconds, matched against raised_epoch. Default: 24 hours before to."],
           ["to", "Optional. End, epoch seconds. Default: now."],
-          ["location", "Optional. Only this location's alarms (location uid)."],
-          ["device", "Optional. Only this device's alarms (device uid)."],
-          ["sensor", "Optional. Only this sensor's alarms (sensor uid)."],
+          ["location", "This location's alarms (location uid). One of location, device or sensor is required; given together they narrow each other."],
+          ["device", "This device's alarms (device uid)."],
+          ["sensor", "This sensor's alarms (sensor uid)."],
           ["limit", "Optional. Most alarms per reply, default 500, at most 1000. Paged like readings: while truncated is true, ask again with from set to next_from."]
         ],
         example: CURL + "\"" + apiBase + "/alarms/history?from=1790690400&to=1791295200&location=" + LOC + "\"",
@@ -198,26 +216,24 @@ function endpoints(s)
       {
         id: "rules", method: "GET", path: "/alarm-rules", perm: "View",
         about: "The alarm rules (limits) in force now. kind is threshold (direction upper or lower, threshold in the canonical unit, exceed_secs past the limit before it raises, return_secs back inside before it clears) or no_data (timeout_secs without a reading). channel_policy says which transitions (raise, escalate, de_escalate, clear) send email and SMS. use_default_group means the account's default alert group is notified as well as alert_groups. alarm_title is the rule's own title template, or null when it uses the sensor's or a wider one.",
-        params: [["location", "Optional. Only this location's rules (location uid)."], ["device", "Optional. Only this device's rules (device uid)."], ["sensor", "Optional. Only this sensor's rules (sensor uid)."]],
+        params: [["location", "This location's rules (location uid). One of location, device or sensor is required; given together they narrow each other."], ["device", "This device's rules (device uid)."], ["sensor", "This sensor's rules (sensor uid)."]],
         example: CURL + "\"" + apiBase + "/alarm-rules?sensor=" + SEN + "\"",
         response: { rules: [{ uid: RULE, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC, kind: "threshold", direction: "lower",
           threshold: 10, threshold_display: "10.00 V", canonical_unit: "V", display_unit: "V", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, use_default_group: true,
           channel_policy: { raise: { email: true, sms: false }, escalate: { email: true, sms: false }, de_escalate: { email: true, sms: false }, clear: { email: true, sms: false } }, alarm_title: null,
           alert_groups: [{ uid: GROUP, name: "Coaches" }], created_epoch: 1790000000 }] },
-        note: "channel_policy is null for a rule never saved from its form; it then sends on every channel. A filter that names nothing the key can see returns an empty list."
+        note: "channel_policy is null for a rule never saved from its form; it then sends on every channel. Status 400 without location, device or sensor; one that names nothing the key can see returns an empty list. Each rule's uid is what GET /alarm-rules/changes takes."
       },
       {
         id: "rule-changes", method: "GET", path: "/alarm-rules/changes", perm: "View",
-        about: "Every change to an alarm rule between from and to, oldest first: who made it and what it was before and after. change is created or deleted (new_value or old_value holds the whole rule), or the name of the field that changed: rule_kind, direction, threshold, severity, exceed_secs, return_secs, timeout_secs, is_enabled, use_default_group, channel_policy, alert_groups or alarm_title. Values are canonical; old_display and new_display are worded as the sensor's Alarm rules page words them. Deleted rules, sensors and devices are included, so a removed limit still shows who removed it.",
+        about: "Every change to one alarm rule between from and to, oldest first: who made it and what it was before and after. change is created or deleted (new_value or old_value holds the whole rule), or the name of the field that changed: rule_kind, direction, threshold, severity, exceed_secs, return_secs, timeout_secs, is_enabled, use_default_group, channel_policy, alert_groups or alarm_title. Values are canonical; old_display and new_display are worded as the sensor's Alarm rules page words them. Deleted rules, sensors and devices are included, so a removed limit still shows who removed it.",
         params: [
-          ["from", "Optional. Start, epoch seconds. Default: 24 hours before to."],
+          ["from", "Optional. Start, epoch seconds. Default: the rule's first change."],
           ["to", "Optional. End, epoch seconds. Default: now."],
-          ["location", "Optional. Only rules at this location (location uid)."],
-          ["device", "Optional. Only rules on this device (device uid)."],
-          ["sensor", "Optional. Only rules on this sensor (sensor uid)."],
+          ["rule", "Required. The rule's uid, from GET /alarm-rules."],
           ["limit", "Optional. Most changes per reply, default 500, at most 1000. Paged like readings: while truncated is true, ask again with from set to next_from."]
         ],
-        example: CURL + "\"" + apiBase + "/alarm-rules/changes?from=1790690400&location=" + LOC + "\"",
+        example: CURL + "\"" + apiBase + "/alarm-rules/changes?rule=" + RULE + "&from=1790690400\"",
         response: { from: 1790690400, to: 1791295200, truncated: false, next_from: null, changes: [
           { epoch: 1791200000, rule: RULE, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC,
             change: "threshold", old_value: 9, new_value: 10, old_display: "9.00 V", new_display: "10.00 V", actor: { type: "user", name: "jseese" } },
@@ -227,6 +243,97 @@ function endpoints(s)
         note: "In created and deleted rows the whole rule comes back as an object with typed values, plus reason when the system made the change: { \"rule_kind\": \"threshold\", \"direction\": \"lower\", \"threshold\": 10, \"is_enabled\": true, ..., \"reason\": \"sensor deleted\" }. actor type is user, api_credential or system (rules a device type adds when a sensor first reports). Rules removed along with a deleted sensor or device carry the reason in the deleted row; rules of a deleted location are no longer visible to any key."
       }
     ];
+}
+
+// The calls for one page's API tab (DECISIONS "API tabs"): ready to run commands with the page's real
+// uids. The method, path, permission and docs anchor of each come from endpoints() above. page is one of
+//   { kind: "device", device: { uid, apiWrite, channels: [channel ids] }, sensors: [{ uid, name }] }
+//   { kind: "sensor", sensor: { uid, channel }, device: { uid, apiWrite }, rules: [{ uid, label }] }
+//   { kind: "location", location: { uid }, account: { uid } or null }
+//   { kind: "alarm", alarm: { uid, active } }
+// Returns { intro, calls: [{ docs, method, path, perm, about, example }] }.
+function pageCalls(s, page)
+{
+    const ref = new Map(endpoints(s).map((e) => [e.id, e]));
+    const base = s.apiBase;
+    const line = (path) => s.curl + "\"" + base + path + "\"";
+    const oneLine = (v) => String(v).replace(/[\r\n]+/g, " ");
+    const out = [];
+    function call(id, about, example)
+    {
+        const e = ref.get(id);
+        out.push({ docs: id, method: e.method, path: e.path, perm: e.perm, about: about, example: example });
+    }
+    function post(id, about, body, path)
+    {
+        call(id, about, s.curlPost + "-d '" + JSON.stringify(body) + "' \\\n  \"" + base + path + "\"");
+    }
+    function sample(channels)
+    {
+        const data = {};
+        channels.slice(0, 2).forEach((c) => { data[c] = 0; });
+        return { data: data };
+    }
+
+    if (page.kind === "device")
+    {
+        const d = page.device.uid;
+        call("device", "This device with every sensor's latest value and alarm status.", line("/devices/" + d));
+        call("sensors", "This device's sensors with their latest values.", line("/sensors?device=" + d));
+        if (page.sensors.length)
+        {
+            call("readings", "Stored readings, one sensor per call: the last 24 hours, or add from and to (epoch seconds).",
+                page.sensors.map((x) => "# " + oneLine(x.name) + "\n" + line("/readings?sensor=" + x.uid)).join("\n"));
+        }
+        call("active-alarms", "This device's active alarms.", line("/alarms/active?device=" + d));
+        call("alarm-history", "Alarms raised on this device: the last 24 hours, or add from and to.", line("/alarms/history?device=" + d));
+        call("rules", "The alarm rules on this device's sensors. A rule's uid gives its change log.", line("/alarm-rules?device=" + d));
+        if (page.device.apiWrite && page.device.channels.length)
+        {
+            post("device-readings", "Send readings to this device by channel. Its channels: " + page.device.channels.join(", ") + ".", sample(page.device.channels), "/devices/" + d + "/readings");
+        }
+    }
+    else if (page.kind === "sensor")
+    {
+        const x = page.sensor.uid;
+        call("sensor", "This sensor's latest value and alarm status.", line("/sensors/" + x));
+        call("readings", "Stored readings for this sensor: the last 24 hours, or add from and to (epoch seconds).", line("/readings?sensor=" + x));
+        call("active-alarms", "This sensor's active alarms.", line("/alarms/active?sensor=" + x));
+        call("alarm-history", "Alarms raised on this sensor: the last 24 hours, or add from and to.", line("/alarms/history?sensor=" + x));
+        call("rules", "This sensor's alarm rules.", line("/alarm-rules?sensor=" + x));
+        if (page.rules.length)
+        {
+            call("rule-changes", "Each rule's change log, one rule per call, from its first change.",
+                page.rules.map((r) => "# " + oneLine(r.label) + "\n" + line("/alarm-rules/changes?rule=" + r.uid)).join("\n"));
+        }
+        if (page.device.apiWrite)
+        {
+            post("device-readings", "Send a reading for this sensor, through its device.", sample([page.sensor.channel]), "/devices/" + page.device.uid + "/readings");
+        }
+    }
+    else if (page.kind === "location")
+    {
+        const l = page.location.uid;
+        call("active-alarms", "Alarms active now at this location.", line("/alarms/active?location=" + l));
+        if (page.account) { call("active-alarms", "Alarms active now in every location of the account that the key can view.", line("/alarms/active?account=" + page.account.uid)); }
+        call("alarm-history", "Alarms raised at this location: the last 24 hours, or add from and to (epoch seconds).", line("/alarms/history?location=" + l));
+        call("rules", "The alarm rules at this location.", line("/alarm-rules?location=" + l));
+        call("rule-changes", "One rule's change log, from its first change. Put a rule's uid from the call above in place of <rule uid>.", line("/alarm-rules/changes?rule=<rule uid>"));
+        call("silent-devices", "Devices here with no data for 24 hours or more; change minutes for another span.", line("/devices/silent?location=" + l + "&minutes=1440"));
+    }
+    else if (page.kind === "alarm")
+    {
+        const a = page.alarm.uid;
+        call("alarm-detail", "This alarm with its events, notifications and escalations.", line("/alarms/" + a));
+        if (page.alarm.active)
+        {
+            post("ack", "Acknowledge this alarm: its notifications stop for minutes (5 to 1440).", { comment: "Checked on site", minutes: 60 }, "/alarms/" + a + "/ack");
+            post("clear", "Clear this alarm by hand.", { comment: "Fixed on site" }, "/alarms/" + a + "/clear");
+        }
+    }
+    const intro = "Each command is ready to run with this page's uids. Put your API key in $" + s.envVar + " first (export " + s.envVar + "=<your key>). "
+        + "Keys are made in Account > API; parameters and replies are in API Docs.";
+    return { intro: intro, calls: out };
 }
 
 const PERMISSIONS =
@@ -427,4 +534,4 @@ function downloadPath(acctBase)
     return acctBase + "/api/docs/download";
 }
 
-module.exports = { envVarOf, siteOf, site, build, html, markdown, fileName, downloadPath };
+module.exports = { envVarOf, siteOf, site, build, pageCalls, html, markdown, fileName, downloadPath };

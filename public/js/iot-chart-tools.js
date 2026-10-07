@@ -299,6 +299,8 @@
             '<div class="modal-dialog"><div class="modal-content">' +
             '<div class="modal-header"><h5 class="modal-title">Email this chart</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>' +
             '<div class="modal-body">' +
+              '<div class="mb-3"><label class="form-label" for="' + id + 'To">To <span class="small text-secondary">(for Send from ' + esc(o.siteName || "the site") + ')</span></label>' +
+                '<textarea class="form-control" id="' + id + 'To" rows="2" maxlength="1300" placeholder="Up to 5 addresses, separated by commas or new lines"></textarea></div>' +
               '<div class="mb-3" data-title-field data-title-prefix="none" data-sample="{}">' +
                 '<label class="form-label" for="' + id + 'Name">Name</label>' +
                 '<div class="input-group"><input class="form-control" id="' + id + 'Name" maxlength="200" autocomplete="off" data-title-input>' +
@@ -313,18 +315,23 @@
               '<div class="mb-2"><label class="form-label" for="' + id + 'Format">Data file</label><select class="form-select" id="' + id + 'Format"></select></div>' +
               '<div class="form-text" data-email-about></div>' +
               '<div class="form-text text-warning d-none" data-email-fallback>This browser cannot attach files to an email. Download the image and the data, then open the email and attach them.</div>' +
+              '<div class="alert alert-danger d-none mt-3 mb-0" data-email-error><span data-email-error-text></span>' +
+                '<div class="mt-2 d-none" data-email-limit><button type="button" class="btn btn-sm btn-outline-secondary">Request a higher limit</button></div></div>' +
             '</div>' +
             '<div class="modal-footer">' +
               '<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>' +
               '<button type="button" class="btn btn-outline-secondary d-none" data-email="png"><i class="fa-solid fa-download me-1"></i>Image</button>' +
               '<button type="button" class="btn btn-outline-secondary d-none" data-email="data"><i class="fa-solid fa-download me-1"></i>Data</button>' +
+              '<button type="button" class="btn btn-outline-primary" data-email="server" disabled>Send from ' + esc(o.siteName || "the site") + '</button>' +
               '<button type="button" class="btn btn-primary" data-email="send" disabled>Preparing...</button>' +
             '</div>' +
             '</div></div>';
         document.body.appendChild(m);
 
         var nameIn = m.querySelector("[data-title-input]"), field = m.querySelector("[data-title-field]");
-        var comment = m.querySelector("textarea"), format = m.querySelector("select");
+        var comment = m.querySelector("#" + id + "Comment"), format = m.querySelector("#" + id + "Format");
+        var toIn = m.querySelector("#" + id + "To"), serverBtn = m.querySelector('[data-email="server"]');
+        var errBox = m.querySelector("[data-email-error]"), errText = m.querySelector("[data-email-error-text]"), limitBox = m.querySelector("[data-email-limit]");
         var send = m.querySelector('[data-email="send"]'), about = m.querySelector("[data-email-about]"), fallbackNote = m.querySelector("[data-email-fallback]");
         var state = null;   // what the dialog was opened on: { s, d, vars, link, png, data, share }
         var prepId = 0;
@@ -353,6 +360,7 @@
             fallbackNote.classList.toggle("d-none", state.share);
             m.querySelectorAll('[data-email="png"], [data-email="data"]').forEach(function (b) { b.classList.toggle("d-none", state.share); });
             send.disabled = true;
+            serverBtn.disabled = true;
             send.textContent = "Preparing...";
             var base = fileName(container, state.w[0], state.w[1]);
             var inner = f.key.indexOf("json") === 0 ? iotExport.toJson(state.d.headers, state.d.rows) : iotExport.toCsv(state.d.headers, state.d.rows);
@@ -363,8 +371,82 @@
             state.data = new File([dataBlob], base + f.ext, { type: f.type });
             state.image = new File([image], base + ".png", { type: "image/png" });
             send.disabled = false;
+            serverBtn.disabled = false;
             send.textContent = state.share ? "Email..." : "Open email";
         }
+
+        function showError(text, limitReached)
+        {
+            errText.textContent = text || "";
+            errBox.classList.toggle("d-none", !text);
+            limitBox.classList.toggle("d-none", !limitReached);
+        }
+
+        // Send from the site (services/chartEmail.js): the server reads the readings in the window
+        // itself; the browser sends the form and the image it drew. One message to all recipients.
+        serverBtn.addEventListener("click", async function ()
+        {
+            if (!state || !state.image) { return; }
+            showError(null);
+            if (!toIn.value.trim())
+            {
+                showError("Add at least one address in To to send from " + (o.siteName || "the site") + ".");
+                toIn.focus();
+                return;
+            }
+            var label = serverBtn.textContent;
+            serverBtn.disabled = true;
+            serverBtn.textContent = "Sending...";
+            var fd = new FormData();
+            fd.append("to", toIn.value);
+            fd.append("name", renderName(nameIn.value || o.nameTemplate, state.vars));
+            fd.append("comment", comment.value);
+            fd.append("format", format.value);
+            fd.append("window_from", String(Math.floor(state.w[0] / 1000)));
+            fd.append("window_to", String(Math.ceil(state.w[1] / 1000)));
+            fd.append("tz", (o.getTimezone && o.getTimezone()) || Intl.DateTimeFormat().resolvedOptions().timeZone);
+            fd.append("image", state.image, state.image.name);
+            try
+            {
+                var res = await fetch(o.emailUrl, { method: "POST", body: fd, credentials: "same-origin", headers: { "x-csrf-token": o.csrf || "", "accept": "application/json" } });
+                var j = null;
+                try { j = await res.json(); } catch (e) { j = null; }
+                if (res.ok && j && j.ok)
+                {
+                    bootstrap.Modal.getOrCreateInstance(m).hide();
+                    toIn.value = "";
+                    if (window.iotFlash) { iotFlash("success", "Sent to " + j.sent + " recipient" + (j.sent === 1 ? "" : "s") + " (" + j.used + " of " + j.limit + " today)."); }
+                }
+                else
+                {
+                    if (j && j.limitReached) { state.limit = j.limit; }
+                    showError(j && j.error ? j.error : "Sending failed (" + res.status + "). Reload the page and try again.", !!(j && j.limitReached));
+                }
+            }
+            catch (err) { showError("Sending failed: " + (err && err.message ? err.message : err)); }
+            finally
+            {
+                serverBtn.disabled = false;
+                serverBtn.textContent = label;
+            }
+        });
+
+        // Daily limit reached: close this dialog and open the support request with the ask filled in.
+        limitBox.querySelector("button").addEventListener("click", function ()
+        {
+            var sm = document.getElementById("supportModal");
+            if (!sm) { return; }
+            m.addEventListener("hidden.bs.modal", function ()
+            {
+                sm.addEventListener("shown.bs.modal", function ()
+                {
+                    var d = document.getElementById("supportDescription");
+                    if (d && !d.value) { d.value = "Please raise my daily limit for chart emails sent from " + (o.siteName || "the site") + " (now " + (state && state.limit !== undefined ? state.limit : "") + " a day). What I need it for: "; }
+                }, { once: true });
+                bootstrap.Modal.getOrCreateInstance(sm).show();
+            }, { once: true });
+            bootstrap.Modal.getOrCreateInstance(m).hide();
+        });
 
         format.addEventListener("change", prepare);
         m.querySelector('[data-email="png"]').addEventListener("click", function () { if (state && state.image) { saveBlob(state.image, state.image.name); } });
@@ -418,6 +500,8 @@
             }).join("");
             format.value = keep && !format.querySelector('option[value="' + keep + '"]').disabled ? keep : "csv";
             about.textContent = "Attaches the chart image and the " + d.rows.length.toLocaleString() + " readings in view. The link opens this view for people who can sign in to " + (vars.site_name || "the site") + ".";
+            showError(null);
+            serverBtn.classList.toggle("d-none", !o.emailUrl);
             bootstrap.Modal.getOrCreateInstance(m).show();
             prepare();
         };
@@ -425,7 +509,8 @@
 
     // Puts the control after Download. o: { chart, getSpan() the chart's { from, to } in ms,
     // getTimezone() IANA name or null for the browser's, getData() as for Download, getVars() the
-    // token values, nameTemplate the default Name }.
+    // token values, nameTemplate the default Name, emailUrl and csrf for Send from the site,
+    // siteName }.
     function addShare(container, o)
     {
         var wrap = document.createElement("div");

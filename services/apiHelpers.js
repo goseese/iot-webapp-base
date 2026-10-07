@@ -62,4 +62,31 @@ function typedValue(field, v)
     return v;
 }
 
-module.exports = { SEVERITY_ORDER, worse, pageByEpoch, limitOf, parseJson, typedValue };
+// The scope a list endpoint requires (DECISIONS "API queries are scoped"): at least one of allowed must
+// be given. Returns the error text for the 400, or null when one is present.
+function missingScope(query, allowed)
+{
+    const q = query || {};
+    if (allowed.some((k) => q[k] !== undefined && q[k] !== null && String(q[k]) !== "")) { return null; }
+    if (allowed.length === 1) { return allowed[0] + " is required (a uid)."; }
+    return "One of " + allowed.slice(0, -1).join(", ") + " or " + allowed[allowed.length - 1] + " is required (a uid).";
+}
+
+// A minutes query parameter: a whole number from 1 to ten years of minutes; anything else is null (a 400).
+function minutesOf(v)
+{
+    if (v === undefined || v === null || String(v).trim() === "") { return null; }
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 5256000 ? n : null;
+}
+
+// A yes or no query parameter: 1, true or yes, and 0, false or no, in any case. Absent or anything else is def.
+function flagOf(v, def)
+{
+    const s = String(v === undefined || v === null ? "" : v).trim().toLowerCase();
+    if (["1", "true", "yes"].includes(s)) { return true; }
+    if (["0", "false", "no"].includes(s)) { return false; }
+    return def;
+}
+
+module.exports = { SEVERITY_ORDER, worse, pageByEpoch, limitOf, parseJson, typedValue, missingScope, minutesOf, flagOf };

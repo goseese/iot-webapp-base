@@ -24,7 +24,7 @@
       </div>
     </div>
   </div>
-  <div class="iot-panel__body"><div id="chart" style="height: 380px"></div><div class="d-flex align-items-center gap-2 mt-2" id="chartFoot" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: account ? account.name : "", location_name: sensor.location_name, device_name: sensor.device_name, sensor_name: sensor.name, chart_name: sensor.name }) %>"><div class="form-text m-0 d-none" id="chartNote"></div></div></div>
+  <div class="iot-panel__body"><div id="chart" style="height: 380px"></div><div class="d-flex align-items-center gap-2 mt-2" id="chartFoot" data-csrf="<%= csrfToken %>" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: account ? account.name : "", location_name: sensor.location_name, device_name: sensor.device_name, sensor_name: sensor.name, chart_name: sensor.name }) %>"><div class="form-text m-0 d-none" id="chartNote"></div></div></div>
 </div>
 
 <% var canEdit = permissions.has(bits, permissions.byName.edit); var ownDesc = sensor.description ? sensor.description : null; var shownDesc = ownDesc || descriptionDefault; %>
@@ -292,7 +292,7 @@ document.addEventListener("DOMContentLoaded", function ()
     // Share: email it (image and data attached), a link to this exact view, or a PNG of it; the zoom
     // window follows the URL as it changes.
     var foot = document.getElementById("chartFoot");
-    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: function () { return current ? current.timezone : null; }, getData: dataInView, getVars: function () { return JSON.parse(foot.dataset.chartVars); }, nameTemplate: "{sensor_name} on {device_name}, {window}" });
+    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: function () { return current ? current.timezone : null; }, getData: dataInView, getVars: function () { return JSON.parse(foot.dataset.chartVars); }, nameTemplate: "{sensor_name} on {device_name}, {window}", emailUrl: "/sensors/<%= uid %>/email", csrf: foot.dataset.csrf, siteName: JSON.parse(foot.dataset.chartVars).site_name });
     iotChartTools.trackZoom(chart, function () { return current; });
     if (fixed) { document.querySelectorAll("[data-range]").forEach(function (x) { x.classList.remove("active"); }); }
     load("<%= range %>");

@@ -1,0 +1,47 @@
+<%# The API calls for this page (DECISIONS "API tabs"; built by services/apiDocs.js pageCalls()).
+    api: { intro, calls: [{ docs, method, path, perm, about, example }] }. docsBase: the account's API
+    Docs page, for each call's reference link. collapsed: a closed card that opens on click (the alarm
+    page), else an open panel (the API tabs). %>
+<% var collapsed = !!locals.collapsed; %>
+<div class="iot-panel" data-api-usage>
+  <div class="iot-panel__header d-flex justify-content-between align-items-center">
+    <strong>API</strong>
+    <% if (collapsed) { %><button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#apiUsageBody" aria-expanded="false" aria-controls="apiUsageBody">Show</button><% } %>
+  </div>
+  <div class="iot-panel__body<%= collapsed ? " collapse" : "" %>" id="apiUsageBody">
+    <p class="small text-secondary"><%= api.intro %> <a href="<%= docsBase %>">Open API Docs</a></p>
+    <% api.calls.forEach(function (c) { %>
+    <div class="mb-3" data-api-call>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-1">
+        <div><strong class="font-monospace small"><%= c.method %> <%= c.path %></strong> <span class="text-secondary small ms-2">needs <%= c.perm %></span></div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-api-copy><i class="fa-regular fa-copy"></i> Copy</button>
+          <a class="btn btn-sm btn-outline-secondary" href="<%= docsBase %>#<%= c.docs %>">Docs</a>
+        </div>
+      </div>
+      <p class="small mb-1"><%= c.about %></p>
+      <pre class="iot-pre mb-0"><%= c.example %></pre>
+    </div>
+    <% }); %>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function ()
+{
+    document.querySelectorAll("[data-api-usage] [data-api-copy]").forEach(function (b)
+    {
+        b.addEventListener("click", function ()
+        {
+            var pre = b.closest("[data-api-call]").querySelector("pre");
+            window.iotExport.copy(pre.textContent, "the command");
+        });
+    });
+    var body = document.getElementById("apiUsageBody");
+    var toggle = document.querySelector("[data-bs-target='#apiUsageBody']");
+    if (body && toggle)
+    {
+        body.addEventListener("shown.bs.collapse", function () { toggle.textContent = "Hide"; });
+        body.addEventListener("hidden.bs.collapse", function () { toggle.textContent = "Show"; });
+    }
+});
+</script>
