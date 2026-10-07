@@ -17,7 +17,7 @@ var last = Math.min(f.page * pageSize, total);
   <% if (f.q) { %><div class="col-auto"><a class="btn btn-outline-secondary btn-sm" href="<%= link({ q: "", page: 1 }) %>">Clear</a></div><% } %>
 </form>
 <div class="iot-panel">
-  <div class="table-responsive"><table class="table iot-table align-middle mb-0">
+  <div class="table-responsive"><table class="table iot-table align-middle mb-0" data-tools="none">
     <thead><tr><%- th("user", "User") %><%- th("name", "Name") %><%- th("email", "Email") %><%- th("access", "Access") %><%- th("login", "Last login") %><th>MFA</th><%- th("shares", "Chart emails (24 h)") %><%- th("status", "Status") %></tr></thead>
     <tbody>
     <% if (!rows.length) { %><tr><td colspan="8" class="text-secondary">No users<%= f.q ? " match " + f.q : "" %>.</td></tr><% } %>

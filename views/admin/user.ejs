@@ -13,7 +13,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
   <div class="col-12 col-lg-4">
     <div class="iot-panel h-100">
       <div class="iot-panel__header"><strong>Sign in</strong></div>
-      <div class="iot-panel__body"><table class="table table-sm mb-0"><tbody>
+      <div class="iot-panel__body"><table class="table table-sm iot-table mb-0" data-tools="none"><tbody>
         <tr><th class="text-secondary fw-normal">Status</th><td>
           <%= u.disabled_epoch ? "Offline since " + when(u.disabled_epoch) + (disabledBy ? " by " + disabledBy : "") : "Online" %>
           <% if (u.disabled_epoch || u.id !== currentUser.id) { %>
@@ -61,7 +61,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
         <% if (smsVisible) { %><div class="form-check form-switch"><input class="form-check-input" type="checkbox" role="switch" id="sms_enabled" name="sms_enabled" value="1" <%= u.sms_enabled ? "checked" : "" %>><label class="form-check-label" for="sms_enabled">Alarm SMS</label></div><% } %>
         <button class="btn btn-sm btn-primary mt-2" type="submit">Save</button>
       </form>
-      <table class="table table-sm mb-0"><tbody>
+      <table class="table table-sm iot-table mb-0" data-tools="none"><tbody>
         <tr><th class="text-secondary fw-normal">Alarm email</th><td><%= u.email_enabled ? "On" : "Off" %><%= u.email_bounced ? ", address bounced" : "" %><%= u.email_paused_until_epoch && u.email_paused_until_epoch > now ? ", paused until " + fmt.epoch(u.email_paused_until_epoch) : "" %></td></tr>
         <% if (smsVisible) { %>
         <tr><th class="text-secondary fw-normal">Alarm SMS</th><td><%= u.sms_enabled ? "On" : "Off" %><%= u.phone ? "" : ", no phone number" %><%= u.sms_paused_until_epoch && u.sms_paused_until_epoch > now ? ", paused until " + fmt.epoch(u.sms_paused_until_epoch) : "" %></td></tr>
@@ -73,7 +73,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
   <div class="col-12 col-lg-4">
     <div class="iot-panel h-100">
       <div class="iot-panel__header"><strong>Chart email</strong></div>
-      <div class="iot-panel__body"><table class="table table-sm mb-0"><tbody>
+      <div class="iot-panel__body"><table class="table table-sm iot-table mb-0" data-tools="none"><tbody>
         <tr><th class="text-secondary fw-normal">Sent, last 24 h</th><td><%= shares.sent %> of <%= shares.limit %><%= shares.limit === 0 ? " (sending off)" : "" %></td></tr>
         <tr><th class="text-secondary fw-normal">Daily limit</th><td><%= u.chart_email_daily_limit === null ? "Site setting (" + shares.siteLimit + ")" : u.chart_email_daily_limit + " (own limit)" %></td></tr>
         <% var onceActive = u.chart_email_limit_once !== null && Number(u.chart_email_limit_once_until) > now; %>
@@ -108,7 +108,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
 </div>
 <div class="iot-panel">
   <div class="iot-panel__header d-flex align-items-center"><strong>Access</strong> <span class="text-secondary small ms-2"><%= grantRows.length %> grant<%= grantRows.length === 1 ? "" : "s" %><%= u.is_superadmin ? "; a superadmin sees everything without grants" : "" %></span>
-    <button class="btn btn-sm btn-primary ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#addAccess"><i class="fa-solid fa-plus me-1"></i>Add access</button></div>
+    <button class="btn btn-sm btn-primary ms-auto me-2 iot-header-end" type="button" data-bs-toggle="collapse" data-bs-target="#addAccess"><i class="fa-solid fa-plus me-1"></i>Add access</button></div>
   <div class="collapse" id="addAccess"><div class="iot-panel__body border-bottom">
     <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/grants">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
