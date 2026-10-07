@@ -39,7 +39,7 @@ async function resolve(token)
     if (!actor) { return null; }
     const reasons = await knex(T("list_items") + " as i").join(T("lists") + " as l", "l.id", "i.list_id").where("l.slug", "ack_reasons").orderBy("i.sort_order").select("i.label");
     return {
-        token: row, ctx: ctx, actor: actor,
+        token: row, ctx: ctx, actor: actor, valueText: await notify.displayValue(ctx, ctx.trigger_value),
         canAck: actor.type === "user" && permissions.has(bits, permissions.byName.ack_alarm),
         canClear: actor.type === "user" && permissions.has(bits, permissions.byName.clear_alarm),
         reasons: reasons.map((r) => r.label)
@@ -48,7 +48,7 @@ async function resolve(token)
 
 function render(res, r, extra)
 {
-    res.render("auth/alarm-action", Object.assign({ title: "Alarm", r: r, tokenValue: r.tokenValue, value: r.ctx.trigger_value === null ? "" : notify.displayValue(r.ctx, r.ctx.trigger_value), error: null, done: null }, AUTH, extra || {}));
+    res.render("auth/alarm-action", Object.assign({ title: "Alarm", r: r, tokenValue: r.tokenValue, value: r.valueText, error: null, done: null }, AUTH, extra || {}));
 }
 
 router.get("/a/:token", async (req, res, next) =>

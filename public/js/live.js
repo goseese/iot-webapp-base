@@ -1,5 +1,6 @@
 /* Live updates: elements with data-live="<sensorUid>:value" or ":ago" refresh in place; alarm
-   transitions refresh the sidebar badge from /alarms/count.json. Nothing here changes routing. */
+   transitions refresh the sidebar badge from /alarms/count.json and add a marker to the sensor chart
+   on the page (window.devmonChart). Nothing here changes routing. */
 (function ()
 {
     if (typeof io === "undefined") { return; }
@@ -82,6 +83,12 @@
             if (!lastSeen[dk] || msg.epoch >= lastSeen[dk]) { lastSeen[dk] = msg.epoch; }
             document.querySelectorAll('[data-live="' + dk + ':ago"]').forEach(function (el) { renderAgo(el, lastSeen[dk]); flash(el); });
         }
+        // Sensor and alarm page chart: a marker for an alarm change on its sensor (iot-sensor-view.js).
+        // Readings above went first, so the chart already reaches this epoch.
+        (msg.alarms || []).forEach(function (t)
+        {
+            if (window.devmonChart && window.devmonChart.sensor === t.sensor && window.devmonChart.alarm) { window.devmonChart.alarm({ uid: t.alarm, epoch: msg.epoch, event_kind: t.kind, severity: t.severity }); }
+        });
         if ((msg.alarms || []).length) { refreshBadge(); }
     });
     setInterval(tick, 30000);

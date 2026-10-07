@@ -10,7 +10,6 @@ const notifications = require("../../db/repos/notifications");
 const tags = require("../tags");
 const tokens = require("../tokens");
 const mail = require("../mail");
-const metrics = require("../../metrics");
 const { ORDER } = require("./ladder");
 const title = require("./title");
 const chartImage = require("./chartImage");
@@ -168,13 +167,14 @@ async function gate(recipient, channel, ctx, rule, eventKind, severity)
     return null;
 }
 
-function displayValue(ctx, value)
+// A value as the sensor page shows it (Jeff, Oct 2026: every alarm message and page uses the
+// location's units): display.format, so the sensor's own unit, else the location's, else the
+// account's, else canonical, at the sensor's precision. ctx is alarmsRepo.context().
+async function displayValue(ctx, value)
 {
     if (value === null || value === undefined) { return ""; }
-    const m = metrics.get(ctx.metric);
-    const unit = ctx.display_unit || m.canonical;
-    const v = metrics.fromCanonical(ctx.metric, value, unit);
-    return v.toFixed(metrics.precision(ctx.metric, unit)) + (unit ? " " + unit : "");
+    const display = require("../display");
+    return display.format({ metric: ctx.metric, display_unit: ctx.display_unit, display_precision: ctx.display_precision }, Number(value), { id: ctx.location_id, account_id: ctx.account_id });
 }
 
 // "2026-10-06 09:55 PM (Chicago CDT)" in the location's timezone. The abbreviation is whatever
@@ -214,14 +214,15 @@ function subjectFor(titleText, eventKind, severity)
     return what + ": " + titleText;
 }
 
-function bodyFor(ctx, eventKind, severity, value, comment, actionUrl, ladderNote)
+// valueText: the value already worded by displayValue (async), or "" when there is none.
+function bodyFor(ctx, eventKind, severity, valueText, comment, actionUrl, ladderNote)
 {
     const lines =
     [
         ctx.sensor_name + " on " + ctx.device_name + " (" + ctx.location_name + ", " + ctx.account_name + ")",
         "Event: " + eventKind.replace("_", " ") + (severity ? ", severity " + severity : ""),
         "Direction: " + ctx.direction,
-        value !== null && value !== undefined ? "Value: " + displayValue(ctx, value) : null,
+        valueText ? "Value: " + valueText : null,
         "Alarm time: " + whenText(ctx.raised_epoch, ctx.iana_timezone),
         eventKind === "cleared" && ctx.cleared_epoch ? "Cleared: " + whenText(ctx.cleared_epoch, ctx.iana_timezone) : null,
         comment ? "Note: " + comment : null,
@@ -267,6 +268,7 @@ async function notify(alarmId, options)
     }
 
     const severity = options.severity || ctx.severity;
+    const valueText = await displayValue(ctx, options.value);
     const linkMinutes = settings.get("RENOTIFY_MINUTES", 60) * 4;
     // The chart image (services/alarms/chartImage.js) on the first email of an alarm and on its clear
     // email: drawn once, when the first email passes the gates, and shared by every recipient. The
@@ -306,7 +308,7 @@ async function notify(alarmId, options)
                 {
                     const sms = require("../sms").active();
                     // Subject, value (when there is one) and the alarm link, one per line.
-                    const smsText = [subjectFor(titleText, options.eventKind, severity), options.value !== null && options.value !== undefined ? displayValue(ctx, options.value) : null, env.appUrl + "/alarms/" + String(ctx.uid).toLowerCase()].filter((l) => l !== null).join("\n");
+                    const smsText = [subjectFor(titleText, options.eventKind, severity), valueText || null, env.appUrl + "/alarms/" + String(ctx.uid).toLowerCase()].filter((l) => l !== null).join("\n");
                     const nid = await notifications.insert({ kind: "alarm", channel: "sms", recipient_type: r.type, recipient_id: r.id, address: address, alarm_event_id: options.eventId, ladder_note: r.ladderNote, outcome: "failed", reason: "not attempted", provider: sms.name, subject: subjectFor(titleText, options.eventKind, severity), body: smsText, sender: settings.get("TWILIO_FROM_NUMBER", "") || null });
                     const result = await sms.send({ to: address, text: smsText }).catch((err) => ({ ok: false, reason: err.message }));
                     await notifications.update(nid, result.ok ? { outcome: "sent", reason: null, provider_message_id: result.messageId || null, provider_response: result.raw ? JSON.stringify(result.raw).slice(0, 8000) : null } : { outcome: "failed", reason: (result.reason || "send failed").slice(0, 200), provider_response: result.raw ? JSON.stringify(result.raw).slice(0, 8000) : null });
@@ -321,7 +323,7 @@ async function notify(alarmId, options)
                     actionUrl = env.appUrl + "/a/" + token;
                 }
                 const img = await chartFor();
-                const text = bodyFor(ctx, options.eventKind, severity, options.value, options.comment, actionUrl, r.ladderNote);
+                const text = bodyFor(ctx, options.eventKind, severity, valueText, options.comment, actionUrl, r.ladderNote);
                 await mail.send(
                 {
                     kind: "alarm", to: address, recipientType: r.type, recipientId: r.id, alarmEventId: options.eventId, ladderNote: r.ladderNote,

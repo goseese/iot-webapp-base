@@ -87,15 +87,13 @@ lists.get("/rules", async (req, res, next) =>
         const ids = await visibleIds(req);
         const rules = ids.length ? await knex(T("alarm_rules") + " as r").join(T("sensors") + " as s", "s.id", "r.sensor_id").join(T("devices") + " as d", "d.id", "s.device_id").join(T("locations") + " as l", "l.id", "d.location_id")
             .whereIn("l.id", ids).whereNull("r.delete_epoch").whereNull("s.delete_epoch").whereNull("d.delete_epoch")
-            .select("r.*", "s.name as sensor_name", "s.uid as sensor_uid", "s.metric", "s.display_unit", "d.name as device_name", "l.name as location_name").orderBy(["l.name", "d.name", "s.name"]) : [];
-        const display = require("../services/display");
-        const metrics = require("../metrics");
+            .select("r.*", "s.name as sensor_name", "s.uid as sensor_uid", "s.metric", "s.display_unit", "s.display_precision", "d.name as device_name", "l.name as location_name", "l.id as location_id", "l.account_id").orderBy(["l.name", "d.name", "s.name"]) : [];
         for (const r of rules)
         {
             if (r.rule_kind === "threshold")
             {
-                const unit = await display.resolveUnit({ metric: r.metric, display_unit: r.display_unit }, null);
-                r.thresholdText = metrics.fromCanonical(r.metric, r.threshold, unit).toFixed(metrics.precision(r.metric, unit)) + " " + unit;
+                // In the location's units, as the sensor page words it (display.format).
+                r.thresholdText = await display.format({ metric: r.metric, display_unit: r.display_unit, display_precision: r.display_precision }, Number(r.threshold), { id: r.location_id, account_id: r.account_id });
             }
         }
         res.render("alarms/rules", { title: "Alarm rules", rules: rules });
@@ -224,7 +222,7 @@ router.get("/:uid", loadAlarm, async (req, res, next) =>
         }
         res.render("alarms/show", {
             chart: chart,
-            title: alarmPageTitle(a), alarm: a, value: notify.displayValue(a, a.trigger_value), events: events,
+            title: alarmPageTitle(a), alarm: a, value: await notify.displayValue(a, a.trigger_value), events: events,
             canAck: permissions.has(req.bits, permissions.byName.ack_alarm), canClear: permissions.has(req.bits, permissions.byName.clear_alarm), reasons: reasons.map((r) => r.label),
             navTrail: alarmTrail(a), navSub: alarmTabs(a, "Overview")
         });
