@@ -219,7 +219,7 @@ function fullQuery()
         .join(T("users") + " as u", "u.id", "r.user_id")
         .leftJoin(T("accounts") + " as a", "a.id", "r.account_id")
         .leftJoin(T("locations") + " as l", "l.id", "r.location_id")
-        .select("r.*", "u.username", "u.display_name", "u.email", "u.email_bounced", "u.delete_epoch as user_delete_epoch",
+        .select("r.*", "u.username", "u.display_name", "u.email", "u.email_bounced", "u.delete_epoch as user_delete_epoch", "u.disabled_epoch as user_disabled_epoch",
             "a.name as account_name", "a.uid as account_uid", "l.name as location_name", "l.uid as location_uid");
 }
 
@@ -282,6 +282,7 @@ async function handlers(r, excludeIds)
         })
         .whereRaw("(g.permission_bits & ?) = ?", [HANDLE_BIT, HANDLE_BIT])
         .whereNull("u.delete_epoch")
+        .whereNull("u.disabled_epoch")   // offline users get no email (Administration > Users)
         .where("u.is_superadmin", false)
         .where("u.email_bounced", false)
         .whereNotIn("u.id", (excludeIds || []).filter((x) => x))
@@ -342,7 +343,8 @@ async function sendToGroup(r, messageId, audience, recipients, subject, text, fi
 
 function canEmail(r)
 {
-    return !!r.email && !r.user_delete_epoch && !r.email_bounced;
+    // An offline requester (Administration > Users) gets no copies or reply emails.
+    return !!r.email && !r.user_delete_epoch && !r.user_disabled_epoch && !r.email_bounced;
 }
 
 // input: { user, accountId, locationId, severity, description, pageUrl, pageTitle, userAgent,

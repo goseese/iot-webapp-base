@@ -53,6 +53,16 @@ function windowFor(rule, raisedEpoch, endEpoch, includeRaise)
     return { from: endEpoch - span, to: endEpoch };
 }
 
+// The alarm page chart (DECISIONS "Alarm page chart"), from the same rules: once cleared, the clear
+// email's window; while active, the raised email's window before the raise and on up to now, live
+// (to is null), never more than a year. Epoch seconds.
+function pageWindowFor(rule, raisedEpoch, clearedEpoch, now)
+{
+    if (clearedEpoch) { return windowFor(rule, raisedEpoch, clearedEpoch, true); }
+    const w = windowFor(rule, raisedEpoch, raisedEpoch, false);
+    return { from: Math.max(w.from, now - MAX_SPAN), to: null };
+}
+
 // ECharts formats a time axis in the process's own timezone, or in UTC with useUTC. To label the axis
 // in the location's timezone, every time is moved by that zone's offset at that moment and the chart
 // is drawn in UTC. Offsets are cached per hour, so a year of readings costs about 8800 lookups.
@@ -161,4 +171,4 @@ async function forAlarm(ctx, rule, eventKind, endEpoch, title)
     }
 }
 
-module.exports = { forAlarm, render, windowFor, shifter, colors };
+module.exports = { forAlarm, render, windowFor, pageWindowFor, shifter, colors };

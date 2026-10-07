@@ -43,12 +43,21 @@ async function send(msg)
     const to = [].concat(msg.to || []).map((a) => String(a).trim()).filter((a) => a.length > 0);
     const replyTo = [].concat(msg.replyTo || []).map((a) => String(a).trim()).filter((a) => a.length > 0);
     const notConfigured = driver.name === "none" && chosen().name !== "none";
+    // An offline user (Administration > Users) gets no email at all: they cannot sign in to turn
+    // anything off. Recorded as suppressed so the send log says why. Group mail addressed as
+    // "address" (support handlers) leaves offline users out where its list is built.
+    const offline = msg.recipientType === "user" && msg.recipientId ? await require("../../db/repos/users").findById(msg.recipientId) : null;
     const id = await notifications.insert(
     {
         kind: msg.kind, channel: "email", recipient_type: msg.recipientType || "address", recipient_id: msg.recipientId || null,
         address: to.join(", ").slice(0, 254), alarm_event_id: msg.alarmEventId || null, ladder_note: msg.ladderNote || null,
         outcome: "failed", reason: "not attempted", provider: driver.name, subject: (msg.subject || "").slice(0, 255)
     });
+    if (offline && offline.disabled_epoch)
+    {
+        await notifications.update(id, { outcome: "suppressed", reason: "user offline" });
+        return { ok: false, suppressed: true, notificationId: id, reason: "user offline" };
+    }
     if (notConfigured)
     {
         await notifications.update(id, { outcome: "failed", reason: "mail driver " + chosen().name + " is not configured (Admin, Site settings, Email)" });

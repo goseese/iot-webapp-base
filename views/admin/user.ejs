@@ -9,7 +9,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
   <% if (u.is_superadmin) { %><span class="badge text-bg-secondary">superadmin</span><% } %>
   <%# The event log filtered to this user (routes/admin.js GET /logs: who=u<user id>), over its longest period. %>
   <a class="small ms-auto" href="/admin/logs?range=30d&amp;who=u<%= u.id %>"><i class="fa-solid fa-list me-1"></i>Show all activity</a>
-  <span class="iot-status iot-status--<%= u.disabled_epoch ? "offline" : "online" %> ms-3"><%= u.disabled_epoch ? "offline" : "online" %></span>
+  <span class="iot-status iot-status--<%= u.disabled_epoch ? "offline" : "online" %> ms-3"><%= u.disabled_epoch ? "offline" : "active" %></span>
 </div>
 <div class="row g-3 mb-3">
   <div class="col-12 col-lg-4">
@@ -17,15 +17,15 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
       <div class="iot-panel__header"><strong>Sign in</strong></div>
       <div class="iot-panel__body"><table class="table table-sm iot-table mb-0" data-tools="none"><tbody>
         <tr><th class="text-secondary fw-normal">Status</th><td>
-          <%= u.disabled_epoch ? "Offline since " + when(u.disabled_epoch) + (disabledBy ? " by " + disabledBy : "") : "Online" %>
+          <%= u.disabled_epoch ? "Offline since " + when(u.disabled_epoch) + (disabledBy ? " by " + disabledBy : "") : "Active" %>
           <% if (u.disabled_epoch || u.id !== currentUser.id) { %>
           <form method="post" action="/admin/users/<%= fmt.uid(u.uid) %>/offline" class="mt-1">
             <input type="hidden" name="_csrf" value="<%= csrfToken %>">
             <% if (u.disabled_epoch) { %>
-            <button class="btn btn-sm btn-outline-secondary" name="action" value="online" type="submit">Put back online</button>
+            <button class="btn btn-sm btn-outline-secondary" name="action" value="online" type="submit">Make active</button>
             <% } else { %>
             <button class="btn btn-sm btn-outline-danger" name="action" value="offline" type="submit">Put offline</button>
-            <div class="form-text">They cannot sign in and any open session ends. Alarm email still follows Alerts.</div>
+            <div class="form-text">They cannot sign in, any open session ends, and they get no email or SMS. Their alert settings are kept for when they are active again.</div>
             <% } %>
           </form>
           <% } %>
@@ -69,7 +69,7 @@ function when(e) { return e ? fmt.ago(e, now) + ", " + fmt.epoch(e) : "never"; }
         <tr><th class="text-secondary fw-normal">Alarm SMS</th><td><%= u.sms_enabled ? "On" : "Off" %><%= u.phone ? "" : ", no phone number" %><%= u.sms_paused_until_epoch && u.sms_paused_until_epoch > now ? ", paused until " + fmt.epoch(u.sms_paused_until_epoch) : "" %></td></tr>
         <% } %>
       </tbody></table>
-      <div class="form-text mt-2">The user can turn these back on in their profile.</div></div>
+      <div class="form-text mt-2">The user can turn these back on in their profile.<% if (u.disabled_epoch) { %> <strong>Nothing is sent while they are offline.</strong><% } %></div></div>
     </div>
   </div>
   <div class="col-12 col-lg-4">

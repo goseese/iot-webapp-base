@@ -30,7 +30,7 @@ var last = Math.min(f.page * pageSize, total);
         <td class="text-secondary small"><%= fmt.ago(r.last_login_epoch, now) %></td>
         <td class="small"><%= r.mfa_mode ? (r.mfa_mode === "on" ? "On" : "Off") : "Inherit (site " + siteMfa + ")" %></td>
         <td class="small"><%= r.shares_24h %> of <%= r.shareLimit %><%= r.shareLimit === 0 ? " (off)" : "" %></td>
-        <td><span class="iot-status iot-status--<%= r.disabled_epoch ? "offline" : "online" %>"><%= r.disabled_epoch ? "offline" : "online" %></span></td>
+        <td><span class="iot-status iot-status--<%= r.disabled_epoch ? "offline" : "online" %>"><%= r.disabled_epoch ? "offline" : "active" %></span></td>
       </tr>
     <% }); %>
     </tbody>

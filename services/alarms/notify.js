@@ -147,6 +147,8 @@ async function gate(recipient, channel, ctx, rule, eventKind, severity)
     if (recipient.type === "user")
     {
         const u = recipient.row;
+        // Offline (Administration > Users): no alarm email or SMS; their own switches are kept for later.
+        if (u.disabled_epoch) { return "user offline"; }
         if (channel === "email" && !u.email_enabled) { return "email turned off by user"; }
         if (channel === "email" && u.email_bounced) { return "email address bounced"; }
         if (channel === "email" && u.email_paused_until_epoch && u.email_paused_until_epoch > now) { return "email paused by user"; }

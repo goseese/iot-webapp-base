@@ -8,6 +8,9 @@ const alarmsRepo = require("../db/repos/alarms");
 const actions = require("../services/alarms/actions");
 const notify = require("../services/alarms/notify");
 const activity = require("../services/activity");
+const chartImage = require("../services/alarms/chartImage");
+const display = require("../services/display");
+const metrics = require("../metrics");
 
 const router = express.Router();
 // Malformed ids are a plain 404, never a 500 (middleware/account.js uidParam).
@@ -206,7 +209,19 @@ router.get("/:uid", loadAlarm, async (req, res, next) =>
         const events = await knex(T("alarm_events") + " as e").leftJoin(T("users") + " as u", function () { this.on("u.id", "e.actor_id").andOn("e.actor_type", knex.raw("?", ["user"])); })
             .where("e.alarm_id", a.id).select("e.*", "u.username as actor_username").orderBy("e.epoch");
         const reasons = await knex(T("list_items") + " as i").join(T("lists") + " as l", "l.id", "i.list_id").where("l.slug", "ack_reasons").orderBy("i.sort_order").select("i.label");
+        // The sensor chart under the cards (DECISIONS "Alarm page chart"): threshold alarms only, the
+        // window from the alarm email rules; the page loads readings from the sensor's /data route.
+        let chart = null;
+        if (a.direction !== "no_data")
+        {
+            const rule = a.rule_id ? await knex(T("alarm_rules")).where({ id: a.rule_id }).first() : null;
+            const w = chartImage.pageWindowFor(rule || {}, Number(a.raised_epoch), a.cleared_epoch ? Number(a.cleared_epoch) : null, nowEpoch());
+            const unit = await display.resolveUnit({ metric: a.metric, display_unit: a.display_unit }, { id: a.location_id, account_id: a.account_id });
+            const precision = a.display_precision !== null && a.display_precision !== undefined ? Number(a.display_precision) : metrics.precision(a.metric, unit);
+            chart = { sensor: String(a.sensor_uid).toLowerCase(), from: w.from, to: w.to, precision: precision, account_name: a.account_name };
+        }
         res.render("alarms/show", {
+            chart: chart,
             title: alarmPageTitle(a), alarm: a, value: notify.displayValue(a, a.trigger_value), events: events,
             canAck: permissions.has(req.bits, permissions.byName.ack_alarm), canClear: permissions.has(req.bits, permissions.byName.clear_alarm), reasons: reasons.map((r) => r.label),
             navTrail: alarmTrail(a), navSub: alarmTabs(a, "Overview")

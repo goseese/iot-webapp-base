@@ -505,7 +505,7 @@ router.post("/users/:uid/reset-link", async (req, res, next) =>
         const user = await liveUser(req);
         if (!user) { return next(notFoundError()); }
         // The link would be refused (routes/auth.js), so it is not sent.
-        if (user.disabled_epoch) { req.flash("danger", user.username + " is offline. Put them back online before sending a reset link."); return res.redirect(userPage(user)); }
+        if (user.disabled_epoch) { req.flash("danger", user.username + " is offline. Make them active before sending a reset link."); return res.redirect(userPage(user)); }
         const sent = await require("../services/resetLink").send(user);
         await activity.log(req, "password_reset_sent", { entity_type: "user", entity_uid: user.uid, outcome: sent.ok ? "ok" : "failed", detail: user.username + (sent.ok ? "" : ": " + String(sent.reason || "").slice(0, 200)) });
         if (sent.ok) { req.flash("success", "Password reset link sent to " + user.email + "."); }
@@ -537,7 +537,7 @@ router.post("/users/:uid/offline", async (req, res, next) =>
             await audit(trx, { entityType: "user", entityUid: user.uid, entityName: user.username, field: "status", oldValue: isOffline ? "offline" : "online", newValue: action, actorType: "user", actorId: req.user.id, actorName: req.user.username });
         });
         await activity.log(req, "user_" + action, { entity_type: "user", entity_uid: user.uid, detail: user.username });
-        req.flash("success", user.username + (action === "offline" ? " is offline and cannot sign in." : " is back online."));
+        req.flash("success", user.username + (action === "offline" ? " is offline and cannot sign in." : " is active again."));
         res.redirect(userPage(user));
     }
     catch (err) { next(err); }

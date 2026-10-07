@@ -36,7 +36,7 @@ Superadmins get a Users item under Administration (after Accounts):
   25 a page. Search, sort, direction and page are GET parameters, so a view is a link.
 - **`/admin/users/<uid>`**: one user, four cards, and a **Show all activity** link in the header
   that opens the event log filtered to the user.
-  - **Sign in:** online or offline with a button to change it, the per user MFA dropdown, last
+  - **Sign in:** active or offline (no sign in, no email or SMS) with a button to change it, the per user MFA dropdown, last
     login, password set, created, and **Send reset link**.
   - **Alerts:** alarm email on or off (SMS too, where SMS is part of the site). The user can turn
     either back on in their own profile.
@@ -85,8 +85,9 @@ voltastc's answers are in brackets. Ask; do not assume they carry over.
 
 1. **SMS switch:** build it behind the site's SMS visibility flag, or show it now? [behind the
    flag; hidden today]
-2. **Offline:** stops signing in only, or also stops alarm email and SMS? [sign in only; alarm
-   email follows the Alerts switches]
+2. **Offline:** stops signing in only, or also every email and SMS? [everything: Jeff first chose
+   sign in only, then changed it, because an offline user cannot sign in to turn anything off.
+   Recommend everything.]
 3. **One time chart email limit:** a new limit for the next 24 hours that replaces the normal one,
    or extra sends added on top? [replaces, 24 hours]
 4. **Per user MFA dropdown:** keep it on Account > Users too, or only on the admin page? [both]
@@ -156,7 +157,7 @@ comment the way the target's other migrations are written.
   one page in the browser. Give the table `data-tools="none"`: the table tools' Download would
   export only the 25 rows on screen, which reads as the whole list. Columns: user (link, superadmin badge), name, email, access ("2
   accounts, 1 location"), last login (`fmt.ago`), MFA ("Inherit (site on|off)", On, Off), chart
-  emails ("3 of 20"), online or offline.
+  emails ("3 of 20"), active (green) or offline (grey). Say "active", not "online": on voltastc "online" read as "signed in right now".
 
 ## Step 3: the user page, read only
 
@@ -207,7 +208,27 @@ convention (voltastc: UTC with "ago", like the firmware page).
 
 ## Step 5: offline
 
-`disabled_epoch` set means offline. Offline stops signing in; it is not a delete.
+`disabled_epoch` set means offline: no sign in and no email or SMS of any kind. It is not a
+delete. The user's own alert switches are overridden, never changed, so making them active again
+brings their choices back.
+
+**Sending:** find every place that sends to a user first (grep the target for `mail.send(`,
+`sms.send(` and its recipient queries), then:
+
+- **`mail.send()`:** when `recipientType` is `user` and the user is offline, write the
+  notifications row and mark it `suppressed`, reason `user offline`, and return
+  `{ ok: false, suppressed: true }` without sending. One check covers report emails, device
+  access requests, the added to an account email, support copies and anything added later.
+- **Alarm gate** (`services/alarms/notify.js` `gate()`): return `user offline` first in the
+  user branch, for email and SMS, so no action link or chart is built and the alarm's
+  notification history says why.
+- **Group mail addressed as plain addresses** (voltastc: support handler emails, one message to
+  the whole group): leave offline users out where the list is built.
+- **Anything with its own recipient log** (voltastc: `support_recipients`, whose outcome allows
+  only sent or failed): skip the offline user before sending, at the check that already skips
+  deleted and bounced users, so the log never shows a false failure.
+
+**Sign in:**
 
 - **Password step:** check offline only **after** the password is right, so the message tells
   nobody who lacks the password. Answer 403 with "This account is turned off. Contact your
@@ -309,8 +330,10 @@ On the target, as a superadmin:
    skips them while off (notification row "email turned off by user").
 5. Put a test user offline while they are signed in elsewhere: their next click lands on the sign
    in page; their password gives the turned off message; a wrong password gives the usual one;
-   Forgot password sends nothing; an old reset link shows the dead page. Back online: all work.
-   Your own page has no Put offline button.
+   Forgot password sends nothing; an old reset link shows the dead page. Raise an alarm that
+   would email them: its notification history says `user offline`. Run a report they receive:
+   the send log shows it suppressed. Make them active again: all work, and their alert switches
+   are as they left them. Your own page has no Put offline button.
 6. Chart email: set a one time limit of 1, send twice (the second is refused with 429), End one
    time limit, send again. Set a permanent 0: sending is off.
 7. Access: add a location grant, edit it, add the same again (refused), remove it. The audit

@@ -50,3 +50,13 @@ test("theme colors come from iot-theme.css", () =>
     assert.match(c.danger, /^#[0-9a-f]{6}$/i);
     assert.match(c.primary, /^#[0-9a-f]{6}$/i);
 });
+
+test("alarm page window: cleared is the clear email's, active runs from before the raise to now", () =>
+{
+    const raised = END - 45 * DAY;
+    assert.deepStrictEqual(ci.pageWindowFor({ exceed_secs: 600 }, raised, END, END + DAY), ci.windowFor({ exceed_secs: 600 }, raised, END, true));
+    const active = ci.pageWindowFor({ exceed_secs: 600 }, END, null, END + 2 * DAY);
+    assert.deepStrictEqual(active, { from: END - 30 * DAY, to: null });
+    // Active for two years: at most the last year.
+    assert.deepStrictEqual(ci.pageWindowFor({ exceed_secs: 600 }, END, null, END + 730 * DAY), { from: END + 730 * DAY - 366 * DAY, to: null });
+});

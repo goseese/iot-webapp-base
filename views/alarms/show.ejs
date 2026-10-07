@@ -6,6 +6,13 @@
   <%- include("../partials/stat", { label: "Sensor", value: a.sensor_name, status: { kind: "online", label: a.device_name + " at " + a.location_name } }) %>
 </div>
 
+<% if (chart) { %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header d-flex justify-content-between align-items-center"><strong><%= a.sensor_name %> on <%= a.device_name %></strong><a class="small" href="/sensors/<%= chart.sensor %>">Sensor page</a></div>
+  <div class="iot-panel__body"><div id="chart" style="height: 380px" data-chart="<%= JSON.stringify(chart) %>"></div><div class="d-flex align-items-center gap-2 mt-2" id="chartFoot" data-csrf="<%= csrfToken %>" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: chart.account_name, location_name: a.location_name, device_name: a.device_name, sensor_name: a.sensor_name, chart_name: a.sensor_name }) %>"><div class="form-text m-0 d-none" id="chartNote"></div></div></div>
+</div>
+<% } %>
+
 <% if (!a.cleared_epoch) { %>
 <div class="mb-3"><%- include("../partials/alarm-actions", { a: a, canAck: canAck, canClear: canClear }) %></div>
 <% } %>
@@ -24,3 +31,97 @@
   </tbody></table></div>
 </div>
 <%- include("../partials/alarm-action-modal", { reasons: reasons, back: "/alarms/" + fmt.uid(a.uid) }) %>
+<% if (chart) { %>
+<script>
+// The alarm's sensor chart (DECISIONS "Alarm page chart"): the window the server chose from the alarm
+// email rules (live up to now while the alarm is active), readings from the sensor's /data route in
+// chunks, drawn by iot-sensor-chart.js like the sensor page, with Download and Share. A shared link
+// (from and to in the URL) shows that window instead; start and end zoom the first draw.
+document.addEventListener("DOMContentLoaded", function ()
+{
+    var el = document.getElementById("chart");
+    var cfg = JSON.parse(el.dataset.chart);
+    var chart = echarts.init(el, null, { renderer: "canvas" });
+    var css = getComputedStyle(document.documentElement);
+    var colors = iotSensorChart.themeColors(function (name) { return css.getPropertyValue(name).trim(); });
+    var MAX_POINTS = 100000;   // per series, as the sensor page
+    var view = iotChartTools.urlState();
+    var win = view.from !== null && view.to !== null && view.to > view.from ? { from: view.from, to: view.to } : { from: cfg.from, to: cfg.to };
+    var firstZoom = { start: view.start, end: view.end };
+    var current = null;
+    var complete = false;
+    var note = document.getElementById("chartNote");
+    function showNote(text)
+    {
+        note.textContent = text || "";
+        note.classList.toggle("d-none", !text);
+    }
+
+    function draw(keepZoom, initial)
+    {
+        var d = current;
+        var zoom = initial || { start: 0, end: 100 };
+        if (keepZoom)
+        {
+            var z = (chart.getOption().dataZoom || [])[1];
+            if (z) { zoom = { start: z.start, end: z.end }; }
+        }
+        chart.setOption(iotSensorChart.option(d, { colors: colors, precision: cfg.precision, fit: false, zoom: zoom, timeText: function (ms) { return iotChartTools.localTime(ms, d.timezone).slice(0, 16); } }), true);
+    }
+
+    // Live points while the alarm is active (live.js calls append for this sensor).
+    if (win.to === null)
+    {
+        window.devmonChart =
+        {
+            sensor: cfg.sensor,
+            append: function (t, v)
+            {
+                if (!current) { return; }
+                current.points.push([t, v]);
+                current.to = t;
+                chart.setOption({ xAxis: { max: t }, series: [{ data: current.points }] });
+            }
+        };
+    }
+
+    async function load()
+    {
+        var base = "/sensors/" + cfg.sensor + "/data?";
+        var res = await fetch(base + "alarms=1&from=" + win.from + (win.to !== null ? "&to=" + win.to : ""));
+        if (!res.ok) { showNote("Could not load readings."); return; }
+        var d = await res.json();
+        current = d;
+        draw(false, iotChartTools.zoomPct(current.from, current.to, firstZoom.start, firstZoom.end));
+        while (d.more && current.points.length < MAX_POINTS)
+        {
+            showNote("Loading older readings...");
+            res = await fetch(base + "from=" + Math.floor(current.from / 1000) + "&to=" + d.next_to);
+            if (!res.ok) { showNote("Could not load older readings."); return; }
+            d = await res.json();
+            current.points = d.points.concat(current.points);
+            draw(true);
+        }
+        complete = !d.more;
+        showNote(d.more ? "Showing the newest " + current.points.length.toLocaleString() + " readings, back to " + iotChartTools.localTime(current.points[0][0], current.timezone) + ". Older readings in this window are not loaded." : "");
+    }
+
+    window.addEventListener("resize", function () { chart.resize(); });
+    // Download: the raw readings inside the zoom window, in the location's timezone and display unit.
+    var dataInView = function ()
+    {
+        if (!current) { return null; }
+        var w = iotChartTools.visibleWindow(chart, current.from, current.to);
+        var rows = current.points.filter(function (p) { return p[0] >= w[0] && p[0] <= w[1]; }).map(function (p) { return [iotChartTools.localTime(p[0], current.timezone), Math.round(p[0] / 1000), p[1], current.unit]; });
+        var oldest = current.points.length ? current.points[0][0] : current.to;
+        var partial = !complete && w[0] < oldest ? "Readings before " + iotChartTools.localTime(oldest, current.timezone) + " are not loaded, so the file starts there." : null;
+        return { headers: ["Time (" + current.timezone + ")", "Epoch", "Value", "Unit"], rows: rows, from: w[0], to: w[1], partial: partial };
+    };
+    var foot = document.getElementById("chartFoot");
+    iotChartTools.addDownload(foot, dataInView);
+    iotChartTools.addShare(foot, { chart: chart, getSpan: function () { return current; }, getTimezone: function () { return current ? current.timezone : null; }, getData: dataInView, getVars: function () { return JSON.parse(foot.dataset.chartVars); }, nameTemplate: "{sensor_name} on {device_name}, {window}", emailUrl: "/sensors/" + cfg.sensor + "/email", csrf: foot.dataset.csrf, siteName: JSON.parse(foot.dataset.chartVars).site_name });
+    iotChartTools.trackZoom(chart, function () { return current; });
+    load();
+});
+</script>
+<% } %>
