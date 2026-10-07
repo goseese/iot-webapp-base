@@ -270,8 +270,10 @@
         return String(template).replace(/\{([a-z_]+)\}/g, function (whole, k) { return Object.prototype.hasOwnProperty.call(vars, k) ? String(vars[k] === null || vars[k] === undefined ? "" : vars[k]) : whole; }).replace(/\s+/g, " ").trim();
     }
     function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
-    // Whether the share sheet takes a file of this name and type. Chrome and Edge only take a fixed
-    // list (png and csv yes, zip and json no: chrome/browser/webshare/share_service_impl.cc).
+    // Whether the share sheet takes files at all (asked with a PNG). It cannot tell which data formats
+    // will be refused: Chrome's canShare() does not check file types (navigator_share.cc); the type
+    // list is checked later and share() fails with "Permission denied" (share_service_impl.cc: png and
+    // csv yes, json and zip no). So only CSV is ever attached; the other formats go the download way.
     function shareTakes(name, type)
     {
         try { return !!(navigator.canShare && navigator.canShare({ files: [new File(["x"], name, { type: type })] })); }
@@ -343,9 +345,15 @@
         async function prepare()
         {
             var my = ++prepId;
-            send.disabled = true;
-            if (state.share) { send.textContent = "Preparing..."; }
             var f = FORMATS.filter(function (x) { return x.key === format.value; })[0];
+            state.share = state.shareAvail && f.key === "csv";
+            fallbackNote.textContent = state.shareAvail
+                ? "Only CSV can be attached through the share sheet. Download the image and the data, then open the email and attach them, or choose CSV to attach both directly."
+                : "This browser cannot attach files to an email. Download the image and the data, then open the email and attach them.";
+            fallbackNote.classList.toggle("d-none", state.share);
+            m.querySelectorAll('[data-email="png"], [data-email="data"]').forEach(function (b) { b.classList.toggle("d-none", state.share); });
+            send.disabled = true;
+            send.textContent = "Preparing...";
             var base = fileName(container, state.w[0], state.w[1]);
             var inner = f.key.indexOf("json") === 0 ? iotExport.toJson(state.d.headers, state.d.rows) : iotExport.toCsv(state.d.headers, state.d.rows);
             var dataBlob = f.zip ? await zipOne(base + f.ext.replace(".zip", ""), inner) : new Blob([inner], { type: f.type });
@@ -396,22 +404,20 @@
             var w = visibleWindow(o.chart, s.from, s.to);
             var tz = o.getTimezone ? o.getTimezone() : null;
             var vars = Object.assign({}, o.getVars ? o.getVars() : {}, { window: localTime(w[0], tz).slice(0, 16) + " to " + localTime(w[1], tz).slice(0, 16) });
-            var share = !!navigator.share && shareTakes("chart.png", "image/png");
-            state = { s: s, d: d, w: w, vars: vars, link: viewLink(o.chart, s), share: share, png: null, data: null, image: null };
+            var shareAvail = !!navigator.share && shareTakes("chart.png", "image/png");
+            state = { s: s, d: d, w: w, vars: vars, link: viewLink(o.chart, s), shareAvail: shareAvail, share: false, png: null, data: null, image: null };
             field.dataset.sample = JSON.stringify(vars);
             if (!nameIn.value) { nameIn.value = o.nameTemplate; }
             nameIn.dispatchEvent(new Event("input", { bubbles: true }));
-            // Formats this browser can attach (share sheet) or build (zip needs CompressionStream).
+            // Formats this browser can build (zip needs CompressionStream); only CSV is attached.
             var keep = format.value;
             format.innerHTML = FORMATS.map(function (f)
             {
-                var ok = (!f.zip || canZip()) && (!share || shareTakes("data" + f.ext, f.type));
-                return '<option value="' + f.key + '"' + (ok ? "" : " disabled") + '>' + esc(f.label) + (ok ? "" : share ? " (cannot attach here, use Download)" : " (not in this browser)") + '</option>';
+                var ok = !f.zip || canZip();
+                return '<option value="' + f.key + '"' + (ok ? "" : " disabled") + '>' + esc(f.label) + (ok || !f.zip ? "" : " (not in this browser)") + (shareAvail && f.key !== "csv" ? " (download, then attach)" : "") + '</option>';
             }).join("");
             format.value = keep && !format.querySelector('option[value="' + keep + '"]').disabled ? keep : "csv";
             about.textContent = "Attaches the chart image and the " + d.rows.length.toLocaleString() + " readings in view. The link opens this view for people who can sign in to " + (vars.site_name || "the site") + ".";
-            fallbackNote.classList.toggle("d-none", share);
-            m.querySelectorAll('[data-email="png"], [data-email="data"]').forEach(function (b) { b.classList.toggle("d-none", share); });
             bootstrap.Modal.getOrCreateInstance(m).show();
             prepare();
         };
