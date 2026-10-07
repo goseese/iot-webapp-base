@@ -12,4 +12,12 @@ async function ceilingAt(req, scopeType, scopeId)
     return loc ? grants.effectiveAtLocation(req, loc) : 0n;
 }
 
-module.exports = { bits, ceilingAt };
+// The Download docs button beside the page title on both docs tabs (layout titleActions, rendered
+// unescaped; acctBase is the account's own uid path).
+function docsButton(req)
+{
+    const apiDocs = require("../../services/apiDocs");
+    return "<a class=\"btn btn-sm btn-outline-secondary\" href=\"" + apiDocs.downloadPath(req.acctBase) + "\"><i class=\"fa-solid fa-download me-1\"></i>Download docs</a>";
+}
+
+module.exports = { bits, ceilingAt, docsButton };

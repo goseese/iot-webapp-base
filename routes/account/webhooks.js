@@ -7,7 +7,8 @@ const { notFoundError } = require("../../middleware/errors");
 const { isUuid } = require("../../middleware/account");
 const permissions = require("../../permissions");
 const settings = require("../../config/settings");
-const { bits } = require("./shared");
+const { bits, docsButton } = require("./shared");
+const apiDocs = require("../../services/apiDocs");
 
 const router = express.Router();
 
@@ -16,7 +17,7 @@ router.get("/webhooks/docs", async (req, res, next) =>
     try
     {
         const b = await bits(req);
-        res.render("account/webhooks-docs", { title: "Webhooks", canEdit: permissions.has(b, permissions.byName.edit) });
+        res.render("account/webhooks-docs", { title: "Webhooks", titleActions: docsButton(req), canEdit: permissions.has(b, permissions.byName.edit), docs: apiDocs.build(), apiDocs: apiDocs });
     }
     catch (err) { next(err); }
 });

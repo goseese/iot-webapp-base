@@ -6,20 +6,32 @@ const { isUuid } = require("../../middleware/account");
 const permissions = require("../../permissions");
 const grants = require("../../services/grants");
 const activity = require("../../services/activity");
-const { bits } = require("./shared");
+const { bits, docsButton } = require("./shared");
 
 const router = express.Router();
-const settings = require("../../config/settings");
 const grantsRepo = require("../../db/repos/grants");
 const apiAuth = require("../../services/apiAuth");
+const apiDocs = require("../../services/apiDocs");
+
+// API and webhook docs as one Markdown file with this site's values (services/apiDocs.js). Open to
+// anyone who can open the account, like the docs tabs; the file says nothing about the viewer.
+router.get("/api/docs/download", (req, res, next) =>
+{
+    try
+    {
+        res.set("Content-Type", "text/markdown; charset=utf-8");
+        res.set("Content-Disposition", "attachment; filename=\"" + apiDocs.fileName() + "\"");
+        res.send(apiDocs.markdown());
+    }
+    catch (err) { next(err); }
+});
 
 router.get("/api/docs", async (req, res, next) =>
 {
     try
     {
         const b = await bits(req);
-        res.render("account/api-docs", { title: "API", canManage: permissions.has(b, permissions.byName.grant), keyPrefix: apiAuth.keyPrefix(), apiBase: require("../../config/env").appUrl + "/api/v1",
-            ratePerMinute: settings.get("API_RATE_PER_MINUTE", 120), maxObjects: settings.get("API_MAX_OBJECTS", 1000) });
+        res.render("account/api-docs", { title: "API", titleActions: docsButton(req), canManage: permissions.has(b, permissions.byName.grant), docs: apiDocs.build(), apiDocs: apiDocs });
     }
     catch (err) { next(err); }
 });

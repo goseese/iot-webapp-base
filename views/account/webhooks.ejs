@@ -6,7 +6,7 @@
 <div class="row g-3">
   <div class="col-12 col-xl-6">
     <div class="iot-panel">
-      <div class="iot-panel__header"><strong>Webhooks</strong> <span class="text-secondary small ms-2">outbound, signed, retried</span></div>
+      <div class="iot-panel__header"><strong>Webhooks</strong> <span class="text-secondary small ms-2">outbound, signed, retried</span> <a class="small ms-2" href="<%= acctBase %>/webhooks/docs">How webhooks work</a></div>
       <div class="table-responsive"><table class="table iot-table align-middle mb-0"><thead><tr><th>Name</th><th>URL</th><th>Events</th><th>Recent</th><th></th></tr></thead><tbody>
       <% hooks.forEach(function (h) { %>
         <tr class="<%= h.is_enabled ? "" : "text-secondary" %>"><td><%= h.name %></td><td class="small text-break"><%= h.url %></td><td class="small"><%= h.event_types %></td>
