@@ -28,7 +28,7 @@
   <div class="col-12 col-xl-4">
     <div class="iot-panel">
       <div class="iot-panel__header d-flex justify-content-between"><strong>Active alarms</strong><a class="small" href="/locations/<%= fmt.uid(location.uid) %>/alarms/active">All</a></div>
-      <div class="table-responsive"><table class="table iot-table mb-0"><tbody>
+      <div class="table-responsive"><table class="table iot-table mb-0" data-tools="none"><tbody>
       <% alarms.forEach(function (a) { %>
         <tr><td><a href="/alarms/<%= fmt.uid(a.uid) %>"><span class="iot-status iot-status--<%= a.severity === "warning" ? "warning" : "alarm" %>"><%= a.severity %></span></a></td><td><%= a.sensor_name %> <span class="text-secondary small"><%= a.device_name %></span></td><td class="text-secondary small text-nowrap"><%= fmt.ago(a.raised_epoch, now) %></td></tr>
       <% }); %>

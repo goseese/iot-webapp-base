@@ -5,7 +5,7 @@
 <div class="iot-panel mb-3">
   <div class="iot-panel__header"><strong><%= title %></strong></div>
   <div class="table-responsive">
-    <table class="table iot-table align-middle mb-0">
+    <table class="table iot-table align-middle mb-0" data-tools="none">
       <thead><tr><th>Setting</th><th><%= locals.viaController ? "Confirmed by the pod" : "Reported by the gateway" %></th><th style="min-width: 18rem" data-export="skip">Value</th></tr></thead>
       <tbody>
       <% list.forEach(function (r) { var d = r.def; var pending = r.desired_value !== null && r.desired_value !== undefined; var editable = canEdit && d.writable; %>

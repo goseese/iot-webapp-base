@@ -58,7 +58,7 @@ function h(str) { return apiDocs.html(str, acctBase); }
       <div class="iot-panel__body">
         <p><%- h(t.replyIntro) %></p>
         <pre class="iot-pre"><%= JSON.stringify(t.replySample, null, 2) %></pre>
-        <div class="table-responsive"><table class="table iot-table table-sm small mb-0"><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
+        <div class="table-responsive"><table class="table iot-table table-sm small mb-0" data-tools="none"><thead><tr><th>Status</th><th>Meaning</th></tr></thead><tbody>
           <% t.statuses.forEach(function (r) { %><tr><td><%= r[0] %></td><td><%- h(r[1]) %></td></tr><% }); %>
         </tbody></table></div>
       </div>
@@ -68,7 +68,7 @@ function h(str) { return apiDocs.html(str, acctBase); }
       <div class="iot-panel__header"><strong>Permissions</strong></div>
       <div class="iot-panel__body">
         <p class="small"><%- h(t.permissionsIntro) %></p>
-        <div class="table-responsive"><table class="table iot-table table-sm small mb-0"><thead><tr><th>Permission</th><th>Lets the key</th></tr></thead><tbody>
+        <div class="table-responsive"><table class="table iot-table table-sm small mb-0" data-tools="none"><thead><tr><th>Permission</th><th>Lets the key</th></tr></thead><tbody>
           <% docs.permissions.forEach(function (r) { %><tr><td><%= r[0] %></td><td><%- h(r[1]) %></td></tr><% }); %>
         </tbody></table></div>
       </div>
@@ -80,7 +80,7 @@ function h(str) { return apiDocs.html(str, acctBase); }
       <div class="iot-panel__body">
         <p><%= e.about %></p>
         <% if (e.params.length) { %>
-        <div class="table-responsive"><table class="table iot-table table-sm small mb-3"><thead><tr><th>Parameter</th><th></th></tr></thead><tbody>
+        <div class="table-responsive"><table class="table iot-table table-sm small mb-3" data-tools="none"><thead><tr><th>Parameter</th><th></th></tr></thead><tbody>
           <% e.params.forEach(function (p) { %><tr><td class="font-monospace"><%= p[0] %></td><td><%= p[1] %></td></tr><% }); %>
         </tbody></table></div>
         <% } %>

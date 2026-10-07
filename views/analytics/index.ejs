@@ -4,14 +4,14 @@
 <div class="row g-3">
   <div class="col-12 col-xl-6">
     <div class="iot-panel"><div class="iot-panel__header"><strong>Dashboards</strong></div>
-      <div class="table-responsive"><table class="table iot-table mb-0"><tbody>
+      <div class="table-responsive"><table class="table iot-table mb-0" data-tools="none"><tbody>
       <% dashboards.forEach(function (d) { %><tr><td><a href="/analytics/dashboards/<%= fmt.uid(d.uid) %>"><%= d.name %></a></td><td class="text-secondary small"><%= JSON.parse(d.tabs).length %> tabs</td><td class="text-secondary small"><%= d.visibility.replace("_", " ") %></td></tr><% }); %>
       <% if (!dashboards.length) { %><tr><td class="text-secondary">None yet.</td></tr><% } %>
       </tbody></table></div></div>
   </div>
   <div class="col-12 col-xl-6">
     <div class="iot-panel"><div class="iot-panel__header"><strong>Charts</strong></div>
-      <div class="table-responsive"><table class="table iot-table mb-0"><tbody>
+      <div class="table-responsive"><table class="table iot-table mb-0" data-tools="none"><tbody>
       <% charts.forEach(function (c) { %><tr><td><a href="/analytics/charts/<%= fmt.uid(c.uid) %>"><%= c.name %></a></td><td class="text-secondary small"><%= JSON.parse(c.definition_json).sensors.length %> sensors</td><td class="text-secondary small"><%= c.visibility.replace("_", " ") %></td></tr><% }); %>
       <% if (!charts.length) { %><tr><td class="text-secondary">None yet.</td></tr><% } %>
       </tbody></table></div></div>
