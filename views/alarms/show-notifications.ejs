@@ -1,0 +1,32 @@
+<%# Alarm Notifications tab (routes/alarms.js): escalation per alert group, and every send decision for
+    this alarm, newest first, sortable (public/js/iot-sort.js). A row opens the notification detail. %>
+<% var a = alarm; %>
+<div class="iot-panel mb-3">
+  <div class="iot-panel__header"><strong>Escalation</strong></div>
+  <div class="iot-panel__body">
+    <% escalations.forEach(function (x) { %><div><%= x.name %>: level <%= x.current_level %><%= x.is_stopped ? " (stopped)" : "" %></div><% }); %>
+    <% if (!escalations.length) { %><span class="text-secondary">No alert groups attached.</span><% } %>
+  </div>
+</div>
+<div class="iot-panel">
+  <div class="iot-panel__header"><strong>Notifications</strong></div>
+  <div class="table-responsive">
+    <table class="table iot-table table-sm is-sortable align-middle mb-0">
+      <thead><tr><th class="sort-custom">When</th><th class="sort-alpha">Event</th><th class="sort-alpha">To</th><th class="sort-alpha">Ch</th><th class="sort-alpha">Outcome</th><th class="sort-alpha">Reason</th></tr></thead>
+      <tbody>
+      <% notifications.forEach(function (n) { %>
+        <tr data-notification="<%= n.id %>" role="button">
+          <td class="small text-nowrap" data-sort="<%= n.epoch %>"><%= fmt.epoch(n.epoch, a.iana_timezone, { second: "2-digit" }) %></td>
+          <td class="small"><%= n.event_text %></td>
+          <td class="small"><%= n.address %></td>
+          <td class="small"><%= n.channel %></td>
+          <td><span class="iot-status iot-status--<%= n.outcome === "sent" ? "online" : (n.outcome === "failed" ? "alarm" : "offline") %>"><%= n.outcome %></span></td>
+          <td class="small text-secondary"><%= n.reason || n.ladder_note || "" %></td>
+        </tr>
+      <% }); %>
+      <% if (!notifications.length) { %><tr><td colspan="6" class="text-secondary">None.</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<%- include("../partials/notification-modal") %>

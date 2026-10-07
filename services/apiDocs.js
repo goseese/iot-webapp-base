@@ -249,7 +249,8 @@ function endpoints(s)
 // uids. The method, path, permission and docs anchor of each come from endpoints() above. page is one of
 //   { kind: "device", device: { uid, apiWrite, channels: [channel ids] }, sensors: [{ uid, name }] }
 //   { kind: "sensor", sensor: { uid, channel }, device: { uid, apiWrite }, rules: [{ uid, label }] }
-//   { kind: "location", location: { uid }, account: { uid } or null }
+//   { kind: "location-alarms", location: { uid }, account: { uid } or null }
+//   { kind: "location-devices", location: { uid } }
 //   { kind: "alarm", alarm: { uid, active } }
 // Returns { intro, calls: [{ docs, method, path, perm, about, example }] }.
 function pageCalls(s, page)
@@ -311,7 +312,13 @@ function pageCalls(s, page)
             post("device-readings", "Send a reading for this sensor, through its device.", sample([page.sensor.channel]), "/devices/" + page.device.uid + "/readings");
         }
     }
-    else if (page.kind === "location")
+    else if (page.kind === "location-devices")
+    {
+        const l = page.location.uid;
+        call("devices", "Every live device at this location, gateways and pods alike (kind tells them apart), with its last seen time.", line("/devices?location=" + l));
+        call("silent-devices", "Devices here with no data for 24 hours or more; change minutes for another span.", line("/devices/silent?location=" + l + "&minutes=1440"));
+    }
+    else if (page.kind === "location-alarms")
     {
         const l = page.location.uid;
         call("active-alarms", "Alarms active now at this location.", line("/alarms/active?location=" + l));

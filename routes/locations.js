@@ -88,6 +88,19 @@ router.get("/:uid/devices", requireBits("location", ["view"]), async (req, res, 
     catch (err) { next(err); }
 });
 
+// API page for the location's devices (DECISIONS "API tabs"): the calls that list them, from services/apiDocs.js.
+router.get("/:uid/devices/api", requireBits("location", ["view"]), async (req, res, next) =>
+{
+    try
+    {
+        const c = await common(req);
+        const apiDocs = require("../services/apiDocs");
+        const api = apiDocs.pageCalls(apiDocs.site(), { kind: "location-devices", location: { uid: String(req.scope.uid).toLowerCase() } });
+        res.render("devices/api", Object.assign({ title: "Device API", api: api, docsBase: req.acctBase + "/api/docs" }, c));
+    }
+    catch (err) { next(err); }
+});
+
 router.get("/:uid/gateways", requireBits("location", ["view"]), async (req, res, next) =>
 {
     try

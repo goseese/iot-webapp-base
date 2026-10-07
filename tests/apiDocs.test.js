@@ -101,11 +101,14 @@ test("page calls use the page's uids and offer writes only where allowed", () =>
     assert.ok(sensor(false, [{ uid: "rule-1", label: "lower, alarm" }]).calls.find((c) => c.docs === "rule-changes").example.includes("rule=rule-1"));
     assert.ok(sensor(true, []).calls.find((c) => c.method === "POST").example.includes("{\"data\":{\"vin\":0}}"));
 
-    const loc = apiDocs.pageCalls(s, { kind: "location", location: { uid: "loc-1" }, account: { uid: "acc-1" } });
+    const loc = apiDocs.pageCalls(s, { kind: "location-alarms", location: { uid: "loc-1" }, account: { uid: "acc-1" } });
     check(loc, "loc-1");
     assert.ok(loc.calls.some((c) => c.example.includes("account=acc-1")));
     assert.ok(loc.calls.some((c) => c.example.includes("/devices/silent?location=loc-1&minutes=1440")));
-    assert.ok(!apiDocs.pageCalls(s, { kind: "location", location: { uid: "loc-1" }, account: null }).calls.some((c) => c.example.includes("account=")));
+    assert.ok(!apiDocs.pageCalls(s, { kind: "location-alarms", location: { uid: "loc-1" }, account: null }).calls.some((c) => c.example.includes("account=")));
+    const devs = apiDocs.pageCalls(s, { kind: "location-devices", location: { uid: "loc-1" } });
+    check(devs, "loc-1");
+    assert.deepEqual(devs.calls.map((c) => c.docs), ["devices", "silent-devices"]);
 
     check(apiDocs.pageCalls(s, { kind: "alarm", alarm: { uid: "alm-1", active: true } }), "alm-1");
     assert.deepEqual(apiDocs.pageCalls(s, { kind: "alarm", alarm: { uid: "alm-1", active: true } }).calls.map((c) => c.docs), ["alarm-detail", "ack", "clear"]);

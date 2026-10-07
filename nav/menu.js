@@ -17,7 +17,8 @@ function monitorItems(loc)
                 // Assets hidden for now (Jeff, Sep 2026); the route and view still exist. Its page also
                 // needs `reasons` passed from routes/locations.js before it renders.
                 // { label: "Assets", path: base + "/assets" },
-                { label: "Unclaimed", path: base + "/unclaimed" }
+                { label: "Unclaimed", path: base + "/unclaimed" },
+                { label: "API", path: base + "/devices/api" }
             ]
         },
         {

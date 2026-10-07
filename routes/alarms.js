@@ -108,7 +108,7 @@ lists.get("/api", async (req, res, next) =>
     {
         if (!req.scope) { return next(notFoundError()); }
         const apiDocs = require("../services/apiDocs");
-        const page = { kind: "location", location: { uid: String(req.scope.uid).toLowerCase() }, account: req.account ? { uid: String(req.account.uid).toLowerCase() } : null };
+        const page = { kind: "location-alarms", location: { uid: String(req.scope.uid).toLowerCase() }, account: req.account ? { uid: String(req.account.uid).toLowerCase() } : null };
         res.render("alarms/api", { title: "Alarm API", api: apiDocs.pageCalls(apiDocs.site(), page), docsBase: req.acctBase + "/api/docs" });
     }
     catch (err) { next(err); }
@@ -179,6 +179,25 @@ async function loadAlarm(req, res, next)
     catch (err) { next(err); }
 }
 
+// The single alarm page: tabs Overview (cards, actions, timeline), Notifications (escalation and every
+// send, newest first) and API (DECISIONS "API tabs").
+function alarmTabs(a, current)
+{
+    const base = "/alarms/" + String(a.uid).toLowerCase();
+    return [{ label: "Overview", path: base }, { label: "Notifications", path: base + "/notifications" }, { label: "API", path: base + "/api" }]
+        .map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
+}
+
+function alarmTrail(a)
+{
+    return [{ label: "Account", path: "/account" }, { label: a.location_name, path: "/locations/" + String(a.location_uid).toLowerCase() }, { label: "Alarms", path: "/locations/" + String(a.location_uid).toLowerCase() + "/alarms/active" }, { label: a.sensor_name, path: "/sensors/" + String(a.sensor_uid).toLowerCase() }, { label: "Alarm", path: "", isCurrent: true }];
+}
+
+function alarmPageTitle(a)
+{
+    return a.sensor_name + " " + a.direction.replace("_", " ");
+}
+
 router.get("/:uid", loadAlarm, async (req, res, next) =>
 {
     try
@@ -186,15 +205,41 @@ router.get("/:uid", loadAlarm, async (req, res, next) =>
         const a = req.alarm;
         const events = await knex(T("alarm_events") + " as e").leftJoin(T("users") + " as u", function () { this.on("u.id", "e.actor_id").andOn("e.actor_type", knex.raw("?", ["user"])); })
             .where("e.alarm_id", a.id).select("e.*", "u.username as actor_username").orderBy("e.epoch");
-        const notifications = await knex(T("notifications")).whereIn("alarm_event_id", events.map((e) => e.id)).orderBy("epoch");
-        const escalations = await knex(T("alarm_escalations") + " as x").join(T("alert_groups") + " as g", "g.id", "x.alert_group_id").where("x.alarm_id", a.id).select("x.*", "g.name");
         const reasons = await knex(T("list_items") + " as i").join(T("lists") + " as l", "l.id", "i.list_id").where("l.slug", "ack_reasons").orderBy("i.sort_order").select("i.label");
         res.render("alarms/show", {
-            title: a.sensor_name + " " + a.direction.replace("_", " "), alarm: a, value: notify.displayValue(a, a.trigger_value), events: events, notifications: notifications, escalations: escalations,
+            title: alarmPageTitle(a), alarm: a, value: notify.displayValue(a, a.trigger_value), events: events,
             canAck: permissions.has(req.bits, permissions.byName.ack_alarm), canClear: permissions.has(req.bits, permissions.byName.clear_alarm), reasons: reasons.map((r) => r.label),
-            api: require("../services/apiDocs").pageCalls(require("../services/apiDocs").site(), { kind: "alarm", alarm: { uid: String(a.uid).toLowerCase(), active: !a.cleared_epoch } }), docsBase: req.acctBase + "/api/docs",
-            navTrail: [{ label: "Account", path: "/account" }, { label: a.location_name, path: "/locations/" + String(a.location_uid).toLowerCase() }, { label: "Alarms", path: "/locations/" + String(a.location_uid).toLowerCase() + "/alarms/active" }, { label: a.sensor_name, path: "/sensors/" + String(a.sensor_uid).toLowerCase() }, { label: "Alarm", path: "", isCurrent: true }]
+            navTrail: alarmTrail(a), navSub: alarmTabs(a, "Overview")
         });
+    }
+    catch (err) { next(err); }
+});
+
+// Every notification this alarm sent or held back, newest first, with the event that caused it.
+router.get("/:uid/notifications", loadAlarm, async (req, res, next) =>
+{
+    try
+    {
+        const a = req.alarm;
+        const events = await knex(T("alarm_events")).where("alarm_id", a.id).select("id", "event_kind", "severity");
+        const eventText = new Map(events.map((e) => [e.id, e.event_kind.replace("_", " ") + (e.severity ? " (" + e.severity + ")" : "")]));
+        const notifications = events.length ? await knex(T("notifications")).whereIn("alarm_event_id", events.map((e) => e.id))
+            .orderBy([{ column: "epoch", order: "desc" }, { column: "id", order: "desc" }]) : [];
+        notifications.forEach((n) => { n.event_text = eventText.get(n.alarm_event_id) || ""; });
+        const escalations = await knex(T("alarm_escalations") + " as x").join(T("alert_groups") + " as g", "g.id", "x.alert_group_id").where("x.alarm_id", a.id).select("x.*", "g.name");
+        res.render("alarms/show-notifications", { title: alarmPageTitle(a), alarm: a, notifications: notifications, escalations: escalations, navTrail: alarmTrail(a), navSub: alarmTabs(a, "Notifications") });
+    }
+    catch (err) { next(err); }
+});
+
+router.get("/:uid/api", loadAlarm, async (req, res, next) =>
+{
+    try
+    {
+        const a = req.alarm;
+        const apiDocs = require("../services/apiDocs");
+        const api = apiDocs.pageCalls(apiDocs.site(), { kind: "alarm", alarm: { uid: String(a.uid).toLowerCase(), active: !a.cleared_epoch } });
+        res.render("alarms/api", { title: alarmPageTitle(a), api: api, docsBase: req.acctBase + "/api/docs", navTrail: alarmTrail(a), navSub: alarmTabs(a, "API") });
     }
     catch (err) { next(err); }
 });
