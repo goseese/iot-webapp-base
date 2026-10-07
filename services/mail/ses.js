@@ -48,6 +48,9 @@ module.exports =
         }
         const simple = { Subject: { Data: msg.subject || "", Charset: "UTF-8" }, Body: body };
         // Message.Attachments in the SESv2 SDK (models_0.d.ts); the SDK base64 encodes RawContent.
+        // ContentTransferEncoding is how the part is written in the message: always BASE64. The API
+        // documents no default, and without it a PNG arrived corrupted while a CSV came through
+        // (chart email, Oct 2026): text survives 7 bit or quoted printable, binary does not.
         if (msg.attachments && msg.attachments.length)
         {
             simple.Attachments = msg.attachments.map((a) => (
@@ -55,7 +58,8 @@ module.exports =
                 RawContent: a.data,
                 FileName: a.filename,
                 ContentType: a.contentType,
-                ContentDisposition: "ATTACHMENT"
+                ContentDisposition: "ATTACHMENT",
+                ContentTransferEncoding: "BASE64"
             }));
         }
         const res = await client.send(new SendEmailCommand(
