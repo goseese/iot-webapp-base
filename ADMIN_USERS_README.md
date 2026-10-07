@@ -46,7 +46,8 @@ Superadmins get a Users item under Administration (after Accounts):
 
 Every action posts to `/admin/users/<uid>/<action>`, changes one thing, writes an audit row per
 changed field and an event log row, then redirects back to the page with a confirmation. A value
-that did not change saves nothing.
+that did not change saves nothing. Send reset link changes nothing on the user, so it writes only
+its event.
 
 ## What the target site must have (check, do not assume)
 
@@ -179,7 +180,7 @@ convention (voltastc: UTC with "ago", like the firmware page).
   `table table-sm` draws a light background on the dark theme (seen on voltastc's first deploy);
   `iot-table` takes the theme, and `data-tools="none"` keeps a Download button off them. Use the
   target's theme variables for any color; no hard coded light backgrounds.
-- **Show all activity:** a link in the header line, beside the online or offline status:
+- **Show all activity:** a link in the header line, beside the active or offline status:
   `/admin/logs?range=30d&who=u<user id>` on voltastc (the longest period the log offers). Use the
   target's own filter names. Tell Jeff what it shows: the log's user filter matches the **actor**,
   so it lists what the user did (requests, sign ins, refused sign ins while offline) but not what
@@ -244,7 +245,16 @@ brings their choices back.
   everyone out.
 - **Admin route** `POST /users/:uid/offline` with `action` `offline` or `online`: refuses the
   superadmin's own account (and the page hides the button), writes `disabled_epoch` and
-  `disabled_by`, audit field `status`, events `user_offline` and `user_online`.
+  `disabled_by`, audit field `status`, events `user_offline` and `user_online`. Confirmations:
+  "<user> is offline and cannot sign in." and "<user> is active again."
+- **Wording on the page:** the status says **Active** (green) or **Offline since <when> by <who>**
+  (grey). The buttons are **Put offline** (with the help text "They cannot sign in, any open
+  session ends, and they get no email or SMS. Their alert settings are kept for when they are
+  active again.") and **Make active**. Only what people read says "active"; the `online` action
+  value, the `user_online` event, the audit value and the status CSS class keep the old word, so
+  the history does not split across two names.
+- **Alerts card:** for an offline user it adds "Nothing is sent while they are offline." after
+  the profile note, so nobody reads the switches as what will happen.
 - **Send reset link** refuses an offline user (the link would not work) and the button is greyed.
 
 Known gap, accepted on voltastc: the live feed (socket.io) checks the user only on connect, so a

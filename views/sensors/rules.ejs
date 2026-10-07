@@ -91,6 +91,7 @@ function historyTable(list)
   <div class="iot-panel__body">
     <% if (!rules.length) { %><p class="text-secondary">No rules yet.</p><% } %>
     <% rules.forEach(function (r) { %>
+      <div id="rule-<%= fmt.uid(r.uid) %>" style="scroll-margin-top: 72px"></div>
       <% if (can) { ruleForm(r, "/sensors/" + uid + "/rules/" + fmt.uid(r.uid), false); } else { %>
       <div class="border-top pt-2 mt-2"><%= r.rule_kind === "no_data" ? "No data for " + Math.round(r.timeout_secs / 60) + " min" : (r.direction === "upper" ? "Above " : "Below ") + r.thresholdDisplay + " " + unit %> - <%= r.severity %><%= r.is_enabled ? "" : " (disabled)" %></div>
       <% } %>

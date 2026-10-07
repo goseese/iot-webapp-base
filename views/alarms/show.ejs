@@ -8,7 +8,7 @@
 
 <% if (chart) { %>
 <div class="iot-panel mb-3">
-  <div class="iot-panel__header d-flex justify-content-between align-items-center"><strong><%= a.sensor_name %> on <%= a.device_name %></strong><a class="small" href="/sensors/<%= chart.sensor %>">Sensor page</a></div>
+  <div class="iot-panel__header d-flex justify-content-between align-items-center"><strong><%= a.sensor_name %> on <%= a.device_name %></strong><div class="d-flex gap-3"><a class="small" href="/sensors/<%= chart.sensor %>/rules<%= chart.rule ? "#rule-" + chart.rule : "" %>">Alarm rule</a><a class="small" href="/sensors/<%= chart.sensor %>">Sensor page</a></div></div>
   <div class="iot-panel__body"><div id="chart" style="height: 380px" data-chart="<%= JSON.stringify(chart) %>"></div><div class="d-flex align-items-center gap-2 mt-2" id="chartFoot" data-csrf="<%= csrfToken %>" data-chart-vars="<%= JSON.stringify({ site_name: siteName, account_name: chart.account_name, location_name: a.location_name, device_name: a.device_name, sensor_name: a.sensor_name, chart_name: a.sensor_name }) %>"><div class="form-text m-0 d-none" id="chartNote"></div></div></div>
 </div>
 <% } %>

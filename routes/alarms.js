@@ -218,7 +218,9 @@ router.get("/:uid", loadAlarm, async (req, res, next) =>
             const w = chartImage.pageWindowFor(rule || {}, Number(a.raised_epoch), a.cleared_epoch ? Number(a.cleared_epoch) : null, nowEpoch());
             const unit = await display.resolveUnit({ metric: a.metric, display_unit: a.display_unit }, { id: a.location_id, account_id: a.account_id });
             const precision = a.display_precision !== null && a.display_precision !== undefined ? Number(a.display_precision) : metrics.precision(a.metric, unit);
-            chart = { sensor: String(a.sensor_uid).toLowerCase(), from: w.from, to: w.to, precision: precision, account_name: a.account_name };
+            // rule: the uid of the rule that raised it, for a link to it on the sensor's Alarm rules tab
+            // (#rule-<uid>); null when that rule has since been removed.
+            chart = { sensor: String(a.sensor_uid).toLowerCase(), from: w.from, to: w.to, precision: precision, account_name: a.account_name, rule: rule && !rule.delete_epoch ? String(rule.uid).toLowerCase() : null };
         }
         res.render("alarms/show", {
             chart: chart,
