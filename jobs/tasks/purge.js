@@ -19,8 +19,26 @@ async function deleteBatched(builderFn, label)
         total += await builderFn().whereIn("id", ids).del();
         if (ids.length < batch) { break; }
     }
-    if (total > 0) { logger.info({ table: label, rows: total }, "purged"); }
+    if (total > 0 && label) { logger.info({ table: label, rows: total }, "purged"); }
     return total;
+}
+
+// Start of the oldest of the newest `keep` UTC days that hold a reading, or null when the sensor
+// has fewer than `keep` such days. Steps back one day per probe on ix_readings_sensor_epoch, so
+// days without readings are never counted (about `keep` index lookups per sensor).
+async function dataDaysCutoff(sensorId, keep)
+{
+    const sql = `WITH RECURSIVE d (day, n) AS
+    (
+        SELECT (SELECT max(epoch) FROM ${T("readings")} WHERE sensor_id = ?) / 86400, 1
+        UNION ALL
+        SELECT (SELECT max(r.epoch) FROM ${T("readings")} r WHERE r.sensor_id = ? AND r.epoch < d.day * 86400) / 86400, d.n + 1
+        FROM d
+        WHERE d.n < ? AND d.day IS NOT NULL
+    )
+    SELECT day * 86400 AS cutoff FROM d WHERE n = ? AND day IS NOT NULL`;
+    const res = await knex.raw(sql, [sensorId, sensorId, keep, keep]);
+    return res.rows.length ? Number(res.rows[0].cutoff) : null;
 }
 
 async function readings()
@@ -30,23 +48,17 @@ async function readings()
     const sensors = await knex(T("sensors") + " as s").join(T("devices") + " as d", "d.id", "s.device_id").join(T("locations") + " as l", "l.id", "d.location_id").select("s.id", "s.retention_days", "l.account_id");
     const accountRetention = new Map();
     for (const r of await knex(T("account_settings")).where({ setting_key: "RETENTION_DAYS" })) { accountRetention.set(r.account_id, Number(r.setting_value)); }
-    const byCutoff = new Map();
+    let total = 0;
     for (const s of sensors)
     {
         const days = s.retention_days !== null ? Number(s.retention_days) : (accountRetention.has(s.account_id) ? accountRetention.get(s.account_id) : siteDefault);
         if (days === -1) { continue; }
-        const cutoff = now - days * 86400;
-        if (!byCutoff.has(cutoff)) { byCutoff.set(cutoff, []); }
-        byCutoff.get(cutoff).push(s.id);
+        // Keep the newest days + 1 UTC days that hold data; silent days do not count.
+        const cutoff = await dataDaysCutoff(s.id, Number(days) + 1);
+        if (cutoff === null) { continue; }
+        total += await deleteBatched(() => knex(T("readings")).where("sensor_id", s.id).where("epoch", "<", cutoff), null);
     }
-    for (const [cutoff, ids] of byCutoff)
-    {
-        for (let i = 0; i < ids.length; i += 200)
-        {
-            const chunk = ids.slice(i, i + 200);
-            await deleteBatched(() => knex(T("readings")).whereIn("sensor_id", chunk).where("epoch", "<", cutoff), "readings");
-        }
-    }
+    if (total > 0) { logger.info({ table: "readings", rows: total }, "purged"); }
     // Readings of deleted sensors go once their device's retention window has passed the delete.
     const gone = await knex(T("sensors")).whereNotNull("delete_epoch").where("delete_epoch", "<", now - siteDefault * 86400).pluck("id");
     for (let i = 0; i < gone.length; i += 200) { const chunk = gone.slice(i, i + 200); await deleteBatched(() => knex(T("readings")).whereIn("sensor_id", chunk), "readings(deleted sensors)"); }
