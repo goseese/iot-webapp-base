@@ -33,7 +33,8 @@ function fromAddress()
 
 // msg: { to, subject, text, html?, kind, recipientType, recipientId?, from?, fromName?, replyTo?, alarmEventId?, ladderNote?, attachments? }
 // fromName: the sender name shown on the site address ("Jeff Seese via Voltastc", chart email); default the MAIL_FROM_NAME setting.
-// attachments: optional list of { filename, contentType, data (Buffer) } (support requests).
+// attachments: optional list of { filename, contentType, data (Buffer), cid? } (support requests, chart
+// email). With cid the file is inline: the HTML shows it with <img src="cid:<cid>"> (alarm chart).
 // to is one address or a list; a list goes out as one message with every address in To (support
 // mail, so the team can reply all). replyTo is an optional address or list.
 async function send(msg)

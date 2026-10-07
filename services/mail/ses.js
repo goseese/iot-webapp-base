@@ -53,12 +53,15 @@ module.exports =
         // (chart email, Oct 2026): text survives 7 bit or quoted printable, binary does not.
         if (msg.attachments && msg.attachments.length)
         {
+            // An attachment with a cid is INLINE with that ContentId, shown by <img src="cid:..."> in the
+            // HTML; the SES guide's example ContentId has no angle brackets (ses/latest/dg/attachments).
             simple.Attachments = msg.attachments.map((a) => (
             {
                 RawContent: a.data,
                 FileName: a.filename,
                 ContentType: a.contentType,
-                ContentDisposition: "ATTACHMENT",
+                ContentDisposition: a.cid ? "INLINE" : "ATTACHMENT",
+                ContentId: a.cid || undefined,
                 ContentTransferEncoding: "BASE64"
             }));
         }

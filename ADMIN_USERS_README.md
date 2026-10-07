@@ -34,7 +34,8 @@ Superadmins get a Users item under Administration (after Accounts):
 - **`/admin/users`**: every live user, searched, sorted and paged on the server. Search on
   username, name and email. Sort on user, name, email, access, last login, chart emails, status.
   25 a page. Search, sort, direction and page are GET parameters, so a view is a link.
-- **`/admin/users/<uid>`**: one user, four cards.
+- **`/admin/users/<uid>`**: one user, four cards, and a **Show all activity** link in the header
+  that opens the event log filtered to the user.
   - **Sign in:** online or offline with a button to change it, the per user MFA dropdown, last
     login, password set, created, and **Send reset link**.
   - **Alerts:** alarm email on or off (SMS too, where SMS is part of the site). The user can turn
@@ -64,6 +65,13 @@ Report each as present, absent, or different:
 - Forgot password with a reset link that is only consumed by its confirm POST, and `loadUser`
   that ends sessions for deleted users.
 - The nav menu with an Administration group (`nav/menu.js`) and the `iot-sortable` header CSS.
+- The table tools (`public/js/iot-table-tools.js`), which add a Download button to every
+  `iot-table` unless it has `data-tools="none"`, and the CSS rule that keeps that button beside a
+  header control marked `iot-header-end`:
+  `.iot-panel__header .iot-header-end + .iot-table-dl { margin-left: 0 !important; }`. Add the
+  rule if the target lacks it.
+- An event log viewer with a user filter in its URL (voltastc: `/admin/logs?range=30d&who=u<id>`).
+  Note its parameter names and longest period.
 - Optional parts, each with its card or field:
   - MFA sign in codes (`users.mfa_mode`, `services/mfa.js`, `POST /admin/users/<uid>/mfa`).
   - Chart email from the site (`chart_emails`, `users.chart_email_daily_limit`, `limitFor()`).
@@ -145,7 +153,8 @@ comment the way the target's other migrations are written.
   table, and "1 to 25 of N users" with Previous and Next. Each sortable header is
   `<th class="iot-sortable" aria-sort="...">` holding a link; clicking the current column flips
   the direction and goes back to page 1. Do not add `is-sortable`: `iot-sort.js` would re-sort
-  one page in the browser. Columns: user (link, superadmin badge), name, email, access ("2
+  one page in the browser. Give the table `data-tools="none"`: the table tools' Download would
+  export only the 25 rows on screen, which reads as the whole list. Columns: user (link, superadmin badge), name, email, access ("2
   accounts, 1 location"), last login (`fmt.ago`), MFA ("Inherit (site on|off)", On, Off), chart
   emails ("3 of 20"), online or offline.
 
@@ -163,6 +172,19 @@ Load:
 
 Show the four cards and the Access table, with no forms yet. Times in the target's admin
 convention (voltastc: UTC with "ago", like the firmware page).
+
+- **Dark theme:** the small label and value tables inside the cards are
+  `<table class="table table-sm iot-table mb-0" data-tools="none">`. A plain Bootstrap
+  `table table-sm` draws a light background on the dark theme (seen on voltastc's first deploy);
+  `iot-table` takes the theme, and `data-tools="none"` keeps a Download button off them. Use the
+  target's theme variables for any color; no hard coded light backgrounds.
+- **Show all activity:** a link in the header line, beside the online or offline status:
+  `/admin/logs?range=30d&who=u<user id>` on voltastc (the longest period the log offers). Use the
+  target's own filter names. Tell Jeff what it shows: the log's user filter matches the **actor**,
+  so it lists what the user did (requests, sign ins, refused sign ins while offline) but not what
+  a superadmin did to them on this page (those rows are under the superadmin), nor failed
+  passwords (logged under the name typed). voltastc accepted that; widening it means changing the
+  event log's filter, a separate piece of work.
 
 ## Step 4: reset link, MFA dropdown, alerts
 
@@ -249,7 +271,9 @@ that now applies.
 - Audit rows use Account > Users' fields, so the history reads the same from both pages:
   `grant_added` (`<scope>:<id> <names>`), `grant_<scope>:<id>` (old names to new names),
   `grant_removed`. Events `user_added`, `grant_changed`.
-- View: Add access opens a panel with the account and location select (an optgroup per account:
+- View: the Add access button sits in the Access panel header with `ms-auto iot-header-end`, so
+  the table tools' Download (kept on this table) lands right beside it instead of splitting the
+  free space and leaving the button in the middle. Add access opens a panel with the account and location select (an optgroup per account:
   "whole account", then its locations) and the permission checkboxes, View ticked. Each grant row
   has Edit, which opens its checkboxes with Save and Remove (Remove confirms, as on Account >
   Users).
@@ -292,6 +316,9 @@ On the target, as a superadmin:
 7. Access: add a location grant, edit it, add the same again (refused), remove it. The audit
    history on Account > Users shows the same rows.
 8. The event log shows each action under its event name.
+9. Dark theme: no light table backgrounds on the user page; the Users list has no Download; the
+   Access header has Add access then Download at the right.
+10. Show all activity opens the event log filtered to that user.
 
 ## Suggested build order
 

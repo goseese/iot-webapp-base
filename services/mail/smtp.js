@@ -18,11 +18,14 @@ function current()
 }
 
 // Support request files (services/support.js): nodemailer attachments (mail-composer: filename,
-// content as a Buffer, contentType, contentDisposition).
+// content as a Buffer, contentType, contentDisposition). An inline image (cid) goes in a
+// multipart/related part with Content-Id <cid> (mail-composer _createContentNode).
 function attachments(msg)
 {
     if (!msg.attachments || !msg.attachments.length) { return undefined; }
-    return msg.attachments.map((a) => ({ filename: a.filename, content: a.data, contentType: a.contentType, contentDisposition: "attachment" }));
+    return msg.attachments.map((a) => a.cid
+        ? { filename: a.filename, content: a.data, contentType: a.contentType, contentDisposition: "inline", cid: a.cid }
+        : { filename: a.filename, content: a.data, contentType: a.contentType, contentDisposition: "attachment" });
 }
 
 module.exports =

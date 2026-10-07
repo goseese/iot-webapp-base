@@ -17,7 +17,9 @@ const LABELS =
     use_default_group: "Default group",
     channel_policy: "Channels",
     alert_groups: "Alert groups",
-    alarm_title: "Alarm title"
+    alarm_title: "Alarm title",
+    chart_in_alarm: "Chart in alarm",
+    chart_window_secs: "Chart window"
 };
 const TRANSITIONS = [["raise", "Raise"], ["escalate", "Escalate"], ["de_escalate", "De-escalate"], ["clear", "Clear"]];
 
@@ -36,6 +38,12 @@ function who(row)
 function minutes(v)
 {
     return blank(v) ? "--" : Math.round(Number(v) / 60) + " min";
+}
+
+function days(v)
+{
+    const d = Math.round(Number(v) / 86400);
+    return d + (d === 1 ? " day" : " days");
 }
 
 function onOff(v)
@@ -67,7 +75,7 @@ function policy(v)
 
 function value(field, v, fmt)
 {
-    if (blank(v)) { return field === "alert_groups" ? "none" : "--"; }
+    if (blank(v)) { return field === "alert_groups" ? "none" : field === "chart_window_secs" ? "Auto" : "--"; }
     switch (field)
     {
         case "threshold": return fmt && fmt.threshold ? fmt.threshold(v) : String(v);
@@ -77,7 +85,9 @@ function value(field, v, fmt)
         case "return_secs":
         case "timeout_secs": return minutes(v);
         case "is_enabled":
-        case "use_default_group": return onOff(v);
+        case "use_default_group":
+        case "chart_in_alarm": return onOff(v);
+        case "chart_window_secs": return days(v);
         case "channel_policy": return policy(v);
         default: return String(v);
     }
@@ -113,6 +123,8 @@ function summary(json, fmt)
     if (s.use_default_group === "0") { parts.push("no default group"); }
     if (!blank(s.alert_groups)) { parts.push("groups: " + s.alert_groups); }
     if (!blank(s.alarm_title)) { parts.push("title: " + s.alarm_title); }
+    if (s.rule_kind !== "no_data" && s.chart_in_alarm === "0") { parts.push("no chart"); }
+    if (s.rule_kind !== "no_data" && !blank(s.chart_window_secs)) { parts.push("chart " + days(s.chart_window_secs)); }
     return parts.filter((p) => !blank(p)).join(", ") + (s.reason ? " (" + s.reason + ")" : "");
 }
 

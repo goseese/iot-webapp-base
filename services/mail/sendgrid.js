@@ -6,11 +6,15 @@ const settings = require("../../config/settings");
 let configuredKey = null;
 
 // Support request files (services/support.js): @sendgrid/helpers Attachment takes content as base64,
-// filename, type and disposition.
+// filename, type and disposition. An inline image (cid) is disposition inline with content_id, the
+// API's own name: the helper leaves the attachments list as given (helpers/convert-keys.js skips
+// arrays), so a camel case contentId would go out unconverted.
 function attachments(msg)
 {
     if (!msg.attachments || !msg.attachments.length) { return undefined; }
-    return msg.attachments.map((a) => ({ content: a.data.toString("base64"), filename: a.filename, type: a.contentType, disposition: "attachment" }));
+    return msg.attachments.map((a) => a.cid
+        ? { content: a.data.toString("base64"), filename: a.filename, type: a.contentType, disposition: "inline", content_id: a.cid }
+        : { content: a.data.toString("base64"), filename: a.filename, type: a.contentType, disposition: "attachment" });
 }
 
 module.exports =

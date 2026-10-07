@@ -54,4 +54,19 @@ function context(alarmId)
         .first();
 }
 
-module.exports = { rulesForSensor, saveRuleClocks, activeForSensor, activeForDevice, insertAlarm, updateAlarm, insertEvent, findByUid, findById, context };
+// Events that draw alarm markers on a sensor chart (public/js/iot-sensor-chart.js alarmMarkers):
+// raises, escalations, lowerings, clears and suppressions of the sensor's alarms that overlap
+// [from, to] (epoch seconds), oldest first. Events before from are kept so a lowering knows the
+// level it left; nothing after to.
+function markerEvents(sensorId, from, to)
+{
+    return knex(T("alarm_events") + " as e").join(T("alarms") + " as a", "a.id", "e.alarm_id")
+        .where("a.sensor_id", sensorId).where("a.raised_epoch", "<=", to)
+        .where(function () { this.whereNull("a.cleared_epoch").orWhere("a.cleared_epoch", ">=", from); })
+        .whereIn("e.event_kind", ["raised", "escalated", "de_escalated", "cleared", "suppressed"])
+        .where("e.epoch", "<=", to)
+        .orderBy([{ column: "e.epoch" }, { column: "e.id" }])
+        .select("a.uid", "e.epoch", "e.event_kind", "e.severity");
+}
+
+module.exports = { rulesForSensor, saveRuleClocks, activeForSensor, activeForDevice, insertAlarm, updateAlarm, insertEvent, findByUid, findById, context, markerEvents };

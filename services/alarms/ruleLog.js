@@ -5,7 +5,7 @@
 // The database modules load inside the async functions, so the pure parts test without one.
 
 const ENTITY = "alarm_rule";
-const FIELDS = ["rule_kind", "direction", "threshold", "severity", "exceed_secs", "return_secs", "timeout_secs", "is_enabled", "use_default_group", "channel_policy", "alert_groups", "alarm_title"];
+const FIELDS = ["rule_kind", "direction", "threshold", "severity", "exceed_secs", "return_secs", "timeout_secs", "is_enabled", "use_default_group", "channel_policy", "alert_groups", "alarm_title", "chart_in_alarm", "chart_window_secs"];
 
 // A NULL policy means every channel on (notify.js rulePolicyAllows). The rule form has no SMS
 // column (DECISIONS "SMS is hidden"), so saving an untouched rule writes email on, SMS off. The
@@ -32,6 +32,9 @@ function snapshotOf(rule, groupNames)
     for (const f of FIELDS) { s[f] = text(rule[f]); }
     s.is_enabled = rule.is_enabled ? "1" : "0";
     s.use_default_group = rule.use_default_group ? "1" : "0";
+    // Rules saved before migration 0015 have no chart_in_alarm in their logged snapshot; the column
+    // came in on, so missing reads as on.
+    s.chart_in_alarm = rule.chart_in_alarm === false || rule.chart_in_alarm === 0 ? "0" : "1";
     s.channel_policy = rule.channel_policy || NULL_POLICY;
     s.alert_groups = (groupNames || []).slice().sort().join(", ") || null;
     return s;

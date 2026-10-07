@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-sesv2": "3.1141.0",
+    "@resvg/resvg-js": "2.6.2",
     "@sendgrid/mail": "8.1.6",
     "bcryptjs": "3.0.3",
     "connect-session-knex": "5.0.0",
     "dotenv": "17.4.2",
+    "echarts": "6.1.0",
     "ejs": "6.0.1",
     "express": "4.22.2",
     "express-ejs-layouts": "2.5.1",

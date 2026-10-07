@@ -133,72 +133,12 @@ document.addEventListener("DOMContentLoaded", function ()
             chart.setOption({ xAxis: { max: t }, series: [{ data: current.points }] });
         }
     };
+    // Bands, thresholds, axis bounds and the option itself come from public/js/iot-sensor-chart.js,
+    // which the alarm email image also uses, so the two charts cannot drift apart.
     var css = getComputedStyle(document.documentElement);
-    function v(name) { return css.getPropertyValue(name).trim(); }
-    var sevColor = { info: v("--iot-info"), warning: v("--iot-warning"), alarm: v("--iot-danger"), emergency: v("--iot-danger") };
-    var sevAlpha = { info: 0.08, warning: 0.10, alarm: 0.12, emergency: 0.20 };
+    var colors = iotSensorChart.themeColors(function (name) { return css.getPropertyValue(name).trim(); });
     var fit = false;   // "Fit to data" toggle: leave thresholds out of the y axis bounds
     var fitButton = document.getElementById("fitToggle");
-    function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
-
-    // Shaded band beyond each threshold, stacked like a ladder: an upper rule shades up to the
-    // next upper rule (or off the top of the plot), a lower rule down to the next lower rule.
-    function bands(rules)
-    {
-        var out = [];
-        ["upper", "lower"].forEach(function (dir)
-        {
-            var up = dir === "upper";
-            var list = rules.filter(function (r) { return r.direction === dir; }).sort(function (a, b) { return up ? a.value - b.value : b.value - a.value; });
-            list.forEach(function (r, i)
-            {
-                var end = i + 1 < list.length ? list[i + 1].value : (up ? 1e9 : -1e9);
-                out.push([{ yAxis: r.value, itemStyle: { color: sevColor[r.severity] || v("--iot-danger"), opacity: sevAlpha[r.severity] || 0.12 } }, { yAxis: end }]);
-            });
-        });
-        return out;
-    }
-
-    // Tick step the way ECharts picks it (1, 2, 3, 5 or 10 times a power of ten), so the bounds
-    // we hand it land on a tick and the axis does not end on an odd label.
-    function niceStep(x)
-    {
-        var p = Math.pow(10, Math.floor(Math.log10(x)));
-        var f = x / p;
-        return (f < 1.5 ? 1 : f < 2.5 ? 2 : f < 4 ? 3 : f < 7 ? 5 : 10) * p;
-    }
-    function niceBounds(lo, hi)
-    {
-        var step = 0, a = lo, b = hi;
-        for (var i = 0; i < 3; i++)
-        {
-            var s = niceStep((b - a) / 5);
-            if (s === step) { break; }
-            step = s;
-            a = +(Math.floor(lo / s) * s).toFixed(10);
-            b = +(Math.ceil(hi / s) * s).toFixed(10);
-        }
-        return [a, b];
-    }
-
-    // Thresholds stay in view by default: people assume a limit does not exist if they cannot see
-    // it. The axis spans the visible data plus every threshold, with a margin past the outermost
-    // threshold so its line and label clear the plot edge. Returning null lets ECharts decide.
-    function yBounds(rules)
-    {
-        var vals = rules.map(function (r) { return r.value; });
-        if (fit || !vals.length) { return { min: null, max: null }; }
-        var rlo = Math.min.apply(null, vals), rhi = Math.max.apply(null, vals);
-        function calc(e)
-        {
-            var dlo = isFinite(e.min) ? e.min : rlo, dhi = isFinite(e.max) ? e.max : rhi;
-            var lo = Math.min(dlo, rlo), hi = Math.max(dhi, rhi);
-            if (hi <= lo) { hi = lo + 1; }
-            var pad = 0.05 * (hi - lo);
-            return niceBounds(rlo < dlo ? lo - pad : lo, rhi > dhi ? hi + pad : hi);
-        }
-        return { min: function (e) { return calc(e)[0]; }, max: function (e) { return calc(e)[1]; } };
-    }
 
     // initial: the zoom to start with, as percentages, when not keeping the current one.
     function draw(keepZoom, initial)
@@ -210,22 +150,8 @@ document.addEventListener("DOMContentLoaded", function ()
             var z = (chart.getOption().dataZoom || [])[1];
             if (z) { zoom = { start: z.start, end: z.end }; }
         }
-        var marks = d.rules.map(function (r) { return { yAxis: r.value, lineStyle: { color: sevColor[r.severity] || v("--iot-danger"), type: "dashed" }, label: { position: r.direction === "lower" ? "insideEndBottom" : "insideEndTop", color: sevColor[r.severity] || v("--iot-danger"), formatter: cap(r.severity) + " " + r.value.toFixed(<%= precision %>) + " " + d.unit } }; });
-        var yb = yBounds(d.rules);
         fitButton.classList.toggle("d-none", !d.rules.length);
-        chart.setOption({
-            animation: false,
-            grid: { left: 48, right: 16, top: 24, bottom: 84 },
-            tooltip: { trigger: "axis", valueFormatter: function (x) { return x.toFixed(<%= precision %>) + " " + d.unit; } },
-            xAxis: { type: "time", min: d.from, max: d.to, axisLabel: { color: v("--iot-text-muted") }, axisLine: { lineStyle: { color: v("--iot-border") } } },
-            yAxis: { type: "value", scale: true, min: yb.min, max: yb.max, name: d.unit, axisLabel: { color: v("--iot-text-muted") }, splitLine: { lineStyle: { color: v("--iot-border") } } },
-            // zoom window: slider with a preview of the series, drag inside to pan, pinch or ctrl + wheel to zoom
-            dataZoom: [
-                { type: "inside", xAxisIndex: 0, zoomOnMouseWheel: "ctrl", start: zoom.start, end: zoom.end },
-                { type: "slider", xAxisIndex: 0, start: zoom.start, end: zoom.end, height: 28, bottom: 8, borderColor: v("--iot-border"), textStyle: { color: v("--iot-text-muted") }, dataBackground: { lineStyle: { color: v("--iot-primary"), opacity: 0.5 }, areaStyle: { color: v("--iot-primary"), opacity: 0.1 } }, selectedDataBackground: { lineStyle: { color: v("--iot-primary") }, areaStyle: { color: v("--iot-primary"), opacity: 0.25 } } }
-            ],
-            series: [{ type: "line", showSymbol: false, sampling: "minmax", data: d.points, lineStyle: { color: v("--iot-primary"), width: 2 }, markArea: { silent: true, data: bands(d.rules) }, markLine: { silent: true, symbol: "none", data: marks } }]
-        }, true);
+        chart.setOption(iotSensorChart.option(d, { colors: colors, precision: <%= precision %>, fit: fit, zoom: zoom, timeText: function (ms) { return iotChartTools.localTime(ms, d.timezone).slice(0, 16); } }), true);
     }
     // Readings arrive newest first in chunks: the newest chunk draws at once, older chunks load
     // behind it and are added on the left, keeping the zoom window where it is. Clicking another
@@ -245,7 +171,8 @@ document.addEventListener("DOMContentLoaded", function ()
         complete = false;
         showNote("");
         if (more) { more.disabled = true; }
-        var res = await fetch("/sensors/<%= uid %>/data?" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : since !== null ? "from=" + since : "range=" + range));
+        // alarms=1: the alarm marker events for the whole window come with the first chunk only.
+        var res = await fetch("/sensors/<%= uid %>/data?alarms=1&" + (fixed ? "from=" + fixed.from + "&to=" + fixed.to : since !== null ? "from=" + since : "range=" + range));
         if (!res.ok) { showNote("Could not load readings."); return; }
         var d = await res.json();
         if (id !== loadId) { return; }
@@ -283,6 +210,18 @@ document.addEventListener("DOMContentLoaded", function ()
         more.disabled = !can;
         more.title = can ? "Load the 30 days before the oldest day shown" : full ? "The chart holds as many readings as it can (" + MAX_POINTS.toLocaleString() + ")." : "A chart window is at most a year.";
     }
+    // Alarm events from an older window added to those already loaded: an alarm spanning both
+    // windows comes back in both, so duplicates are dropped and the list stays oldest first.
+    function mergeAlarms(older, loaded)
+    {
+        var seen = {}, out = [];
+        older.concat(loaded).forEach(function (e)
+        {
+            var k = e.uid + "|" + e.epoch + "|" + e.event_kind + "|" + e.severity;
+            if (!seen[k]) { seen[k] = true; out.push(e); }
+        });
+        return out.sort(function (a, b) { return a.epoch - b.epoch; });
+    }
     async function loadMore()
     {
         if (!current) { return; }
@@ -299,10 +238,12 @@ document.addEventListener("DOMContentLoaded", function ()
         draw(false, zoomTo());
         while (d.more && current.points.length < MAX_POINTS)
         {
-            var res = await fetch("/sensors/<%= uid %>/data?from=" + fromSec + "&to=" + to);
+            var first = !added && to === oldFrom - 1;
+            var res = await fetch("/sensors/<%= uid %>/data?from=" + fromSec + "&to=" + to + (first ? "&alarms=1" : ""));
             if (!res.ok) { showNote("Could not load older readings."); moreState(); return; }
             d = await res.json();
             if (id !== loadId) { return; }
+            if (d.alarms) { current.alarms = mergeAlarms(d.alarms, current.alarms || []); }
             current.points = d.points.concat(current.points);
             added += d.points.length;
             to = d.next_to;

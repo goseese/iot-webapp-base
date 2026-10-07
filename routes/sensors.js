@@ -8,6 +8,7 @@ const grants = require("../services/grants");
 const metrics = require("../metrics");
 const display = require("../services/display");
 const sensorsExt = require("../db/repos/sensorsExt");
+const alarmsRepo = require("../db/repos/alarms");
 const { audit } = require("../services/audit");
 const activity = require("../services/activity");
 const deviceTypes = require("../deviceTypes");
@@ -145,7 +146,14 @@ router.get("/:uid/data", loadSensor, async (req, res, next) =>
 
         const points = page.map((r) => [Number(r.epoch) * 1000, Number(toDisplay(req, r.value).toFixed(4))]);
         const rules = (await sensorsExt.rules(req.sensor.id)).filter((r) => r.rule_kind === "threshold" && r.is_enabled).map((r) => ({ direction: r.direction, severity: r.severity, value: toDisplay(req, r.threshold) }));
-        res.json({ unit: req.unit, timezone: req.location.iana_timezone, points: points, rules: rules, from: from * 1000, to: to * 1000, more: more, next_to: nextTo });
+        const out = { unit: req.unit, timezone: req.location.iana_timezone, points: points, rules: rules, from: from * 1000, to: to * 1000, more: more, next_to: nextTo };
+        // Alarm marker events for the whole window, asked for once per window (alarms=1) rather
+        // than with every chunk, since the chunks share the window.
+        if (req.query.alarms === "1")
+        {
+            out.alarms = (await alarmsRepo.markerEvents(req.sensor.id, from, to)).map((e) => ({ uid: String(e.uid).toLowerCase(), epoch: Number(e.epoch), event_kind: e.event_kind, severity: e.severity }));
+        }
+        res.json(out);
     }
     catch (err) { next(err); }
 });
@@ -217,6 +225,9 @@ function titleSample(req, r)
     return Object.fromEntries(Object.entries(v).filter((e) => e[1] !== undefined));
 }
 
+// Chart window choices on the rule form, in days (views/sensors/rules.ejs); anything else is Auto.
+const CHART_WINDOW_DAYS = [1, 7, 14, 30, 60, 90, 180, 365];
+
 function ruleFromBody(req)
 {
     const b = req.body;
@@ -237,11 +248,18 @@ function ruleFromBody(req)
         row.exceed_secs = Math.max(0, Number(b.exceed_minutes || 0) * 60);
         row.return_secs = Math.max(0, Number(b.return_minutes || 0) * 60);
         row.timeout_secs = null;
+        // Chart in alarm emails: on unless switched off; window Auto (NULL) or one of the listed days.
+        row.chart_in_alarm = b.chart_in_alarm ? 1 : 0;
+        const days = Number(b.chart_window_days);
+        row.chart_window_secs = CHART_WINDOW_DAYS.includes(days) ? days * 86400 : null;
     }
     else
     {
         row.direction = null; row.threshold = null; row.exceed_secs = 0; row.return_secs = 0;
         row.timeout_secs = Math.max(60, Number(b.timeout_minutes || 30) * 60);
+        // A no_data rule sends no chart; its hidden fields keep their defaults.
+        row.chart_in_alarm = 1;
+        row.chart_window_secs = null;
     }
     const policy = {};
     for (const tr of ["raise", "escalate", "de_escalate", "clear"])

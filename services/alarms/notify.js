@@ -13,6 +13,10 @@ const mail = require("../mail");
 const metrics = require("../../metrics");
 const { ORDER } = require("./ladder");
 const title = require("./title");
+const chartImage = require("./chartImage");
+const { esc } = require("../chartEmailHelpers");
+
+const CHART_CID = "alarm-chart";
 
 const CHANNELS = ["email", "sms"];
 const TRANSITION_KEY = { raised: "raise", escalated: "escalate", de_escalated: "de_escalate", cleared: "clear", re_notified: "raise", suppressed: null };
@@ -228,6 +232,24 @@ function bodyFor(ctx, eventKind, severity, value, comment, actionUrl, ladderNote
     return lines.join("\n") + "\n";
 }
 
+// The same message as HTML (Jeff, Oct 2026: alarm emails are HTML from now on): each block of the
+// text body is a paragraph, everything escaped, the two links clickable, and the chart (when there
+// is one) after the first block, the alarm facts.
+function htmlFor(text, links, withChart, alt)
+{
+    const blocks = text.trim().split("\n\n").map((b) =>
+    {
+        let h = esc(b);
+        for (const url of links.filter(Boolean)) { h = h.split(esc(url)).join('<a href="' + esc(url) + '">' + esc(url) + "</a>"); }
+        return "<p>" + h.split("\n").join("<br>") + "</p>";
+    });
+    if (withChart)
+    {
+        blocks.splice(1, 0, '<p><img src="cid:' + CHART_CID + '" alt="' + esc(alt) + '" width="1000" style="display: block; width: 100%; max-width: 1000px; height: auto; border: 0; border-radius: 6px"></p>');
+    }
+    return '<div style="font-family: system-ui, -apple-system, Segoe UI, sans-serif; font-size: 14px; line-height: 1.5">' + blocks.join("") + "</div>";
+}
+
 // Main entry. options: { eventId, eventKind, severity, value, comment, uptoLevelByGroup? }
 async function notify(alarmId, options)
 {
@@ -244,6 +266,20 @@ async function notify(alarmId, options)
 
     const severity = options.severity || ctx.severity;
     const linkMinutes = settings.get("RENOTIFY_MINUTES", 60) * 4;
+    // The chart image (services/alarms/chartImage.js) on the first email of an alarm and on its clear
+    // email: drawn once, when the first email passes the gates, and shared by every recipient. The
+    // window ends at the event (a raise after a lifted suppression is later than raised_epoch).
+    let chart;   // undefined: not tried yet; null: none
+    const chartFor = async () =>
+    {
+        if (chart !== undefined) { return chart; }
+        chart = null;
+        if (options.eventKind !== "raised" && options.eventKind !== "cleared") { return chart; }
+        const ev = options.eventId ? await knex(T("alarm_events")).where({ id: options.eventId }).first() : null;
+        const end = ev ? Number(ev.epoch) : (options.eventKind === "cleared" && ctx.cleared_epoch ? Number(ctx.cleared_epoch) : nowEpoch());
+        chart = await chartImage.forAlarm(ctx, rule, options.eventKind, end, titleText);
+        return chart;
+    };
     const sent = new Set();
     for (const group of groups)
     {
@@ -282,11 +318,15 @@ async function notify(alarmId, options)
                     const token = await tokens.issue("alarm_action", "alarm", alarmId, linkMinutes * 60, { recipientType: r.type, recipientId: r.id });
                     actionUrl = env.appUrl + "/a/" + token;
                 }
+                const img = await chartFor();
+                const text = bodyFor(ctx, options.eventKind, severity, options.value, options.comment, actionUrl, r.ladderNote);
                 await mail.send(
                 {
                     kind: "alarm", to: address, recipientType: r.type, recipientId: r.id, alarmEventId: options.eventId, ladderNote: r.ladderNote,
                     subject: subjectFor(titleText, options.eventKind, severity),
-                    text: bodyFor(ctx, options.eventKind, severity, options.value, options.comment, actionUrl, r.ladderNote)
+                    text: text,
+                    html: htmlFor(text, [actionUrl, env.appUrl + "/alarms/" + String(ctx.uid).toLowerCase()], !!img, "Chart of " + ctx.sensor_name + " on " + ctx.device_name),
+                    attachments: img ? [{ filename: img.filename, contentType: "image/png", data: img.data, cid: CHART_CID }] : []
                 });
             }
         }
@@ -295,4 +335,4 @@ async function notify(alarmId, options)
     logger.info({ alarm: alarmId, event: options.eventKind, recipients: sent.size }, "alarm notifications resolved");
 }
 
-module.exports = { notify, attachedGroups, gate, displayValue };
+module.exports = { notify, attachedGroups, gate, displayValue, htmlFor };

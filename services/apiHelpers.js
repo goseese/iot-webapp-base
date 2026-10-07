@@ -47,8 +47,8 @@ function parseJson(v)
 function typedValue(field, v)
 {
     if (v === null || v === undefined) { return null; }
-    if (["threshold", "exceed_secs", "return_secs", "timeout_secs"].includes(field)) { return Number(v); }
-    if (field === "is_enabled" || field === "use_default_group") { return v === "1" || v === "true"; }
+    if (["threshold", "exceed_secs", "return_secs", "timeout_secs", "chart_window_secs"].includes(field)) { return Number(v); }
+    if (field === "is_enabled" || field === "use_default_group" || field === "chart_in_alarm") { return v === "1" || v === "true"; }
     if (field === "channel_policy") { return parseJson(v); }
     if (field === "created" || field === "deleted")
     {

@@ -567,6 +567,7 @@ router.get("/alarm-rules", async (req, res, next) =>
                 kind: r.rule_kind, direction: r.direction, threshold: r.threshold, threshold_display: shownIn(r.metric, unit, r.display_precision)(r.threshold),
                 canonical_unit: metrics.get(r.metric).canonical, display_unit: unit, severity: r.severity, exceed_secs: r.exceed_secs, return_secs: r.return_secs, timeout_secs: r.timeout_secs,
                 is_enabled: !!r.is_enabled, use_default_group: !!r.use_default_group, channel_policy: parseJson(r.channel_policy), alarm_title: r.alarm_title,
+                chart_in_alarm: !!r.chart_in_alarm, chart_window_secs: r.chart_window_secs === null || r.chart_window_secs === undefined ? null : Number(r.chart_window_secs),
                 alert_groups: groups.filter((g) => g.alarm_rule_id === r.id).map((g) => ({ uid: uidOf(g.uid), name: g.name })), created_epoch: Number(r.created_epoch) });
         }
         res.json({ rules: out });
