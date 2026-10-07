@@ -25,7 +25,7 @@ function channels()
         { id: "charge-state", name: "Charge state", metric: "count" },
         { id: "int-temp", name: "Board temperature", metric: "temperature", inboundUnit: "C" },
         { id: "int-humidity", name: "Board humidity", metric: "humidity", inboundUnit: "%" },
-        { id: "run-time", name: "Uptime", metric: "duration", inboundUnit: "min", displayUnit: "h" },
+        { id: "run-time", name: "Uptime", metric: "duration", inboundUnit: "s", displayUnit: "h" },
         { id: "free-heap", name: "Free heap", metric: "data_size", inboundUnit: "B", displayUnit: "kB" }
     ];
 }
