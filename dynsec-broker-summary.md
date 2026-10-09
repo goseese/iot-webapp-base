@@ -92,7 +92,8 @@ Verified: a takeover by client id reuse receives nothing. **Every role must ther
 | `{guid}` | `dev-{guid}` | One per provisioned unit, created by the app. |
 
 - `<slug>-server`: `subscribePattern` and `publishClientReceive` on `dev/+/#` and `acct/#`;
-  `publishClientSend` on `dev/+/cmd/#`, `acct/#` and `con/endpoint`. Exactly what the code publishes
+  `publishClientSend` on `dev/+/cmd/#`, `acct/#`, `con/endpoint` and `dev/+/status` (the last only to
+  clear a unit's retained status with an empty retained publish). Exactly what the code publishes
   and subscribes to; it cannot touch `$CONTROL`.
 - `dynsec-admin`: `publishClientSend`, `publishClientReceive`, `subscribePattern` and
   `unsubscribePattern` on `$CONTROL/dynamic-security/#`. 2.1 generates this role; 2.0 does not, so

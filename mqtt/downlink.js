@@ -49,4 +49,26 @@ function publish(topic, payload)
     });
 }
 
-module.exports = { publish, useClient };
+// Removes the retained message on a topic: an empty payload published with retain set (MQTT 3.1.1
+// 3.3.1.3; mosquitto 2.0.22 src/retain.c drops the stored message). Subscribers, the ingest client
+// included, still receive the empty message once, so handlers must ignore an empty payload. Resolves
+// true once the broker has it, false with no connection or on failure. Never throws.
+function clearRetained(topic)
+{
+    const c = connectedClient();
+    if (!c)
+    {
+        logger.warn({ topic: topic }, "retained clear not sent: no broker connection in this process");
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve) =>
+    {
+        c.publish(topic, "", { qos: 1, retain: true }, (err) =>
+        {
+            if (err) { logger.warn({ topic: topic, err: err.message }, "retained clear failed"); }
+            resolve(!err);
+        });
+    });
+}
+
+module.exports = { publish, clearRetained, useClient };

@@ -67,7 +67,10 @@ const ROLES =
             acl("publishClientReceive", "acct/#"),
             acl("publishClientSend", "dev/+/cmd/#"),
             acl("publishClientSend", "acct/#"),
-            acl("publishClientSend", "con/endpoint")
+            acl("publishClientSend", "con/endpoint"),
+            // Only to clear a unit's retained status with an empty retained publish
+            // (mqtt/downlink.clearRetained, DECISIONS "Retained status cleanup").
+            acl("publishClientSend", "dev/+/status")
         ]
     },
     {

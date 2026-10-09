@@ -136,6 +136,8 @@ async function handle(topic, payload, meta)
 // or every reconnect of the ingest client would mark the whole fleet as heard now.
 async function handleStatus(gateway, payload, receipt, retained, guid)
 {
+    // Empty: the server cleared this unit's retained status (mqtt/downlink.clearRetained).
+    if (payload.length === 0) { return; }
     let status;
     try { status = JSON.parse(payload.toString("utf8")); }
     catch (err) { logger.warn({ gateway: gateway.uid }, "status payload is not JSON"); return; }
