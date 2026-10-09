@@ -14,7 +14,7 @@ const BITS =
     { name: "manage_reports",bit: 1n << 9n,  label: "Manage reports",     description: "Create, edit and run reports." },
     { name: "api_write",     bit: 1n << 10n, label: "API write",          description: "Post readings and updates through the API." },
     { name: "grant",         bit: 1n << 11n, label: "Manage users",       description: "Invite users and edit grants, limited to bits the grantor holds." },
-    { name: "manage_athletes", bit: 1n << 12n, label: "Manage athletes",  description: "Add and rename athletes, enroll wristbands, assign bands and loaners." },
+    // Bit 12 was manage_athletes (Voltastc athletes and wristbands, removed). Never reuse it.
     { name: "handle_support", bit: 1n << 13n, label: "Handle support",   description: "See, answer, close and reopen support requests sent from this account or location, and get their emails." }
 ];
 

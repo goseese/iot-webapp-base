@@ -19,12 +19,12 @@ router.get("/", async (req, res, next) =>
         const visible = await grants.visibleLocations(req);
         const mine = locations.filter((l) => visible.some((v) => v.id === l.id));
         // Column sums for the table footer, shown only when there is more than one location.
-        const totals = { account: 0, controller: 0, target: 0, athletes: null };
-        const pods = await locationService.podCounts(mine.map((l) => l.id));
+        const totals = { gateways: 0, devices: 0 };
+        const counts = await locationService.deviceCounts(mine.map((l) => l.id));
         for (const l of mine)
         {
-            l.pods = pods[l.id];
-            totals.account += l.pods.account; totals.controller += l.pods.controller; totals.target += l.pods.target;
+            l.counts = counts[l.id];
+            totals.gateways += l.counts.gateways; totals.devices += l.counts.devices;
         }
         res.render("account/index", { title: req.account.name, locations: mine, totals: totals, bits: await bits(req), permissions: permissions });
     }

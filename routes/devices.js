@@ -38,24 +38,16 @@ async function loadDevice(req, res, next)
     catch (err) { next(err); }
 }
 
-// Config shows only for unit hardware whose type declares configKeys. A station type (controller
-// pod) opens on its Station tab, with its sensors on a tab of their own.
+// Config shows only for unit hardware whose type declares configKeys.
 function tabs(req, current)
 {
     const base = "/devices/" + String(req.device.uid).toLowerCase();
-    const list = isStation(req)
-        ? [{ label: "Station", path: base }, { label: "Sensors", path: base + "/sensors" }, { label: "Tags", path: base + "/tags" }]
-        : [{ label: "Sensors", path: base }, { label: "Tags", path: base + "/tags" }];
+    const list = [{ label: "Sensors", path: base }, { label: "Tags", path: base + "/tags" }];
     if (hasConfig(req)) { list.push({ label: "Config", path: base + "/config" }); }
     if (allowedCommands(req).length > 0) { list.push({ label: "Commands", path: base + "/commands" }); }
     list.push({ label: "API", path: base + "/api" });
     list.push({ label: "Settings", path: base + "/settings" });
     return list.map((t) => ({ label: t.label, path: t.path, active: t.label === current }));
-}
-
-function isStation(req)
-{
-    return !!(req.typeModule && req.typeModule.station);
 }
 
 function hasConfig(req)
@@ -96,70 +88,6 @@ function trail(req)
     ];
 }
 
-// Pod stations (services/stations.js). A controller's Station tab shows its station: the pairing
-// toggle and banner, and the target pods paired with it. null for every other device (a target
-// pod's controller shows in its "Gateways hearing this device" table).
-async function stationModel(req)
-{
-    const stations = require("../services/stations");
-    if (req.typeModule && req.typeModule.station)
-    {
-        const cred = await credentials.forDevice(req.device);
-        const pairing = await stations.pairingState(req.device);
-        const pods = await stations.roster(req.device.id);
-        // Firmware updates (POST /station/ota): each pod's pending ota, and the file its type installs.
-        const pendingOta = await require("../services/commandQueue").pendingOta(req.device.id);
-        pods.forEach((p) =>
-        {
-            const row = otaWaiting(pendingOta, p.hardware_id);
-            const pct = row && row.progress ? row.progress[p.hardware_id] : undefined;
-            p.ota = row ? { status: row.status, pct: pct === undefined ? null : pct } : null;
-        });
-        const firmware = require("../services/firmware");
-        const images = [...new Set(pods.map((p) => firmware.imageForType(require("../deviceTypes").all[p.type_slug])).filter(Boolean))];
-        return {
-            kind: "controller",
-            pairing: pairing,
-            // What the page asks for: a pending write wins over what the pod last reported.
-            wanted: pairing.pending !== null ? pairing.pending : pairing.on,
-            pods: pods,
-            firmware: images.length === 1 ? await firmware.current(images[0]) : null,
-            canPair: permissions.has(req.deviceBits, permissions.byName.edit) && !!cred && cred.state === "active",
-            colors: require("../deviceTypes/shared/pod").LED_COLORS,
-            elsewhere: await stations.pairingElsewhere(req.device.location_id, req.device.id),
-            buttonRefused: await stations.lastButtonRefusal(req.device, 1800),
-            checkin: await bandModel(req, "checkin")
-        };
-    }
-    return null;
-}
-
-// The band last presented to a controller (who is checked in) or an account pod (enrollment),
-// for views/devices/band.ejs. The athlete link and rename follow the permissions at the athlete's
-// own account, which need not be this pod's.
-async function bandModel(req, mode)
-{
-    const cur = await require("../services/athletes").current(req.device.id);
-    let athleteUrl = null;
-    let canRename = false;
-    if (cur && cur.athlete && cur.athleteAccount)
-    {
-        const there = await grants.effectiveAtAccount(req, cur.athlete.account_id);
-        if (permissions.has(there, permissions.byName.view)) { athleteUrl = "/account/" + String(cur.athleteAccount.uid).toLowerCase() + "/athletes/" + String(cur.athlete.uid).toLowerCase(); }
-        canRename = !!athleteUrl && permissions.has(there, permissions.byName.manage_athletes);
-    }
-    return {
-        mode: mode, current: cur, accountId: req.location.account_id, athleteUrl: athleteUrl, canRename: canRename,
-        canCheckout: permissions.has(req.deviceBits, permissions.byName.edit),
-        canEnroll: permissions.has(req.deviceBits, permissions.byName.manage_athletes)
-    };
-}
-
-function readsBands(req)
-{
-    return !!(req.typeModule && (req.typeModule.station || req.typeModule.enrolls));
-}
-
 // The device's sensors table. Hidden sensors (DECISIONS "Sensor delete and hide") are listed only
 // with ?hidden=1.
 async function sensorRows(req)
@@ -179,16 +107,14 @@ async function sensorRows(req)
     return { sensors: sensors, hiddenCount: hiddenCount, showHidden: showHidden };
 }
 
-// view "all": status cards, sensors and coverage (every type but a station). "station": a station
-// type's Station tab, status cards and the station panel. "sensors": its Sensors tab, the table only.
+// Status cards, sensors and coverage.
 router.get("/:uid", loadDevice, async (req, res, next) =>
 {
     try
     {
-        const station = isStation(req);
-        const { sensors, hiddenCount, showHidden } = station ? { sensors: [], hiddenCount: 0, showHidden: false } : await sensorRows(req);
+        const { sensors, hiddenCount, showHidden } = await sensorRows(req);
         const cred = await credentials.forDevice(req.device);
-        const coverage = station ? [] : req.device.kind === "gateway"
+        const coverage = req.device.kind === "gateway"
             ? await knex(T("device_coverage") + " as c").join(T("devices") + " as d", "d.id", "c.device_id").leftJoin(T("device_types") + " as dt", "dt.id", "d.device_type_id").where("c.gateway_id", req.device.id).whereNull("d.delete_epoch").select("c.*", "d.name", "d.uid", "dt.slug as type_slug").orderBy("c.last_heard_epoch", "desc")
             : await knex(T("device_coverage") + " as c").join(T("devices") + " as d", "d.id", "c.gateway_id").where("c.device_id", req.device.id).whereNull("d.delete_epoch").select("c.*", "d.name", "d.uid").orderBy("c.last_heard_epoch", "desc");
         // Signal percent of each coverage RSSI: the radio is the heard device's own type (its rssi
@@ -200,195 +126,7 @@ router.get("/:uid", loadDevice, async (req, res, next) =>
             const ch = mod && (mod.channels || []).find((x) => x.id === "rssi" && x.signal);
             c.signal_pct = ch ? require("../services/levels").signalPercent(ch.signal, c.last_rssi) : null;
         });
-        const enroll = req.typeModule && req.typeModule.enrolls ? await bandModel(req, "enroll") : null;
-        res.render("devices/show", { title: req.device.name, view: station ? "station" : "all", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, station ? "Station" : "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: await stationModel(req), enroll: enroll });
-    }
-    catch (err) { next(err); }
-});
-
-// A station type's Sensors tab: the sensors table only.
-router.get("/:uid/sensors", loadDevice, async (req, res, next) =>
-{
-    try
-    {
-        if (!isStation(req)) { return next(notFoundError()); }
-        const { sensors, hiddenCount, showHidden } = await sensorRows(req);
-        res.render("devices/show", { title: req.device.name, view: "sensors", device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: null, awaiting: false, coverage: [], showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900), station: null });
-    }
-    catch (err) { next(err); }
-});
-
-// Just the station panel, for the controller page's live refresh (a "config" socket notice for
-// this device: pairing confirmed, or a target pod paired or moved).
-router.get("/:uid/station", loadDevice, async (req, res, next) =>
-{
-    try
-    {
-        const station = await stationModel(req);
-        if (!station || station.kind !== "controller") { return next(notFoundError()); }
-        res.render("devices/station", { layout: false, device: req.device, location: req.location, station: station });
-    }
-    catch (err) { next(err); }
-});
-
-// Update firmware on the target pods ticked on a controller's Station tab. Every target pod ticked
-// is one "to":"all" command (they install one image); some of them, one command per pod. A pod with
-// an update already waiting is left out.
-router.post("/:uid/station/ota", loadDevice, need("edit"), async (req, res, next) =>
-{
-    try
-    {
-        if (!isStation(req)) { return next(notFoundError()); }
-        const back = "/devices/" + req.params.uid;
-        const q = require("../services/commandQueue");
-        const firmware = require("../services/firmware");
-        const station = await stationModel(req);
-        const picked = new Set([].concat(req.body.pod || []).map((u) => String(u).toLowerCase()));
-        const chosen = station.pods.filter((p) => picked.has(String(p.uid).toLowerCase()));
-        if (chosen.length === 0) { req.flash("warning", "Tick the target pods to update first."); return res.redirect(back); }
-        if (!station.firmware) { req.flash("warning", "There is no firmware file on the server for these target pods yet."); return res.redirect(back); }
-        const r = await q.route(req.device);
-        if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
-        const value = JSON.stringify({ url: station.firmware.url, md5: station.firmware.md5 });
-        const fresh = chosen.filter((p) => !p.ota);
-        const skipped = chosen.length - fresh.length;
-        if (fresh.length === 0) { req.flash("warning", "A firmware update is already waiting for " + (chosen.length === 1 ? "that pod." : "those pods.")); return res.redirect(back); }
-        if (fresh.length === station.pods.length)
-        {
-            await q.enqueue({ pod: r.pod, target: "all", targetDeviceId: null, cmd: "ota", value: value, userId: req.user.id });
-        }
-        else
-        {
-            for (const p of fresh) { await q.enqueue({ pod: r.pod, target: p.hardware_id, targetDeviceId: p.id, cmd: "ota", value: value, userId: req.user.id }); }
-        }
-        await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: "ota" });
-        req.flash("success", "Firmware update queued for " + (fresh.length === station.pods.length ? "every target pod" : fresh.length + " target pod" + (fresh.length === 1 ? "" : "s")) + (skipped ? " (" + skipped + " already waiting, left out)" : "") + ". The controller updates them one after another; the list below shows each pod's progress.");
-        res.redirect(back);
-    }
-    catch (err) { next(err); }
-});
-
-// Turn the LEDs of the target pods ticked on a controller's Station tab, from the bulk actions
-// footer. Same fan out as /station/ota: every pod ticked is one "to":"all" command, some of them
-// one command per pod.
-router.post("/:uid/station/led", loadDevice, need("edit"), async (req, res, next) =>
-{
-    try
-    {
-        if (!isStation(req)) { return next(notFoundError()); }
-        const back = "/devices/" + req.params.uid;
-        const q = require("../services/commandQueue");
-        const station = await stationModel(req);
-        const colors = require("../deviceTypes/shared/pod").LED_COLORS;
-        const value = String(req.body.value || "");
-        const color = colors.find((c) => c[0] === value);
-        if (!color) { return next(notFoundError()); }
-        const picked = new Set([].concat(req.body.pod || []).map((u) => String(u).toLowerCase()));
-        const chosen = station.pods.filter((p) => picked.has(String(p.uid).toLowerCase()));
-        if (chosen.length === 0) { req.flash("warning", "Tick the target pods first."); return res.redirect(back); }
-        const r = await q.route(req.device);
-        if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
-        if (chosen.length === station.pods.length)
-        {
-            await q.enqueue({ pod: r.pod, target: "all", targetDeviceId: null, cmd: "led", value: value, userId: req.user.id });
-        }
-        else
-        {
-            for (const p of chosen) { await q.enqueue({ pod: r.pod, target: p.hardware_id, targetDeviceId: p.id, cmd: "led", value: value, userId: req.user.id }); }
-        }
-        await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: "led " + value });
-        req.flash("success", "LEDs " + color[1] + " queued for " + (chosen.length === station.pods.length ? "every target pod" : chosen.length + " target pod" + (chosen.length === 1 ? "" : "s")) + ".");
-        res.redirect(back);
-    }
-    catch (err) { next(err); }
-});
-
-// Just an account pod's band panel, for its page's live refresh.
-router.get("/:uid/band", loadDevice, async (req, res, next) =>
-{
-    try
-    {
-        if (!req.typeModule || !req.typeModule.enrolls) { return next(notFoundError()); }
-        res.render("devices/band", { layout: false, device: req.device, location: req.location, band: await bandModel(req, "enroll") });
-    }
-    catch (err) { next(err); }
-});
-
-// Check out (a controller) or clear (an account pod) the band last presented.
-router.post("/:uid/checkout", loadDevice, need("edit"), async (req, res, next) =>
-{
-    try
-    {
-        if (!readsBands(req)) { return next(notFoundError()); }
-        const n = await require("../services/athletes").checkout(req.device.id);
-        if (n > 0)
-        {
-            await activity.log(req, "band_checkout", { entity_type: "device", entity_uid: req.device.uid });
-            await require("../services/unitConfig").notifyMac(req.device.hardware_id);
-        }
-        res.redirect("/devices/" + req.params.uid);
-    }
-    catch (err) { next(err); }
-});
-
-// Account pod: enroll the band last presented, as a new athlete of this pod's account.
-router.post("/:uid/enroll", loadDevice, need("manage_athletes"), async (req, res, next) =>
-{
-    try
-    {
-        if (!req.typeModule || !req.typeModule.enrolls) { return next(notFoundError()); }
-        const back = "/devices/" + req.params.uid;
-        const r = await require("../services/athletes").enroll(req.device, req.location.account_id, req.body.band, req.body.name, req.user);
-        if (!r.ok) { req.flash("danger", r.error); return res.redirect(back); }
-        await activity.log(req, "band_enrolled", { entity_type: "athlete", entity_uid: r.athlete.uid, detail: r.band.band_mac });
-        await require("../services/unitConfig").notifyMac(req.device.hardware_id);
-        req.flash("success", r.athlete.display_name + " enrolled with band " + r.band.band_mac + ".");
-        res.redirect(back);
-    }
-    catch (err) { next(err); }
-});
-
-// Pairing mode on or off: the pair_mode config write (services/unitConfig), so the page shows what
-// the controller actually holds. At most one controller per location may be pairing.
-router.post("/:uid/pairing", loadDevice, need("edit"), async (req, res, next) =>
-{
-    try
-    {
-        if (!req.typeModule || !req.typeModule.station) { return next(notFoundError()); }
-        const back = "/devices/" + req.params.uid;
-        const stations = require("../services/stations");
-        const on = req.body.action === "on";
-        const cred = await credentials.forDevice(req.device);
-        if (!cred || cred.state !== "active")
-        {
-            req.flash("warning", "This controller has no active broker credentials yet, so it cannot be put in pairing mode.");
-            return res.redirect(back);
-        }
-        // On: the check and the write under the location's pairing lock (stations.pairIfFree).
-        let r;
-        if (on)
-        {
-            const p = await stations.pairIfFree(req.device, cred.broker_username, req.typeModule, req.user.id);
-            if (p.blocker)
-            {
-                req.flash("warning", p.blocker.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
-                return res.redirect(back);
-            }
-            r = p.result;
-        }
-        else
-        {
-            r = await require("../services/unitConfig").write(req.device.hardware_id, cred.broker_username, stations.PAIR_KEY, "false", req.typeModule, req.user.id);
-        }
-        if (!r.ok)
-        {
-            req.flash("danger", r.error);
-            return res.redirect(back);
-        }
-        await activity.log(req, on ? "pairing_on" : "pairing_off", { entity_type: "device", entity_uid: req.device.uid });
-        if (!r.sent) { req.flash("warning", "Saved. The broker is not reachable from this server right now; the controller gets it when it next connects."); }
-        else { req.flash("success", on ? "Pairing mode sent to the controller." : "Pairing off sent to the controller."); }
-        res.redirect(back);
+        res.render("devices/show", { title: req.device.name, device: req.device, location: req.location, type: req.deviceType, sensors: sensors, cred: cred, awaiting: credentials.awaiting(req.device, cred), coverage: coverage, showHidden: showHidden, hiddenCount: hiddenCount, bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Sensors"), threshold: settings.get("ONLINE_THRESHOLD_SECS", 900) });
     }
     catch (err) { next(err); }
 });
@@ -519,24 +257,7 @@ router.post("/:uid/config", loadDevice, need("edit"), async (req, res, next) =>
             req.flash("success", "Pending change to " + key + " cancelled. The gateway keeps whatever it already applied.");
             return res.redirect(back);
         }
-        // Pairing mode from the Config tab keeps the one controller per location rule too, under the
-        // same lock as the toggle and the button (stations.pairIfFree).
-        const stations = require("../services/stations");
-        let r;
-        if (key === stations.PAIR_KEY && req.typeModule.station && stations.truthy(req.body.value))
-        {
-            const p = await stations.pairIfFree(req.device, cred.broker_username, req.typeModule, req.user.id);
-            if (p.blocker)
-            {
-                req.flash("warning", p.blocker.name + " at this location is already in pairing mode. Turn it off first; only one controller per location can pair at a time.");
-                return res.redirect(back);
-            }
-            r = p.result;
-        }
-        else
-        {
-            r = await unitConfig.write(req.device.hardware_id, cred.broker_username, key, req.body.value, req.typeModule, req.user.id);
-        }
+        const r = await unitConfig.write(req.device.hardware_id, cred.broker_username, key, req.body.value, req.typeModule, req.user.id);
         if (!r.ok)
         {
             req.flash("danger", key + ": " + r.error);
@@ -610,7 +331,7 @@ router.get("/:uid/commands", loadDevice, async (req, res, next) =>
         const queue = req.typeModule.commandQueue ? await queueModel(req) : null;
         const firmware = require("../services/firmware");
         const firmwareFile = commands.some((c) => c.value === "firmware") ? await firmware.current(firmware.imageForType(req.typeModule)) : null;
-        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, queue: queue, firmwareFile: firmwareFile, colors: require("../deviceTypes/shared/pod").LED_COLORS, now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
+        res.render("devices/commands", { title: req.device.name, device: req.device, location: req.location, cred: cred, commands: commands, queue: queue, firmwareFile: firmwareFile, colors: req.typeModule.ledColors || [], now: nowEpoch(), bits: req.deviceBits, permissions: permissions, navTrail: trail(req), navSub: tabs(req, "Commands") });
     }
     catch (err) { next(err); }
 });
@@ -644,18 +365,13 @@ function otaWaiting(rows, mac)
     return rows.find((row) => (mac ? row.target === mac || row.target === "all" : !row.target)) || null;
 }
 
-// Queued command from the Commands tab, or "all target pods" from a controller's Station tab.
+// Queued command from the Commands tab.
 async function queueCommand(req, res, back, cmd)
 {
     const q = require("../services/commandQueue");
     const r = await q.route(req.device);
     if (r.error) { req.flash("warning", r.error); return res.redirect(back); }
-    let target = r.target;
-    if (req.body.to === "all")
-    {
-        if (!isStation(req)) { return res.redirect(back); }
-        target = "all";
-    }
+    const target = r.target;
     let value = null;
     if (cmd.value === "color")
     {
@@ -665,8 +381,6 @@ async function queueCommand(req, res, back, cmd)
     }
     if (cmd.value === "firmware")
     {
-        // Target pods are updated together from the controller's Station tab (POST /station/ota).
-        if (target === "all") { return res.redirect(back); }
         const firmware = require("../services/firmware");
         const fw = await firmware.current(firmware.imageForType(req.typeModule));
         if (!fw) { req.flash("warning", "There is no firmware file on the server for this pod yet."); return res.redirect(back); }
@@ -688,7 +402,7 @@ async function queueCommand(req, res, back, cmd)
     // holds the target, the value and who sent it.
     await activity.log(req, "device_command", { entity_type: "device", entity_uid: req.device.uid, detail: cmd.name });
     const fresh = await knex(T("command_queue")).where({ id: row.id }).first();
-    req.flash("success", cmd.label + (target === "all" ? " for every target pod" : "") + (fresh && fresh.status === "sent" ? ": sent to " + r.pod.name + ", waiting for its answer." : ": queued for " + r.pod.name + ". It goes out when the pod answers the command before it, or when it next connects."));
+    req.flash("success", cmd.label + (fresh && fresh.status === "sent" ? ": sent to " + r.pod.name + ", waiting for its answer." : ": queued for " + r.pod.name + ". It goes out when the pod answers the command before it, or when it next connects."));
     return res.redirect(back);
 }
 
@@ -702,7 +416,7 @@ router.post("/:uid/commands/:cmdId/cancel", loadDevice, need("edit"), async (req
         const row = await knex(T("command_queue")).where({ cmd_id: req.params.cmdId }).first();
         const mine = row && (viaController(req) ? row.target_device_id === req.device.id : row.device_id === req.device.id);
         if (!mine) { return next(notFoundError()); }
-        const back = "/devices/" + req.params.uid + (req.body.from === "station" ? "" : "/commands");
+        const back = "/devices/" + req.params.uid + "/commands";
         const gone = await require("../services/commandQueue").cancel(row);
         if (!gone) { req.flash("warning", "That command was already answered, so it could not be cancelled."); return res.redirect(back); }
         await activity.log(req, "device_command_cancel", { entity_type: "device", entity_uid: req.device.uid, detail: row.cmd + (row.target ? " to " + row.target : "") });
@@ -719,7 +433,7 @@ router.post("/:uid/commands", loadDevice, async (req, res, next) =>
 {
     try
     {
-        const back = "/devices/" + req.params.uid + (req.body.from === "station" ? "" : "/commands");
+        const back = "/devices/" + req.params.uid + "/commands";
         const name = String(req.body.command || "");
         const cmd = allowedCommands(req).find((c) => c.name === name);
         if (!cmd) { return next(notFoundError()); }

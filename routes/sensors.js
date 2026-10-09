@@ -487,11 +487,10 @@ router.post("/:uid/settings", loadSensor, need("edit"), body("name").trim().isLe
     catch (err) { next(err); }
 });
 
-// Where the device's sensor list is: its page, or its Sensors tab for a station type (controller pod).
+// Where the device's sensor list is: its page.
 function devicePage(sensor)
 {
-    const type = deviceTypes.all[sensor.device_type_slug];
-    return "/devices/" + String(sensor.device_uid).toLowerCase() + (type && type.station ? "/sensors" : "");
+    return "/devices/" + String(sensor.device_uid).toLowerCase();
 }
 
 // Hide or unhide one sensor (DECISIONS "Sensor delete and hide"). Hidden: readings still stored,

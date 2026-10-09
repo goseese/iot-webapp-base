@@ -212,7 +212,10 @@ async function settleConfig(row, result, now)
     if (perTarget === "ok")
     {
         const target = row.target_device_id ? await devicesRepo.findById(row.target_device_id) : null;
-        const type = target ? await require("./stations").typeOf(target) : null;
+        const typeRow = target ? await knex(T("device_types")).where({ id: target.device_type_id }).first() : null;
+        let type = null;
+        try { type = typeRow ? require("../deviceTypes").get(typeRow.slug) : null; }
+        catch (err) { type = null; }
         await unitConfig.report(row.target, v.key, String(v.value), type, now);
     }
     else

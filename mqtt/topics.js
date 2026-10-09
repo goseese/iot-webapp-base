@@ -6,8 +6,8 @@
 //   dev/{device_guid}/config/+  uplink, one config value per publish, key in the topic (not retained)
 //   dev/{device_guid}/geoscan   uplink, wifi/cell scan for location (not retained)
 //   dev/{device_guid}/cmd_ack   uplink, the device heard a command (not retained)
-//   dev/{device_guid}/event     uplink, pod events: wristband reads, later game events (not
-//                               retained; pod-protocol.md section 8). In the ACLs from the start,
+//   dev/{device_guid}/event     uplink, unit events such as ota_progress (not retained). In the
+//                               ACLs from the start,
 //                               because a unit's ACLs are fixed when it provisions.
 //   dev/{device_guid}/cmd/q     downlink, a queued command (services/commandQueue.js)
 //   dev/{device_guid}/cmd       downlink commands. Everything the server sends a device lives at or

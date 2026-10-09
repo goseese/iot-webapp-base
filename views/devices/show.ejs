@@ -1,8 +1,4 @@
 <% var uid = fmt.uid(device.uid); var isGw = device.kind === "gateway" || device.kind === "direct"; %>
-<%# view (routes/devices.js): "all" for most types; a station type has "station" (cards and the
-    station panel) and "sensors" (the sensors table only) on separate tabs. %>
-<% var view = locals.view || "all"; %>
-<% if (view !== "sensors") { %>
 <div class="row g-3 mb-4">
   <%- include("../partials/stat", { label: "Status", value: device.is_offline ? "Offline" : (awaiting ? "Pending" : (!device.last_seen_epoch ? "No data" : (now - device.last_seen_epoch > threshold ? "Silent" : "Online"))),
       status: device.is_offline ? { kind: "offline", label: "Set offline manually" } : (awaiting ? { kind: "warning", label: "Waiting for first connection" } : (!device.last_seen_epoch ? { kind: "warning", label: "Waiting for first data" } : (now - device.last_seen_epoch > threshold ? { kind: "offline", label: "No recent data" } : { kind: "online", label: "Reporting" }))) }) %>
@@ -25,21 +21,8 @@
 <% } %>
 <% if (device.is_archived) { %><div class="alert alert-secondary">This device is archived. Readings stay chartable; no alarms are evaluated.</div><% } %>
 
-<% if (station && station.kind === "controller") { %>
-<div id="station" data-device="<%= uid %>">
-<%- include("station") %>
-</div>
-<% } else if (locals.enroll) { %>
-<div id="enroll" data-device="<%= uid %>">
-<%- include("band", { band: enroll }) %>
-</div>
-<% } %>
-<% } %>
-
-<% if (view !== "station") { %>
-
 <div class="iot-panel mb-3">
-  <div class="iot-panel__header"><strong>Sensors</strong><% if (hiddenCount > 0) { %> <a class="small ms-3" href="/devices/<%= fmt.uid(device.uid) %><%= view === "sensors" ? "/sensors" : "" %><%= showHidden ? "" : "?hidden=1" %>"><%= showHidden ? "Hide hidden" : "Show hidden (" + hiddenCount + ")" %></a><% } %></div>
+  <div class="iot-panel__header"><strong>Sensors</strong><% if (hiddenCount > 0) { %> <a class="small ms-3" href="/devices/<%= fmt.uid(device.uid) %><%= showHidden ? "" : "?hidden=1" %>"><%= showHidden ? "Hide hidden" : "Show hidden (" + hiddenCount + ")" %></a><% } %></div>
   <div class="table-responsive">
     <table class="table iot-table is-sortable align-middle mb-0">
       <thead><tr><th class="sort-alpha">Sensor</th><th class="sort-numeric">Value</th><th class="sort-numeric">Updated</th><th class="sort-custom">Alarm</th><th>Tags</th></tr></thead>
@@ -58,9 +41,6 @@
   </div>
 </div>
 
-<% } %>
-
-<% if (view === "all") { %>
 <div class="iot-panel">
   <div class="iot-panel__header"><strong><%= isGw ? "Devices heard by this gateway" : "Gateways hearing this device" %></strong> <span class="text-secondary small ms-2">coverage</span></div>
   <div class="table-responsive">
@@ -75,132 +55,3 @@
     </table>
   </div>
 </div>
-<% } %>
-
-<% if (station && station.kind === "controller") { %>
-<script>
-async function confirmOta(e)
-{
-    e.preventDefault();
-    // Two submit buttons share this form (LED color and firmware); the button's
-    // formaction decides where it posts.
-    if (e.submitter && e.submitter.formAction) { e.target.action = e.submitter.formAction; }
-    var isFirmware = !e.submitter || e.submitter.id === "otaGo";
-    var n = document.querySelectorAll("#station .ota-pick:checked").length;
-    if (!isFirmware || n === 0) { e.target.submit(); return false; }     // the server says what to do
-    if (await iotConfirm({ title: "Update firmware?", body: n + " target pod" + (n === 1 ? "" : "s") + " install the firmware file on the server and restart. The controller updates them one after another, which can take a few minutes, and its other commands wait until it is done.", confirmText: "Queue it", danger: true })) { e.target.submit(); }
-    return false;
-}
-
-// Live station panel: a "config" socket notice for this controller (pairing confirmed, a target pod
-// paired or moved) triggers one fetch of the panel, debounced like the Config tab.
-document.addEventListener("DOMContentLoaded", function ()
-{
-    var box = document.getElementById("station");
-    if (!box || !window.iotSocket) { return; }
-    var device = box.getAttribute("data-device");
-    var timer = null;
-
-    async function refresh()
-    {
-        timer = null;
-        try
-        {
-            var res = await fetch("/devices/" + device + "/station", { credentials: "same-origin", headers: { "Accept": "text/html" } });
-            if (!res.ok) { return; }
-            var next = document.createElement("div");
-            next.innerHTML = await res.text();
-            var parts = next.querySelectorAll("[data-part]");
-            if (parts.length === 0) { return; }      // not the panel (e.g. the session expired and this is the login page)
-            // Ticked target pods stay ticked when the rows are swapped.
-            var ticked = Array.from(box.querySelectorAll(".ota-pick:checked")).map(function (c) { return c.value; });
-            parts.forEach(function (p)
-            {
-                var old = box.querySelector('[data-part="' + p.getAttribute("data-part") + '"]');
-                if (old && old.innerHTML !== p.innerHTML) { old.innerHTML = p.innerHTML; }
-            });
-            box.querySelectorAll(".ota-pick").forEach(function (c) { c.checked = ticked.indexOf(c.value) >= 0; });
-            syncAll();
-        }
-        catch (err) { }
-    }
-
-    // Tick every target pod, and keep that box in step with the rows.
-    function syncAll()
-    {
-        var picks = box.querySelectorAll(".ota-pick"), n = box.querySelectorAll(".ota-pick:checked").length;
-        var all = document.getElementById("otaAll");
-        if (all)
-        {
-            all.checked = picks.length > 0 && n === picks.length;
-            all.indeterminate = n > 0 && n < picks.length;
-        }
-        // The bulk actions footer shows only while at least one target pod is ticked.
-        var foot = document.getElementById("stationActions");
-        if (foot) { foot.classList.toggle("d-none", n === 0); }
-        var sel = document.getElementById("stationSel");
-        if (sel) { sel.textContent = n + " selected"; }
-    }
-    box.addEventListener("change", function (e)
-    {
-        if (e.target.id === "otaAll") { box.querySelectorAll(".ota-pick").forEach(function (c) { c.checked = e.target.checked; }); }
-        syncAll();
-    });
-
-    window.iotSocket.on("config", function (msg)
-    {
-        if (!msg || msg.device !== device) { return; }
-        if (timer) { clearTimeout(timer); }
-        timer = setTimeout(refresh, 500);
-    });
-    window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
-    syncAll();
-});
-</script>
-<% } %>
-
-<% if (locals.enroll) { %>
-<script>
-// Live band panel on an account pod: a "config" notice for this pod (a band presented, an
-// enrollment) refetches it. A name being typed is kept unless a different band was presented.
-document.addEventListener("DOMContentLoaded", function ()
-{
-    var box = document.getElementById("enroll");
-    if (!box || !window.iotSocket) { return; }
-    var device = box.getAttribute("data-device");
-    var timer = null;
-
-    function pid(el) { var p = el.querySelector("[data-pid]"); return p ? p.getAttribute("data-pid") : null; }
-    function typing()
-    {
-        var input = box.querySelector("input[name=name]");
-        return !!input && (input === document.activeElement || input.value !== input.defaultValue);
-    }
-
-    async function refresh()
-    {
-        timer = null;
-        try
-        {
-            var res = await fetch("/devices/" + device + "/band", { credentials: "same-origin", headers: { "Accept": "text/html" } });
-            if (!res.ok) { return; }
-            var next = document.createElement("div");
-            next.innerHTML = await res.text();
-            if (pid(next) === null) { return; }      // not the panel (e.g. the session expired and this is the login page)
-            if (pid(next) === pid(box) && typing()) { return; }
-            if (box.innerHTML !== next.innerHTML) { box.innerHTML = next.innerHTML; }
-        }
-        catch (err) { }
-    }
-
-    window.iotSocket.on("config", function (msg)
-    {
-        if (!msg || msg.device !== device) { return; }
-        if (timer) { clearTimeout(timer); }
-        timer = setTimeout(refresh, 300);
-    });
-    window.iotSocket.on("ready", function () { if (!timer) { timer = setTimeout(refresh, 1000); } });
-    syncAll();
-});
-</script>
-<% } %>

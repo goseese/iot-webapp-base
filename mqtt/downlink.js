@@ -9,7 +9,7 @@
 // when the device connects (see services/unitConfig.js).
 const logger = require("../config/logger");
 
-// A connection lent by a script (scripts/fake-station.js), which has neither the ingest client nor
+// A connection lent by an operator script, which has neither the ingest client nor
 // the realtime relay. It must use a client id of its own: sharing the ingest id evicts the ingest
 // process from the broker.
 let lent = null;

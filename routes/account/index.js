@@ -11,7 +11,6 @@ router.use("/", require("./list"));
 const account = express.Router({ mergeParams: true });
 account.use("/", require("./overview"));
 account.use("/", require("./users"));
-account.use("/", require("./athletes"));
 account.use("/", require("./alert-groups"));
 account.use("/", require("./settings"));
 account.use("/", require("./api"));

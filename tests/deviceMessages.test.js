@@ -1,4 +1,4 @@
-// Device messages: the JSON frame header, config values, queued commands and firmware files.
+// Device messages: the JSON frame header, queued commands and firmware files.
 const test = require("node:test");
 const assert = require("node:assert");
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || "x";
@@ -19,13 +19,6 @@ test("JSON frame header: MAC normalized, counter survives a reboot", () =>
     assert.equal(jsonFrameHeader({ mac: "A4CF12345678", seq: 7, data: {} }).counter, 7, "no boot: seq alone");
     assert.equal(jsonFrameHeader({ mac: "A4CF12345678", data: {} }).counter, null, "no seq: no dedup");
     assert.equal(jsonFrameHeader({ mac: "A4CF1234", data: {} }), null, "short MAC refused");
-});
-
-test("pairing values read as the config page writes them", () =>
-{
-    const { truthy } = require("../services/stations");
-    ["true", "1", "on", "yes", "TRUE"].forEach((v) => assert.equal(truthy(v), true, v));
-    ["false", "0", "", null, undefined, "off"].forEach((v) => assert.equal(truthy(v), false, String(v)));
 });
 
 test("ota: the value goes out as an object; firmware paths stay in their folder", () =>

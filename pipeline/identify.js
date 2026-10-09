@@ -111,9 +111,6 @@ async function handle(topic, payload, meta)
     {
         if (unit)
         {
-            // A controller with no placement pressing its pairing button still gets its answer (a
-            // refusal), or it would wait for its own timeout.
-            if (t.channel === "event") { await unplacedPairRequest(unit, t.guid, payload); }
             // Unclaimed, or its placement was removed: expected, so debug rather than warn. Adding
             // its MAC to a location starts delivery with no action on the device.
             await touchUnclaimed(unit, t.channel, payload, receipt, retained);
@@ -141,12 +138,10 @@ async function handleStatus(gateway, payload, receipt, retained, guid)
     try { status = JSON.parse(payload.toString("utf8")); }
     catch (err) { logger.warn({ gateway: gateway.uid }, "status payload is not JSON"); return; }
     const fw = firmwareOf(status);
-    // Offline (last will, or the pod's own publish before a clean disconnect): a controller's pairing
-    // ends (services/stations.wentOffline), also for a retained replay, which is the current state.
-    // Nothing else: an offline message must not stamp the unit as heard now.
+    // Offline (last will, or the unit's own publish before a clean disconnect): nothing to do. An
+    // offline message must not stamp the unit as heard now.
     if (status && status.online === false)
     {
-        await require("../services/stations").wentOffline(gateway, await typeForDevice(gateway));
         return;
     }
     if (retained)
@@ -227,10 +222,8 @@ async function handleCmdAck(gateway, payload)
     logger.info({ gateway: gateway.uid, ack: payload.toString("utf8").slice(0, 200) }, "gateway cmd_ack");
 }
 
-// dev/{guid}/event: pod events (pod-protocol.md section 8). A wristband ("band") presented to a
-// controller checks its athlete in at that station, and to an account pod shows it for enrollment
-// (services/athletes.js); the pod's open pages are told through its config notice. Anything else
-// (game events later) is recorded in the event log for now.
+// dev/{guid}/event: unit events. ota_progress lands on the ota command in flight; anything else is
+// recorded in the event log for now.
 async function handleEvent(gateway, payload, receipt, guid)
 {
     const text = payload.toString("utf8").slice(0, 1000);
@@ -238,25 +231,6 @@ async function handleEvent(gateway, payload, receipt, guid)
     let e = null;
     try { e = JSON.parse(text); kind = e && typeof e.event === "string" ? e.event.slice(0, 30) : null; }
     catch (err) { }
-    if (kind === "band")
-    {
-        const type = await typeForDevice(gateway);
-        const athletes = require("../services/athletes");
-        const band = athletes.normalizeBand(e.band);
-        if (type && (type.station || type.enrolls) && band)
-        {
-            const r = await athletes.present(gateway, band, Number(e.rssi), receipt);
-            logger.info({ pod: gateway.uid, band: band, outcome: r.outcome }, "wristband presented");
-            await require("../services/unitConfig").notifyMac(gateway.hardware_id);
-            return;
-        }
-    }
-    if (kind === "pair_request")
-    {
-        // A controller's function button (services/stations.buttonRequest, pod-protocol.md 6.3).
-        const type = await typeForDevice(gateway);
-        if (type && type.station) { await require("../services/stations").buttonRequest(gateway, gateway.hardware_id, guid, type); return; }
-    }
     if (kind === "ota_progress")
     {
         // A firmware update in progress (pod-protocol.md 5.4 ota), shown on the pages; not logged.
@@ -265,19 +239,6 @@ async function handleEvent(gateway, payload, receipt, guid)
     }
     const activity = require("../services/activity");
     await activity.record("pod_event", { entity_type: "device", entity_uid: gateway.uid, detail: (kind ? kind + ": " : "") + text }, { channel: "mqtt", correlationId: activity.newCorrelationId() });
-}
-
-// A pair_request from a unit with no placement: refused (services/stations.buttonRequest).
-async function unplacedPairRequest(unit, guid, payload)
-{
-    let e = null;
-    try { e = JSON.parse(payload.toString("utf8")); }
-    catch (err) { return; }
-    if (!e || e.event !== "pair_request" || !unit.type_slug) { return; }
-    let type = null;
-    try { type = deviceTypes.get(unit.type_slug); }
-    catch (err) { return; }
-    if (type.station) { await require("../services/stations").buttonRequest(null, unit.mac, guid, type); }
 }
 
 // dev/{guid}/geoscan: wifi and cell scan for location. Accepted and logged only; the location
@@ -289,7 +250,7 @@ async function handleGeoscan(gateway, payload)
 
 // dev/{guid}/frame: one relayed LoRa frame (gateway-protocol 4.1).
 // Two frame shapes on dev/{guid}/frame:
-//   JSON (pod stations, DECISIONS.md "Pod stations"): { mac, rssi, model, fw, boot, seq, data: { key: value } }.
+//   JSON: { mac, rssi, model, fw, boot, seq, data: { key: value } }.
 //     The relaying controller sets mac from its ESP-NOW receive callback, so a pod cannot claim
 //     another's MAC; data keys map through the pod type's dataMap. The dedup counter is
 //     boot * 2^32 + seq: seq restarts on reboot, and device_frames keeps counters for
@@ -342,11 +303,7 @@ async function handleFrame(gateway, payload, receipt)
     const rssi = env.rssi === undefined ? null : Number(env.rssi);
     await knex(T("devices")).where({ id: gateway.id }).where(function () { this.whereNull("last_seen_epoch").orWhere("last_seen_epoch", "<", receipt); }).update({ last_seen_epoch: receipt });
 
-    let device = await devicesRepo.findLiveByHardwareId(header.mac);
-    // Pod stations: a target pod's frame through a controller in pairing mode places it there, or
-    // moves it there from another controller (services/stations.js).
-    const paired = await require("../services/stations").placeFromFrame(gateway, device, header);
-    if (paired) { device = paired; }
+    const device = await devicesRepo.findLiveByHardwareId(header.mac);
     await registry.touch(header.mac, { epoch: observed, model: header.model, firmware: header.firmware, via: "frame", deviceUid: device ? device.uid : null });
     if (!device)
     {

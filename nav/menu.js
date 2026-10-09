@@ -57,8 +57,6 @@ function manageItems(user, account, support)
             { label: "Overview", path: base, exact: true },
             { label: "Locations", path: base + "/locations" },
             { label: "Users", path: base + "/users" },
-            { label: "Athletes", path: base + "/athletes" },
-            { label: "Wristbands", path: base + "/wristbands" },
             { label: "Alert groups", path: base + "/alert-groups" },
             {
                 label: "API", path: base + "/api",
