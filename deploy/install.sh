@@ -1,58 +1,64 @@
 #!/usr/bin/env bash
-# Voltastc server installer for Ubuntu 26.04 LTS on EC2: nginx, Node 22 under pm2, Mosquitto, all on
-# one server, with the database on RDS PostgreSQL. Safe to run again: every step checks first,
-# secrets are generated once and kept, and a re-run reloads the app.
+# IoT platform server installer for Ubuntu 26.04 LTS on EC2: nginx, Node 22 under pm2, Mosquitto,
+# all on one server, with the database on RDS PostgreSQL. Safe to run again: every step checks
+# first, secrets are generated once and kept, and a re-run reloads the app.
+#
+# Every site has a site name slug (APP_SLUG): lowercase letters, digits and _, starting with a
+# letter, at most 32 characters. It names the code folder /opt/<slug>, the app user, the default
+# database and every file this installer writes outside the checkout.
 #
 # Before the first run:
-#   - DNS: an A record for app.voltastc.com pointing at this server's Elastic IP.
+#   - DNS: an A record for the site's domain pointing at this server's Elastic IP.
 #   - EC2 security group inbound: 22 (your IP only), 80 and 443 (web and Let's Encrypt),
 #     8883 (devices). 1883 and 3000 stay closed; they listen on 127.0.0.1 only.
 #   - RDS PostgreSQL 15 or newer, reachable from this server on 5432. The first run asks for the
 #     RDS endpoint, user and password; use the master user (the first migrate runs
 #     CREATE EXTENSION citext, which needs rds_superuser).
-#   - The code checked out by root at /opt/voltastc, for example with a read only deploy key in
-#     /root/.ssh:  sudo git clone git@github.com:goseese/app.voltastc.git /opt/voltastc
+#   - The code checked out by root at /opt/<slug>, for example with a read only deploy key in
+#     /root/.ssh:  sudo git clone git@github.com:<owner>/<repo>.git /opt/<slug>
 #     package-lock.json must match package.json (npm ci refuses otherwise).
 #
-# Run:  sudo bash /opt/voltastc/deploy/install.sh
+# Run:  sudo bash /opt/<slug>/deploy/install.sh
 #
-# Optional environment, for an unattended run or a test:
-#   DOMAIN (app.voltastc.com)  LE_EMAIL (jeff@goseese.com)
+# The first run asks every question before it installs anything: slug, domain, site name, primary
+# link color, database, first superadmin, and the Let's Encrypt email. The answers are kept in .env
+# (APP_SLUG, APP_URL, DB_*, SEED_*). Later runs read the slug and domain from .env and ask nothing,
+# except the Let's Encrypt email when a certificate has to be issued again.
+#
+# Optional environment, for an unattended run or a test (asked for when missing):
+#   APP_SLUG DOMAIN    used on every run; on later runs they come from .env
+#   SEED_SITE_NAME SEED_THEME_PRIMARY SEED_SUPERADMIN_USERNAME SEED_SUPERADMIN_EMAIL
+#   DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
+#                   used only on the first run, when .env is created
+#   LE_EMAIL        used only when the certificate is issued
 #   CERTBOT_SERVER  ACME directory URL, e.g. Let's Encrypt staging
 #                   https://acme-staging-v02.api.letsencrypt.org/directory
-#   DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD  asked for when missing; used only on the first
-#                   run, when .env is created
 #
-# Layout:
-#   /opt/voltastc               code, owned by root (the app cannot change its own code)
-#   /opt/voltastc/.env          root:voltastc 0640
-#   /opt/voltastc/storage       report files, owned by voltastc
-#   /opt/voltastc/storage/firmware/{volta-pod-ctl,volta-pod-target}/firmware.bin
-#                               pod firmware, copied in by hand (services/firmware.js)
-#   /opt/voltastc/certs         RDS CA bundle
-#   /var/lib/voltastc           home of the voltastc system user; pm2 state and logs in .pm2
-#   /etc/voltastc/broker.env    broker passwords, root only
+# Layout (<slug> is APP_SLUG):
+#   /opt/<slug>                 code, owned by root (the app cannot change its own code)
+#   /opt/<slug>/.env            root:<slug> 0640
+#   /opt/<slug>/storage         report and firmware files, owned by <slug>
+#   /opt/<slug>/certs           RDS CA bundle
+#   /var/lib/<slug>             home of the <slug> system user; pm2 state and logs in .pm2
+#   /etc/<slug>/broker.env      broker passwords, root only
+#   /etc/nginx/sites-available/<slug>, /etc/mosquitto/conf.d/<slug>.conf,
+#   /etc/letsencrypt/renewal-hooks/deploy/<slug>.sh, /etc/logrotate.d/<slug>,
+#   systemd unit pm2-<slug>
 set -Eeuo pipefail
 # Any failing command stops the install; say which one, so it never ends quietly.
 trap 'printf "\ninstall.sh: stopped at line %s: %s\n" "$LINENO" "$BASH_COMMAND" >&2' ERR
 
-APP_USER=voltastc
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_HOME=/var/lib/voltastc
-DOMAIN="${DOMAIN:-app.voltastc.com}"
-LE_EMAIL="${LE_EMAIL:-jeff@goseese.com}"
 NODE_MAJOR=22
 PM2_VERSION=7.0.4
 RDS_CA_URL=https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 ENV_FILE="$APP_DIR/.env"
 CA_FILE="$APP_DIR/certs/rds-global-bundle.pem"
-BROKER_ENV=/etc/voltastc/broker.env
 DYNSEC_JSON=/var/lib/mosquitto/dynamic-security.json
 WEBROOT=/var/www/letsencrypt
-LIVE="/etc/letsencrypt/live/$DOMAIN"
-HOOK=/etc/letsencrypt/renewal-hooks/deploy/voltastc.sh
-PM2_UNIT="pm2-$APP_USER"
 NEW_BROKER=0
+# Set in the "Site" step, once the slug and domain are known: APP_SLUG APP_USER APP_HOME DOMAIN
+# LIVE HOOK BROKER_ENV NGINX_SITE PM2_UNIT
 
 step()
 {
@@ -79,16 +85,71 @@ pm2_app()
     as_app env -i HOME="$APP_HOME" PATH="$PATH" pm2 "$@"
 }
 
-# ask NAME "prompt" [default]: keeps NAME from the environment when set, otherwise prompts.
+# ask NAME "prompt" [default] [check]: keeps NAME from the environment when set, otherwise
+# prompts. check, when given, is a function that must accept the value: a bad value from the
+# environment stops the install, a bad typed value is asked for again.
 ask()
 {
-    local name="$1" prompt="$2" def="${3:-}" val="${!1:-}"
+    local name="$1" prompt="$2" def="${3:-}" check="${4:-}" val="${!1:-}"
+    if [ -n "$val" ] && [ -n "$check" ] && ! "$check" "$val"
+    then
+        die "$name is not valid: $val"
+    fi
     while [ -z "$val" ]
     do
         read -r -p "$prompt${def:+ [$def]}: " val || die "no value for $name"
         val="${val:-$def}"
+        if [ -n "$val" ] && [ -n "$check" ] && ! "$check" "$val"
+        then
+            echo "  not valid: $val"
+            val=""
+        fi
     done
     printf -v "$name" '%s' "$val"
+}
+
+# Checks for ask. The slug becomes a Linux user name (32 characters at most) and the default
+# database name (no hyphen, so it never needs quoting).
+valid_slug()
+{
+    [[ "$1" =~ ^[a-z][a-z0-9_]{0,31}$ ]]
+}
+
+valid_domain()
+{
+    [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]
+}
+
+valid_color()
+{
+    [[ "$1" =~ ^#[0-9A-Fa-f]{6}$ ]]
+}
+
+valid_email()
+{
+    [[ "$1" =~ ^[^@[:space:]\']+@[^@[:space:]\']+\.[^@[:space:]\']+$ ]]
+}
+
+# The rule the profile page applies (3 to 40 characters, no @ or white space), and no ' for .env.
+valid_username()
+{
+    [[ "$1" =~ ^[^@[:space:]\']{3,40}$ ]]
+}
+
+# Goes into .env inside single quotes, so it must not hold ' or a line break.
+valid_quoted()
+{
+    [[ "$1" != *"'"* && "$1" != *$'\n'* ]]
+}
+
+# env_get KEY: the value of KEY in .env, or nothing. Read with sed, never sourced: .env is
+# dotenv, not shell.
+env_get()
+{
+    if [ -f "$ENV_FILE" ]
+    then
+        sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
+    fi
 }
 
 ask_secret()
@@ -113,11 +174,11 @@ write_site()
 {
     if [ -e /proc/net/if_inet6 ]
     then
-        cat > /etc/nginx/sites-available/voltastc
+        cat > "$NGINX_SITE"
     else
-        sed '/listen \[::\]/d' > /etc/nginx/sites-available/voltastc
+        sed '/listen \[::\]/d' > "$NGINX_SITE"
     fi
-    ln -sf /etc/nginx/sites-available/voltastc /etc/nginx/sites-enabled/voltastc
+    ln -sf "$NGINX_SITE" "/etc/nginx/sites-enabled/$APP_SLUG"
 }
 
 wait_for_port()
@@ -151,7 +212,51 @@ then
     echo "warning: $APP_DIR is not owned by root; the app user should not be able to change its code"
 fi
 cd "$APP_DIR"
-echo "app $APP_DIR, site $DOMAIN"
+
+# ---------------------------------------------------------------------------------------------
+# Every question is asked here, before anything is installed.
+step "Site"
+APP_SLUG="${APP_SLUG:-$(env_get APP_SLUG)}"
+slug_def="$(basename "$APP_DIR")"
+valid_slug "$slug_def" || slug_def=""
+ask APP_SLUG "Site name slug (a-z 0-9 _, names /opt/<slug>, the app user and the database)" "$slug_def" valid_slug
+if [ "$APP_DIR" != "/opt/$APP_SLUG" ]
+then
+    die "the checkout must be at /opt/$APP_SLUG, it is at $APP_DIR (sudo mv $APP_DIR /opt/$APP_SLUG, then run it from there)"
+fi
+if [ -z "${DOMAIN:-}" ]
+then
+    url="$(env_get APP_URL)"
+    url="${url#*://}"
+    DOMAIN="${url%%/*}"
+fi
+ask DOMAIN "Domain name (its DNS A record points at this server), e.g. iot.example.com" "" valid_domain
+APP_USER="$APP_SLUG"
+APP_HOME="/var/lib/$APP_SLUG"
+LIVE="/etc/letsencrypt/live/$DOMAIN"
+HOOK="/etc/letsencrypt/renewal-hooks/deploy/$APP_SLUG.sh"
+BROKER_ENV="/etc/$APP_SLUG/broker.env"
+NGINX_SITE="/etc/nginx/sites-available/$APP_SLUG"
+PM2_UNIT="pm2-$APP_USER"
+
+if [ ! -f "$ENV_FILE" ]
+then
+    ask SEED_SITE_NAME "Site name, shown in the sidebar, page titles and emails" "" valid_quoted
+    ask SEED_THEME_PRIMARY "Primary link color, sampled from the logo, hex like #45219C" "" valid_color
+    ask DB_HOST "RDS endpoint"
+    ask DB_PORT "RDS port" 5432
+    ask DB_NAME "Database name" "$APP_SLUG"
+    ask DB_USER "Database user (the RDS master user)"
+    ask_secret DB_PASSWORD "Database password"
+    valid_quoted "$DB_PASSWORD" || die "the database password must not contain ' or a line break"
+    ask SEED_SUPERADMIN_USERNAME "First superadmin user name" "" valid_username
+    ask SEED_SUPERADMIN_EMAIL "First superadmin email" "" valid_email
+fi
+if [ ! -f "$LIVE/fullchain.pem" ]
+then
+    ask LE_EMAIL "Email for Let's Encrypt expiry notices" "${SEED_SUPERADMIN_EMAIL:-}" valid_email
+fi
+echo "slug $APP_SLUG, app $APP_DIR, user $APP_USER, site https://$DOMAIN"
 
 # ---------------------------------------------------------------------------------------------
 step "Packages"
@@ -193,7 +298,8 @@ then
 fi
 as_app test -r "$APP_DIR/app.js" || die "the $APP_USER user cannot read $APP_DIR (clone with the default umask 022)"
 install -d -o "$APP_USER" -g "$APP_USER" -m 750 "$APP_DIR/storage"
-install -d -o "$APP_USER" -g "$APP_USER" -m 750 "$APP_DIR/storage/firmware" "$APP_DIR/storage/firmware/volta-pod-ctl" "$APP_DIR/storage/firmware/volta-pod-target"
+# One folder per firmware image is made by the app on the first upload (services/firmware.js).
+install -d -o "$APP_USER" -g "$APP_USER" -m 750 "$APP_DIR/storage/firmware"
 install -d -m 755 "$APP_DIR/certs"
 npm ci --omit=dev --no-fund --no-audit
 
@@ -201,15 +307,9 @@ npm ci --omit=dev --no-fund --no-audit
 step ".env"
 if [ ! -f "$ENV_FILE" ]
 then
-    ask DB_HOST "RDS endpoint"
-    ask DB_PORT "RDS port" 5432
-    ask DB_NAME "Database name" voltastc
-    ask DB_USER "Database user (the RDS master user)"
-    ask_secret DB_PASSWORD "Database password"
-    case "$DB_PASSWORD" in
-        *"'"*|*$'\n'*) die "the database password must not contain ' or a line break" ;;
-    esac
+    # The answers from the "Site" step.
     declare -A VALS=(
+        [APP_SLUG]="$APP_SLUG"
         [APP_URL]="https://$DOMAIN"
         [SESSION_SECRET]="$(openssl rand -hex 32)"
         [SETTINGS_KEY]="$(openssl rand -hex 32)"
@@ -220,6 +320,10 @@ then
         [DB_PASSWORD]="'$DB_PASSWORD'"
         [DB_SSL]=true
         [DB_SSL_CA]="$CA_FILE"
+        [SEED_SITE_NAME]="'$SEED_SITE_NAME'"
+        [SEED_THEME_PRIMARY]="'$SEED_THEME_PRIMARY'"
+        [SEED_SUPERADMIN_USERNAME]="$SEED_SUPERADMIN_USERNAME"
+        [SEED_SUPERADMIN_EMAIL]="$SEED_SUPERADMIN_EMAIL"
     )
     tmp="$(mktemp)"
     while IFS= read -r line || [ -n "$line" ]
@@ -237,6 +341,12 @@ then
     echo "created $ENV_FILE (new SESSION_SECRET and SETTINGS_KEY; never rotate SETTINGS_KEY)"
 else
     echo "$ENV_FILE exists, kept as is"
+    # A .env written before the installer asked for a slug: record the one used for this run.
+    if [ -z "$(env_get APP_SLUG)" ]
+    then
+        printf '\n# Site name slug, added by deploy/install.sh\nAPP_SLUG=%s\n' "$APP_SLUG" >> "$ENV_FILE"
+        echo "added APP_SLUG=$APP_SLUG to $ENV_FILE"
+    fi
 fi
 if [ ! -s "$CA_FILE" ]
 then
@@ -283,7 +393,7 @@ EOF
         --non-interactive "${certbot_extra[@]}" \
         || die "certbot failed: check that $DOMAIN resolves to this server and port 80 is open in the security group"
 fi
-sed "s|__DOMAIN__|$DOMAIN|g" deploy/nginx/voltastc.conf | write_site
+sed "s|__DOMAIN__|$DOMAIN|g" deploy/nginx/site.conf | write_site
 nginx -t -q
 systemctl enable nginx >/dev/null 2>&1
 systemctl reload-or-restart nginx
@@ -323,7 +433,7 @@ then
     chmod 600 "$DYNSEC_JSON"
     echo "created $DYNSEC_JSON with the admin client"
 fi
-sed "s|__DYNSEC_PLUGIN__|$PLUGIN|" deploy/mosquitto/voltastc.conf > /etc/mosquitto/conf.d/voltastc.conf
+sed "s|__DYNSEC_PLUGIN__|$PLUGIN|" deploy/mosquitto/broker.conf > "/etc/mosquitto/conf.d/$APP_SLUG.conf"
 # Ubuntu 26.04's apparmor package confines mosquitto (/etc/apparmor.d/mosquitto) to mosquitto.db in
 # /var/lib/mosquitto, so the dynamic security plugin cannot read its config ("File is not readable")
 # and every login is refused. The profile's local include is the supported place for additions.
@@ -331,7 +441,7 @@ sed "s|__DYNSEC_PLUGIN__|$PLUGIN|" deploy/mosquitto/voltastc.conf > /etc/mosquit
 # mosquitto.db.
 if [ -f /etc/apparmor.d/mosquitto ]
 then
-    printf '%s\n' "# Voltastc, written by deploy/install.sh: the dynamic security plugin config" \
+    printf '%s\n' "# $APP_SLUG, written by deploy/install.sh: the dynamic security plugin config" \
         "/var/lib/mosquitto/dynamic-security.json rwk," \
         "/var/lib/mosquitto/dynamic-security.json.new rwk," > /etc/apparmor.d/local/mosquitto
     if aa-enabled --quiet 2>/dev/null
@@ -364,7 +474,7 @@ step "Broker users and MQTT site settings"
 
 # ---------------------------------------------------------------------------------------------
 step "pm2"
-cat > /etc/logrotate.d/voltastc <<EOF
+cat > "/etc/logrotate.d/$APP_SLUG" <<EOF
 $APP_HOME/.pm2/logs/*.log
 {
     su $APP_USER $APP_USER
@@ -422,7 +532,7 @@ then
         . "$BROKER_ENV"
         echo "New broker passwords (kept root only in $BROKER_ENV):"
         echo "  admin     $BROKER_ADMIN_PASSWORD   (people only, full broker access)"
-        echo "  announce  $BROKER_ANNOUNCE_PASSWORD   (goes into every pod firmware image)"
+        echo "  announce  $BROKER_ANNOUNCE_PASSWORD   (goes into every device firmware image)"
     )
 fi
 echo "Superadmin: the first run of seed.js above printed the sign in name and one time password."

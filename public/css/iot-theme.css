@@ -15,9 +15,11 @@
   --iot-text: #e4e8eb;
   --iot-text-muted: #89939c;
 
-  --iot-primary: #53b036;          /* RGB(83,176,54), Voltastc green */
-  --iot-primary-hover: #6cc451;
-  --iot-active: #53b036;
+/* these are the theme specific link colors */
+  --iot-primary: #45219C;
+  --iot-primary-hover: #563998;
+  --iot-active: #45219C;
+/* end theme specific colors */
 
   --iot-success: #3fc47c;
   --iot-warning: #e5a93d;

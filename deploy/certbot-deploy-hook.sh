@@ -1,6 +1,6 @@
 #!/bin/sh
 # certbot deploy hook, installed by deploy/install.sh as
-# /etc/letsencrypt/renewal-hooks/deploy/voltastc.sh (__DOMAIN__ replaced with the site name).
+# /etc/letsencrypt/renewal-hooks/deploy/<slug>.sh (__DOMAIN__ replaced with the site's domain).
 # certbot runs it after every successful renewal; install.sh also runs it once after the first
 # issue. Copies the certificate to Mosquitto (8883 serves the same name as the web site) and
 # reloads both servers. mosquitto reloads listener certificates on SIGHUP (2.0.22 src/loop.c:
