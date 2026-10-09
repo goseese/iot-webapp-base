@@ -20,7 +20,7 @@ domain or slug.
 4. `dynsec-broker-summary.md` (broker and provisioning, server side), `device-provisioning.md`
    (the same from the firmware side) and `command-protocol.md` (queued commands, firmware updates,
    JSON relay frames).
-5. The `*_README.md` files are port guides: specs written while a feature was built on Voltastc or
+5. `docs/port-guides/` holds the port guides (`*_README.md`): specs written while a feature was built on Voltastc or
    devmon, for porting it to other sites. They are history; where one differs from `DECISIONS.md`
    or the code, those win.
 

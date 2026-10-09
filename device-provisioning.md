@@ -127,8 +127,10 @@ keys ignored. Do not send percentages the server derives (battery percent from t
 signal percent from the raw RSSI).
 
 Publishing anywhere outside your own `dev/{guid}/` uplinks is refused by the broker. Only the
-connect message on `status` may be retained: a retained message is replayed to the server on every
-reconnect and after a broker restart.
+connect message and the offline message (`{"online":false}`, the same as the last will, published
+yourself before a deliberate disconnect) on `status` may be retained: a retained message is
+replayed to the server on every reconnect and after a broker restart, so the topic always holds the
+unit's current state.
 
 ### Config writes from the server
 
