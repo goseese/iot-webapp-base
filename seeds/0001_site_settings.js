@@ -35,7 +35,7 @@ const DEFAULTS =
 
     { key: "API_RATE_PER_MINUTE", value: "120", kind: "int", group: "api", description: "API requests per minute per credential.", min: 10, max: 10000 },
     { key: "API_MAX_OBJECTS", value: "1000", kind: "int", group: "api", description: "Maximum reading objects per API post.", min: 1, max: 10000 },
-    { key: "API_KEY_PREFIX", value: "voltastc", kind: "string", group: "api", description: "Prefix for new API keys, 1 to 16 characters from A-Z a-z 0-9 - . _ ~. Existing keys are not changed." },
+    { key: "API_KEY_PREFIX", value: env.slug.slice(0, 16), kind: "string", group: "api", description: "Prefix for new API keys, 1 to 16 characters from A-Z a-z 0-9 - . _ ~. Existing keys are not changed." },
 
     { key: "MAIL_DRIVER", value: "none", kind: "string", group: "email", description: "Outbound mail driver." },
     { key: "MAIL_FROM_ADDRESS", value: null, kind: "string", group: "email", description: "From address for every email the platform sends. Must be a verified sender at the provider." },

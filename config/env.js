@@ -44,6 +44,9 @@ const env =
     host: str("HOST", "127.0.0.1"),
     port: num("PORT", 3000),
     appUrl: str("APP_URL", "http://localhost:3000"),
+    // Site name slug (deploy/install.sh): names the session cookie, the database connection, the
+    // broker logins and the default API key prefix. Never change it on a running site.
+    slug: str("APP_SLUG", "iot"),
     autoMigrate: bool("AUTO_MIGRATE", true),
 
     sessionSecret: required("SESSION_SECRET"),

@@ -14,7 +14,7 @@ const SEN = "c92d5e3f-2a4b-4d6c-9e7f-8091a2b3c4d5";
 const ALM = "d0e6f4a5-3b5c-4e7d-8f90-a1b2c3d4e5f6";
 
 // The shell variable the examples use, from the key prefix: upper cased, anything outside A-Z 0-9
-// becomes _, _KEY appended, API_ in front if it would start with a digit (voltastc -> VOLTASTC_KEY,
+// becomes _, _KEY appended, API_ in front if it would start with a digit (sss_iot -> SSS_IOT_KEY,
 // no prefix -> API_KEY).
 function envVarOf(keyPrefix)
 {
@@ -36,7 +36,7 @@ function siteOf(values)
         curlPost: "curl -s -X POST -H \"Authorization: Bearer $" + envVar + "\" -H \"Content-Type: application/json\" \\\n  ",
         ratePerMinute: values.ratePerMinute,
         maxObjects: values.maxObjects,
-        // Voltastc sends real HTTP status codes (DECISIONS "Real HTTP status codes everywhere"); devmon's
+        // This app sends real HTTP status codes (DECISIONS "Real HTTP status codes everywhere"); devmon's
         // always 200 middleware does not exist here. Kept so the wording stays switchable like devmon's.
         alwaysOk: !!values.alwaysOk
     };
@@ -186,7 +186,7 @@ function endpoints(s)
         response: { alarm: { uid: ALM, name: NAME, direction: "lower", severity: "alarm", highest_severity: "alarm", raised_epoch: 1791294000, cleared_epoch: 1791297600, is_active: false, duration_secs: 3600, clear_reason: "manual",
           acknowledged: true, acked_epoch: 1791294300, acked_by: "jseese", ack_until_epoch: 1791297900, suppressed: false, trigger_value: 0.4, trigger_display: "0.40 V", canonical_unit: "V", display_unit: "V",
           sensor: { uid: SEN, name: "Power in", channel: "vin", metric: "voltage" }, device: { uid: DEV, name: "Pod 3" },
-          location: { uid: LOC, name: "Main field", timezone: "America/Chicago" }, account: { uid: "e1f2a3b4-c5d6-4e7f-8091-a2b3c4d5e6f7", name: "Volta" },
+          location: { uid: LOC, name: "Main field", timezone: "America/Chicago" }, account: { uid: "e1f2a3b4-c5d6-4e7f-8091-a2b3c4d5e6f7", name: "Acme" },
           rule: { uid: RULE, kind: "threshold", direction: "lower", threshold: 10, threshold_display: "10.00 V", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, is_deleted: false },
           events: [
             { epoch: 1791294000, kind: "raised", severity: "alarm", value: 0.4, value_display: "0.40 V", comment: null, actor: { type: "system", name: null },
@@ -411,9 +411,9 @@ function text(s)
         headersIntro: "Each event is a POST with a JSON body and these headers:",
         headers:
         [
-            "`x-voltastc-event`: `reading` or `alarm`",
-            "`x-voltastc-delivery`: a delivery number, the same on every retry of one event",
-            "`x-voltastc-signature`: `sha256=` followed by the HMAC SHA-256 of the raw body, keyed with the signing secret, in hex"
+            "`x-iot-event`: `reading` or `alarm`",
+            "`x-iot-delivery`: a delivery number, the same on every retry of one event",
+            "`x-iot-signature`: `sha256=` followed by the HMAC SHA-256 of the raw body, keyed with the signing secret, in hex"
         ],
         retries: "Reply with any 2xx status within 10 seconds. Anything else is retried after 1, 5, 30 and 120 minutes, then marked failed. Deliveries still waiting when a webhook is paused or removed are marked failed. The Recent column on the Webhooks tab shows the last five deliveries.",
         readingSample: { event: "reading", device: DEV, epoch: 1791295200, readings: [{ sensor: SEN, channel: "vin", metric: "voltage", value: 12.1, epoch: 1791295200 }] },

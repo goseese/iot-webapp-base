@@ -5,12 +5,12 @@ const apiDocs = require("../services/apiDocs");
 // Site values given explicitly, so these run without config or a database.
 function siteWith(prefix)
 {
-    return apiDocs.siteOf({ name: "Voltastc", apiBase: "https://app.example.com/api/v1", keyPrefix: prefix, ratePerMinute: 120, maxObjects: 1000 });
+    return apiDocs.siteOf({ name: "Example", apiBase: "https://app.example.com/api/v1", keyPrefix: prefix, ratePerMinute: 120, maxObjects: 1000 });
 }
 
 test("the shell variable in examples comes from the key prefix", () =>
 {
-    assert.equal(apiDocs.envVarOf("voltastc"), "VOLTASTC_KEY");
+    assert.equal(apiDocs.envVarOf("example"), "EXAMPLE_KEY");
     assert.equal(apiDocs.envVarOf("volta.stc"), "VOLTA_STC_KEY");
     assert.equal(apiDocs.envVarOf("my-key~1"), "MY_KEY_1_KEY");
     assert.equal(apiDocs.envVarOf("9x"), "API_9X_KEY");
@@ -20,7 +20,7 @@ test("the shell variable in examples comes from the key prefix", () =>
 
 test("every endpoint example uses this site's base URL and shell variable", () =>
 {
-    for (const prefix of ["voltastc", null])
+    for (const prefix of ["example", null])
     {
         const d = apiDocs.build(siteWith(prefix));
         assert.ok(d.endpoints.length >= 14);
@@ -35,8 +35,8 @@ test("every endpoint example uses this site's base URL and shell variable", () =
 
 test("the Markdown file is well formed", () =>
 {
-    const md = apiDocs.markdown(siteWith("voltastc"));
-    assert.ok(md.startsWith("# Voltastc API and webhooks\n"));
+    const md = apiDocs.markdown(siteWith("example"));
+    assert.ok(md.startsWith("# Example API and webhooks\n"));
     assert.equal((md.match(/^```/gm) || []).length % 2, 0, "code fences balanced");
     const prose = md.split("```").filter((x, i) => i % 2 === 0).join("");
     assert.ok(!prose.includes("<uid>"), "no raw <uid> outside code");
@@ -46,7 +46,7 @@ test("the Markdown file is well formed", () =>
     {
         assert.ok(md.includes("](#" + id + ")"), "contents link " + id);
     }
-    for (const e of apiDocs.build(siteWith("voltastc")).endpoints) { assert.ok(md.includes("<a id=\"" + e.id + "\"></a>"), "anchor " + e.id); }
+    for (const e of apiDocs.build(siteWith("example")).endpoints) { assert.ok(md.includes("<a id=\"" + e.id + "\"></a>"), "anchor " + e.id); }
     assert.ok(md.includes("[alarm endpoints](#alarm-detail)"), "API Docs anchors stay links inside the file");
 });
 
@@ -60,8 +60,8 @@ test("the Markdown file states the blank prefix and says nothing about a viewer"
 
 test("file name is the site name made safe", () =>
 {
-    assert.equal(apiDocs.fileName("Voltastc"), "voltastc-api.md");
-    assert.equal(apiDocs.fileName("Volta STC / Main"), "volta-stc-main-api.md");
+    assert.equal(apiDocs.fileName("Example"), "example-api.md");
+    assert.equal(apiDocs.fileName("Acme IoT / Main"), "acme-iot-main-api.md");
     assert.equal(apiDocs.fileName(""), "site-api.md");
 });
 
@@ -75,7 +75,7 @@ test("inline markup to HTML escapes first, then marks up", () =>
 // writes show only where they apply.
 test("page calls use the page's uids and offer writes only where allowed", () =>
 {
-    const s = siteWith("voltastc");
+    const s = siteWith("example");
     const check = (r, uid) =>
     {
         assert.ok(r.calls.length > 0);

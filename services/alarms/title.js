@@ -27,7 +27,7 @@ const TOKEN_HELP =
 // Example values for the preview line under a title field; pages override the names they know.
 const SAMPLE =
 {
-    account_name: "Volta", location_name: "Main", device_name: "Server", sensor_name: "CPU temp",
+    account_name: "Acme", location_name: "Main", device_name: "Server", sensor_name: "CPU temp",
     severity: "alarm", direction: "above", alarm_limit: "80.0 C", exceed_value: "82.5 C", return_value: "71.0 C",
     exceed_duration: "5 minutes", return_duration: "5 minutes"
 };

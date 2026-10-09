@@ -43,7 +43,7 @@ async function deliverPending()
         {
             const ctl = new AbortController();
             const timer = setTimeout(() => ctl.abort(), 10000);
-            const res = await fetch(hook.url, { method: "POST", headers: { "content-type": "application/json", "x-voltastc-signature": sig, "x-voltastc-event": d.event_type, "x-voltastc-delivery": String(d.id) }, body: body, signal: ctl.signal });
+            const res = await fetch(hook.url, { method: "POST", headers: { "content-type": "application/json", "x-iot-signature": sig, "x-iot-event": d.event_type, "x-iot-delivery": String(d.id) }, body: body, signal: ctl.signal });
             clearTimeout(timer);
             status = res.status;
         }

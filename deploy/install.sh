@@ -469,6 +469,7 @@ step "Broker users and MQTT site settings"
     # shellcheck source=/dev/null
     . "$BROKER_ENV"
     set +a
+    export APP_SLUG
     as_app node scripts/broker-bootstrap.js --settings
 )
 

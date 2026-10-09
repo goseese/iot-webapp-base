@@ -42,18 +42,18 @@ test("clean: one line, trimmed, 200 characters, blank is null", () =>
     assert.equal(title.clean(null), null);
 });
 
-const CTX = { account_name: "Volta", location_name: "Main", device_name: "Server", sensor_name: "CPU temp", severity: "alarm", direction: "upper" };
+const CTX = { account_name: "Acme", location_name: "Main", device_name: "Server", sensor_name: "CPU temp", severity: "alarm", direction: "upper" };
 
 test("tokens: threshold alarm", () =>
 {
     const rule = { rule_kind: "threshold", exceed_secs: 300, return_secs: 600, timeout_secs: null };
-    const v = title.tokens(CTX, rule, { site_name: "Voltastc", alarm_limit: "80.0 C", exceed_value: "82.5 C", return_value: "" });
+    const v = title.tokens(CTX, rule, { site_name: "Example", alarm_limit: "80.0 C", exceed_value: "82.5 C", return_value: "" });
     assert.equal(v.direction, "above");
     assert.equal(v.alarm_limit, "80.0 C");
     assert.equal(v.exceed_value, "82.5 C");
     assert.equal(v.exceed_duration, "5 minutes");
     assert.equal(v.return_duration, "10 minutes");
-    assert.equal(v.site_name, "Voltastc");
+    assert.equal(v.site_name, "Example");
 });
 
 test("tokens: no data alarm", () =>

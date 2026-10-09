@@ -16,7 +16,7 @@
 #   macOS:  brew install mosquitto
 #
 # Usage:
-#   ANNOUNCE_PASSWORD=... scripts/provision-test.sh --broker app.voltastc.com --mac 020000000001 --model M
+#   ANNOUNCE_PASSWORD=... scripts/provision-test.sh --broker iot.example.com --mac 020000000001 --model M
 #
 set -u -o pipefail
 

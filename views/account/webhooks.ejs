@@ -1,6 +1,6 @@
 
 <% if (newSecret) { %>
-<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-Voltastc-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
+<div class="alert alert-success"><strong>Webhook signing secret, shown once:</strong> <code class="user-select-all"><%= newSecret %></code><br><span class="small">Each delivery carries <code>X-IoT-Signature: sha256=&lt;HMAC of the body&gt;</code>.</span></div>
 <% } %>
 
 <div class="row g-3">

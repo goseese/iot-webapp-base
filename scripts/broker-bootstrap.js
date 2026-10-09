@@ -11,8 +11,8 @@
 //      receive default of allow would leak other clients' traffic.
 //   2. deleteRole "client": generated role with full # read/write, not used here.
 //   3. Roles and clients:
-//        voltastc_server  role voltastc-server  the app's ingest and realtime clients (MQTT_USER)
-//        voltastc_dynsec  role dynsec-admin     creates and removes device users (MQTT_DYNSEC_USER)
+//        <slug>_server    role <slug>-server    the app's ingest and realtime clients (MQTT_USER)
+//        <slug>_dynsec    role dynsec-admin     creates and removes device users (MQTT_DYNSEC_USER)
 //        announce         role announce         shared first contact login in every firmware image
 //      dynsec-admin is created here with the same ACLs 2.1 generates for it (config_init.c
 //      add_role_with_full_permission), because 2.0's `mosquitto_ctrl dynsec init` only creates an
@@ -21,9 +21,10 @@
 //
 // Passwords come from the environment, never argv (argv is visible in ps):
 //   BROKER_ADMIN_PASSWORD      the generated admin's password (plugin_opt_password_init_file)
-//   BROKER_SERVER_PASSWORD     voltastc_server
-//   BROKER_DYNSEC_PASSWORD     voltastc_dynsec
+//   BROKER_SERVER_PASSWORD     <slug>_server
+//   BROKER_DYNSEC_PASSWORD     <slug>_dynsec
 //   BROKER_ANNOUNCE_PASSWORD   announce (also goes into every firmware image)
+// APP_SLUG, the site name slug, names the app's logins and role (deploy/install.sh passes it).
 // Optional: BROKER_HOST (127.0.0.1), BROKER_PORT (1883), BROKER_ADMIN_USER (admin).
 //
 // node scripts/broker-bootstrap.js             broker only
@@ -37,19 +38,27 @@ const RESPONSE_TOPIC = CONTROL_TOPIC + "/response";
 const TIMEOUT_MS = 10000;
 const PRIORITY = 5;
 
-const SERVER_USER = "voltastc_server";
-const DYNSEC_USER = "voltastc_dynsec";
+const SLUG = process.env.APP_SLUG || "";
+if (!/^[a-z][a-z0-9_]{0,31}$/.test(SLUG))
+{
+    console.error("APP_SLUG is required in the environment: lowercase letters, digits and _, starting with a letter");
+    process.exit(1);
+}
+const SERVER_USER = SLUG + "_server";
+const SERVER_ROLE = SLUG + "-server";
+const SERVER_CLIENT_ID = SLUG + "-server";
+const DYNSEC_USER = SLUG + "_dynsec";
 const ANNOUNCE_USER = "announce";
 
 const acl = (acltype, topic) => ({ acltype: acltype, topic: topic, priority: PRIORITY, allow: true });
 
 // Exactly what the code publishes and subscribes to (mqtt/topics.js, realtime/index.js,
 // pipeline/publish.js, mqtt/downlink.js, services/connectEndpoint.js). The dynsec control topic is
-// only in dynsec-admin, the voltastc_dynsec client's role.
+// only in dynsec-admin, the <slug>_dynsec client's role.
 const ROLES =
 [
     {
-        rolename: "voltastc-server",
+        rolename: SERVER_ROLE,
         acls:
         [
             acl("subscribePattern", "dev/+/#"),
@@ -94,7 +103,7 @@ function connect(host, port, username, password)
     {
         const c = mqtt.connect("mqtt://" + host + ":" + port,
         {
-            clientId: "voltastc-bootstrap-" + process.pid,
+            clientId: SLUG + "-bootstrap-" + process.pid,
             username: username,
             password: password,
             clean: true,
@@ -203,7 +212,7 @@ async function verify(client)
         if (have.size !== role.acls.length) { problems.push("role " + role.rolename + " has " + have.size + " ACLs, expected " + role.acls.length); }
     }
 
-    for (const [username, rolename] of [[SERVER_USER, "voltastc-server"], [DYNSEC_USER, "dynsec-admin"], [ANNOUNCE_USER, "announce"]])
+    for (const [username, rolename] of [[SERVER_USER, SERVER_ROLE], [DYNSEC_USER, "dynsec-admin"], [ANNOUNCE_USER, "announce"]])
     {
         const got = await one(client, { command: "getClient", username: username });
         if (!got.ok) { problems.push("client " + username + ": " + got.error); continue; }
@@ -231,7 +240,7 @@ async function writeSettings(serverPassword, dynsecPassword)
             ["MQTT_TLS", "0"],
             ["MQTT_USER", SERVER_USER],
             ["MQTT_PASSWORD", serverPassword],
-            ["MQTT_CLIENT_ID", "voltastc-server"],
+            ["MQTT_CLIENT_ID", SERVER_CLIENT_ID],
             ["BROKER_DRIVER", "dynsec"],
             ["MQTT_DYNSEC_USER", DYNSEC_USER],
             ["MQTT_DYNSEC_PASSWORD", dynsecPassword]
@@ -284,7 +293,7 @@ async function main()
             console.log("role " + role.rolename + ": " + await ensureRole(client, role));
         }
 
-        console.log("client " + SERVER_USER + ": " + await ensureClient(client, SERVER_USER, serverPassword, "voltastc-server"));
+        console.log("client " + SERVER_USER + ": " + await ensureClient(client, SERVER_USER, serverPassword, SERVER_ROLE));
         console.log("client " + DYNSEC_USER + ": " + await ensureClient(client, DYNSEC_USER, dynsecPassword, "dynsec-admin"));
         console.log("client " + ANNOUNCE_USER + ": " + await ensureClient(client, ANNOUNCE_USER, announcePassword, "announce"));
 

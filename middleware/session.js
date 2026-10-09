@@ -18,7 +18,7 @@ function build()
 
     return session(
     {
-        name: "voltastc.sid",
+        name: env.slug + ".sid",
         secret: env.sessionSecret,
         store: store,
         resave: false,

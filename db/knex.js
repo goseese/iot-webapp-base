@@ -31,7 +31,7 @@ const connection =
     password: env.db.password,
     database: env.db.name,
     ssl: sslOptions(),
-    application_name: "voltastc"
+    application_name: env.slug
 };
 
 const knex = knexLib(

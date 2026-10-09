@@ -20,6 +20,7 @@
 const mqtt = require("mqtt");
 const os = require("os");
 const crypto = require("crypto");
+const env = require("../../config/env");
 const logger = require("../../config/logger");
 const settings = require("../../config/settings");
 const brokerCfg = require("../../mqtt/broker");
@@ -164,7 +165,7 @@ async function send(commands)
 
     const entries = commands.map((cmd) =>
     {
-        const id = "voltastc-" + Date.now().toString(36) + "-" + (++seq).toString(36) + "-" + crypto.randomBytes(4).toString("hex");
+        const id = env.slug + "-" + Date.now().toString(36) + "-" + (++seq).toString(36) + "-" + crypto.randomBytes(4).toString("hex");
         return { id: id, command: cmd.command, body: Object.assign({}, cmd, { correlationData: id }) };
     });
 
