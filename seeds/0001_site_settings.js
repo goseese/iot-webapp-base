@@ -1,10 +1,12 @@
+const env = require("../config/env");
 const { knex, T } = require("../db/knex");
 
 // Site settings. Inserted only when the key is missing so admin edits are never overwritten.
 // group: general | email | sms | mqtt | logging | api (tabs on the admin settings page)
 const DEFAULTS =
 [
-    { key: "SITE_NAME", value: "Voltastc", kind: "string", group: "general", description: "Name shown in the sidebar, page titles and emails." },
+    { key: "SITE_NAME", value: env.seed.siteName || "IoT Platform", kind: "string", group: "general", description: "Name shown in the sidebar, page titles and emails." },
+    { key: "THEME_PRIMARY", value: env.seed.themePrimary || null, kind: "string", group: "general", description: "Primary link and button color as #RRGGBB, usually sampled from the logo. Blank uses the color in public/css/iot-theme.css." },
     { key: "SESSION_HOURS", value: "168", kind: "int", group: "general", description: "Hours a login session stays valid without activity. Needs restart.", min: 1, max: 720 },
     { key: "PW_MIN_LENGTH", value: "10", kind: "int", group: "general", description: "Minimum password length.", min: 6, max: 128 },
     { key: "PW_REQUIRE_UPPER", value: "1", kind: "bool", group: "general", description: "Passwords must contain an upper case letter." },

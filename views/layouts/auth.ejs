@@ -8,9 +8,12 @@
   <link href="/vendor/bootstrap-5.3.3/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/fontawesome-6.7.2/css/all.min.css" rel="stylesheet">
   <link href="/css/iot-theme.css?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>" rel="stylesheet">
+  <%_ if (typeof themePrimary !== 'undefined' && themePrimary) { _%>
+  <style>:root { --iot-primary: <%= themePrimary %>; --iot-primary-hover: color-mix(in srgb, <%= themePrimary %> 85%, #fff); --iot-active: <%= themePrimary %>; }</style>
+  <%_ } _%>
   <style>
     .iot-auth { min-height: 100vh; display:grid; place-items:center; padding:1.5rem; background:
-      radial-gradient(circle at 50% -10%, rgba(83,176,54,.10), transparent 38%), var(--iot-bg); }
+      radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--iot-primary) 10%, transparent), transparent 38%), var(--iot-bg); }
     .iot-auth-card { width:min(430px,100%); background:var(--iot-panel); border:1px solid var(--iot-border); border-radius:var(--iot-radius); }
     .iot-auth-brand { display:flex; align-items:center; gap:.75rem; justify-content:center; margin-bottom:2rem; }
     .iot-auth-brand img { width:min(280px,100%); height:auto; }

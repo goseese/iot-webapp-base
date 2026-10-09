@@ -41,6 +41,7 @@ function errorHandler(err, req, res, next)
     // Errors raised before loadUser (a CSRF refusal, a session store failure) arrive without the
     // locals the layouts need; a failed render falls through to Express's bare status page.
     if (res.locals.siteName === undefined) { res.locals.siteName = settings.siteName(); }
+    if (res.locals.themePrimary === undefined) { res.locals.themePrimary = settings.themePrimary(); }
     if (res.locals.appVersion === undefined) { res.locals.appVersion = pkg.version; }
     if (res.locals.flash === undefined) { res.locals.flash = null; }
 

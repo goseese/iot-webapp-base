@@ -9,6 +9,9 @@
   <link href="/vendor/fontawesome-6.7.2/css/all.min.css" rel="stylesheet">
   <link href="/vendor/simple-datatables-10.3.0/style.css" rel="stylesheet">
   <link href="/css/iot-theme.css?v=<%= typeof assetV !== 'undefined' ? assetV : appVersion %>" rel="stylesheet">
+  <%_ if (typeof themePrimary !== 'undefined' && themePrimary) { _%>
+  <style>:root { --iot-primary: <%= themePrimary %>; --iot-primary-hover: color-mix(in srgb, <%= themePrimary %> 85%, #fff); --iot-active: <%= themePrimary %>; }</style>
+  <%_ } _%>
 </head>
 <body <% if (flash) { %>data-iot-flash-type="<%= flash.type %>" data-iot-flash="<%= flash.msg %>"<% } %>>
 <div class="iot-app">

@@ -78,7 +78,11 @@ const env =
         superadminEmail: str("SEED_SUPERADMIN_EMAIL", ""),
         // Optional. Used only when the superadmin is first created; the account must still
         // set a real password at first login. Blank = random password printed to the log.
-        superadminPassword: str("SEED_SUPERADMIN_PASSWORD", "")
+        superadminPassword: str("SEED_SUPERADMIN_PASSWORD", ""),
+        // First values of the SITE_NAME and THEME_PRIMARY site settings (seeds/0001_site_settings.js),
+        // asked for by deploy/install.sh. Used only when the setting is first created.
+        siteName: str("SEED_SITE_NAME", ""),
+        themePrimary: str("SEED_THEME_PRIMARY", "")
     }
 };
 

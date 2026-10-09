@@ -8,6 +8,7 @@ async function loadUser(req, res, next)
 {
     res.locals.currentUser = null;
     res.locals.siteName = settings.siteName();
+    res.locals.themePrimary = settings.themePrimary();
     try
     {
         if (req.session && req.session.userId)

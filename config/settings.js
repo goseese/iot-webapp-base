@@ -106,7 +106,17 @@ async function set(k, value, userId)
 // title, email, alert and report uses this; never hard code the name or its fallback elsewhere.
 function siteName()
 {
-    return get("SITE_NAME", "") || "Voltastc";
+    return get("SITE_NAME", "") || "IoT Platform";
 }
 
-module.exports = { reload, ensureFresh, get, all, set, encrypt, decrypt, siteName };
+// The primary link color: Admin > Site settings > General, THEME_PRIMARY. null keeps the color in
+// public/css/iot-theme.css. Only #RRGGBB passes, because the layouts write it into a style tag.
+const COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+function themePrimary()
+{
+    const v = String(get("THEME_PRIMARY", "") || "").trim();
+    return COLOR_RE.test(v) ? v : null;
+}
+
+module.exports = { reload, ensureFresh, get, all, set, encrypt, decrypt, siteName, themePrimary, COLOR_RE };

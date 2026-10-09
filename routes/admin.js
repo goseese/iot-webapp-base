@@ -222,7 +222,7 @@ const SECTIONS =
 {
     general:
     [
-        ["Site", ["SITE_NAME"]],
+        ["Site", ["SITE_NAME", "THEME_PRIMARY"]],
         ["Sign in and sessions", ["SESSION_HOURS", "LOGIN_MAX_FAILURES", "LOGIN_WINDOW_MINUTES", "MFA_ENABLED", "MFA_CODE_MINUTES"]],
         ["Passwords and invitations", ["PW_MIN_LENGTH", "PW_REQUIRE_UPPER", "PW_REQUIRE_LOWER", "PW_REQUIRE_DIGIT", "PW_REQUIRE_SYMBOL", "RESET_LINK_MINUTES", "INVITE_DAYS", "USERNAME_CHANGE_DAYS"]],
         ["Alarms and devices", ["ALARM_TITLE_FORMAT", "RENOTIFY_MINUTES", "ONLINE_THRESHOLD_SECS", "COVERAGE_WINDOW_HOURS"]],
@@ -334,6 +334,7 @@ router.post("/settings/:key", async (req, res, next) =>
         // Blank uses the built in default (services/alarms/title.js); stored as "", never "null".
         if (entry.key === "ALARM_TITLE_FORMAT") { value = require("../services/alarms/title").clean(value) || ""; }
         if (entry.key === "API_KEY_PREFIX" && !require("../services/apiAuth").KEY_PREFIX_RE.test(value)) { req.flash("danger", "API_KEY_PREFIX must be 1 to 16 characters from A-Z a-z 0-9 - . _ ~."); return res.redirect("/admin/settings/api"); }
+        if (entry.key === "THEME_PRIMARY" && value !== "" && !settings.COLOR_RE.test(value)) { req.flash("danger", "THEME_PRIMARY must be a color as #RRGGBB, for example #45219C, or blank."); return res.redirect("/admin/settings"); }
         // Support addresses (services/support.js): every address checked, stored normalised.
         if (entry.key === "SUPPORT_EMAILS" || entry.key === "SUPPORT_FROM_ADDRESS")
         {
