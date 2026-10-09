@@ -1,16 +1,15 @@
-// Pod firmware files (DECISIONS.md "Firmware updates", pod-protocol.md 5.4 ota).
+// Device firmware files (DECISIONS.md "Firmware updates", command-protocol.md section 3).
 //
 // One current file per firmware image, uploaded on Administration > Firmware (or copied in by hand):
 //   storage/firmware/{image}/firmware.bin
-// The image names are the firmware sketches: volta-pod-ctl (controller and account pods) and
-// volta-pod-target (both target pod models). A pod type names its image in firmwareImage.
+// A device type names its image in firmwareImage; types that share firmware share an image.
 //
 // No version in the file name or URL: the server reads the file's MD5 when an ota command is
-// queued and puts it in the command, so a pod only installs the exact file that was chosen. A file
-// replaced after that fails the pod's MD5 check and the pod keeps its current firmware.
+// queued and puts it in the command, so a device only installs the exact file that was chosen. A
+// file replaced after that fails the device's MD5 check and it keeps its current firmware.
 //
 // Administration > Firmware uploads a file (store()): checked to be an ESP32-S3 app image, written
-// beside the current one and renamed over it, so a pod part way through a download finishes the old
+// beside the current one and renamed over it, so a device part way through a download finishes the old
 // file. firmware.json beside it holds the version typed at upload, who and when, and the file's MD5;
 // a file copied in by hand does not match that MD5, and its version shows as unknown.
 const fs = require("fs");
@@ -33,7 +32,7 @@ const APP_DESC_MAGIC = 0xABCD5432;
 // MD5 by image, kept while the file's size and modification time are unchanged.
 const cache = new Map();
 
-// Every image a pod type names. Only these are served.
+// Every image a device type names. Only these are served.
 function images()
 {
     const all = require("../deviceTypes").all;
@@ -79,7 +78,7 @@ async function current(image)
     return { image: image, url: url(image), md5: md5, bytes: st.size, mtime_epoch: Math.floor(st.mtimeMs / 1000) };
 }
 
-// The pod types that install each image, for the admin page: [{ image, types: [display names] }].
+// The device types that install each image, for the admin page: [{ image, types: [display names] }].
 function forPage()
 {
     const all = Object.values(require("../deviceTypes").all);

@@ -44,7 +44,7 @@ is read.
   no visible locations gives null and an empty list.
 - Assets are devices, so `device` covers them.
 - The rule change log is one rule's history, and with `rule` given it starts from the rule's first
-  change unless `from` is given (on voltastc the default was 24 hours). The caller lists rules with
+  change unless `from` is given. The caller lists rules with
   `GET /alarm-rules` to get a rule uid.
 - voltastc already had `applyScopeFilters(req, q, locs)` (location, device, sensor on a query joined
   as `d` and `s`) on history, rules and changes; active alarms had no filters and now uses it.

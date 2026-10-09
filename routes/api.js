@@ -351,9 +351,9 @@ router.post("/readings", async (req, res, next) =>
 // missing data object or an epoch more than 5 minutes ahead rejects it with the object's index.
 // Backdated epochs are fine (buffered uploads; the hot column guard keeps the current value). A
 // channel that already has a reading at that epoch is skipped as a duplicate, so a retried upload
-// stores nothing twice. Each object then enters the pipeline at stage 2, exactly like a frame. Any live,
-// unarchived device kind is accepted; a direct device is its own gateway, others keep the gateway
-// that last heard them (POST /readings, by sensor, stays limited to direct devices).
+// stores nothing twice. Each object then enters the pipeline at stage 2, exactly like a frame. Only
+// a live, unarchived device whose type declares apiWrite is accepted (403 otherwise); a direct device
+// is its own gateway, others keep the gateway that last heard them.
 router.post("/devices/:uid/readings", async (req, res, next) =>
 {
     try

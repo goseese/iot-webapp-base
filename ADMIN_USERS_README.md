@@ -61,7 +61,7 @@ Report each as present, absent, or different:
   `BITS`, `ALL`, `bitsOf`, `has`, `names`.
 - An audit helper (`services/audit.js` `audit(trx, {...})`) and the event log
   (`services/activity.log(req, event, fields)`).
-- `notFoundError()`, `uidParam`, `intParam`, `isUuid` (`middleware/account.js`) and
+- `notFoundError()` (`middleware/errors.js`), `uidParam`, `intParam`, `isUuid` (`middleware/account.js`) and
   `isUniqueViolation()` (`db/knex.js`).
 - Forgot password with a reset link that is only consumed by its confirm POST, and `loadUser`
   that ends sessions for deleted users.

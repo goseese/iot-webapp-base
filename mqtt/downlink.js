@@ -2,7 +2,7 @@
 // whichever broker connection this process has: the ingest client
 // on the leader, otherwise the realtime relay, which every web process runs. So a page action works
 // on any farm server and the leader's connect time re-sends work too. Both connect as the platform
-// broker user, whose role may publish anywhere (dynsec-broker-summary.md, legacy_full).
+// broker user, whose role may publish on dev/+/cmd/#, acct/# and con/endpoint (scripts/broker-bootstrap.js).
 //
 // Commands are never retained: clearing a retained message is itself a publish the device would
 // receive. Anything that must survive the device being offline is kept in the database and re-sent

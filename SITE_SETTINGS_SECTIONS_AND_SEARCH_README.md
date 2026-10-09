@@ -95,8 +95,8 @@ Before moving a key, check:
 - **Nothing reads the key by group.** Grep for `setting_group` and `.group`. On voltastc only
   `mqtt/watch.js` reads a group (`mqtt`, for its 15 s reconnect poll), so never move a key into or
   out of the mqtt group without checking that.
-- **Deploy runs the seed.** On voltastc that is `deploy/install.sh`; a bare `pm2 reload` does not
-  seed, and the key stays on its old tab.
+- **Deploy runs the seed.** On voltastc the ingest process migrates and seeds every time it starts
+  (`app.js`), so `deploy/install.sh` and a bare `pm2 reload` both move the key to its new tab.
 
 ## Step 2: route (`routes/admin.js`)
 

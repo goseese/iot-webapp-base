@@ -7,6 +7,7 @@ const deviceTypes = require("../deviceTypes");
 const devicesRepo = require("../db/repos/devices");
 const readingsRepo = require("../db/repos/readings");
 const registry = require("../db/repos/registry");
+const autoClaim = require("../services/autoClaim");
 const credentials = require("../db/repos/credentials");
 const frames = require("./frames");
 const topics = require("../mqtt/topics");
@@ -126,6 +127,7 @@ async function handle(topic, payload, meta)
     if (t.channel === "cmd_ack") { return handleCmdAck(gateway, payload); }
     if (t.channel === "event") { return handleEvent(gateway, payload, receipt, t.guid); }
     if (t.channel === "frame") { return handleFrame(gateway, payload, receipt); }
+    if (t.channel === "ble") { return handleBle(gateway, payload, receipt); }
 }
 
 // dev/{guid}/status: connectivity, retained. Types that follow gateway-protocol 4.4 (statusMap) still
@@ -213,7 +215,7 @@ async function handleConfig(mac, gateway, key, payload, receipt)
 }
 
 // dev/{guid}/cmd_ack: the ack of a queued command, JSON { id, ok, results?, error? }
-// (services/commandQueue.js, pod-protocol.md 5.2). An ack without an id, from a unit whose commands
+// (services/commandQueue.js, command-protocol.md 2.2). An ack without an id, from a unit whose commands
 // are not queued (JSON { event, value, response|result }), is only logged. A geoscan command has no
 // ack: the geoscan publish itself is the reply.
 async function handleCmdAck(gateway, payload)
@@ -233,7 +235,7 @@ async function handleEvent(gateway, payload, receipt, guid)
     catch (err) { }
     if (kind === "ota_progress")
     {
-        // A firmware update in progress (pod-protocol.md 5.4 ota), shown on the pages; not logged.
+        // A firmware update in progress (command-protocol.md section 3), shown on the pages; not logged.
         if (!(await require("../services/commandQueue").onProgress(gateway, e))) { logger.info({ pod: gateway.uid, mac: e.mac, pct: e.pct }, "ota progress with no ota in flight"); }
         return;
     }
@@ -336,5 +338,63 @@ async function handleFrame(gateway, payload, receipt)
     await pipeline.ingest({ device: device, type: type, epoch: observed, values: values, gatewayId: gateway.id, rssi: rssi });
 }
 
-// jsonFrameHeader: exported for tests/pods.test.js.
+// Advertisement bytes of one beacon entry: the gw7080's hex `data`, or 4.3's base64 `adv`.
+function advertisementOf(b)
+{
+    if (typeof b.data === "string" && b.data.length % 2 === 0 && /^[0-9a-fA-F]*$/.test(b.data)) { return Buffer.from(b.data, "hex"); }
+    return Buffer.from(typeof b.adv === "string" ? b.adv : "", "base64");
+}
+
+// dev/{guid}/ble: one beacon per message (deviates from gateway-protocol 4.3, see DECISIONS "BLE
+// uplink is one beacon per publish"), the gw7080's existing keys { dmac, rssi, count, data (hex) },
+// optional seconds_ago. A 4.3 batch { beacons: [{ mac, rssi, seconds_ago, adv (base64) }] } is still
+// accepted. Advertisements that do not parse as one of our structures are dropped entirely, registry
+// included (architecture 3.8 BLE guard). Ported from devmon (Oct 2026).
+async function handleBle(gateway, payload, receipt)
+{
+    let msg;
+    try { msg = JSON.parse(payload.toString("utf8")); }
+    catch (err) { logger.warn({ gateway: gateway.uid }, "ble payload is not JSON"); return; }
+    if (!msg || typeof msg !== "object") { logger.warn({ gateway: gateway.uid }, "ble payload is not an object"); return; }
+    const beacons = Array.isArray(msg.beacons) ? msg.beacons : [msg];
+    let parsed = 0;
+    for (const b of beacons)
+    {
+        if (!b || typeof b !== "object") { continue; }
+        const mac = String(b.mac || b.dmac || "").toUpperCase();
+        if (!mac) { continue; }
+        const adv = advertisementOf(b);
+        if (adv.length === 0) { continue; }
+        const type = Object.values(deviceTypes.all).find((t) => t.kind === "beacon" && t.parseAdvertisement && t.parseAdvertisement(adv));
+        if (!type) { continue; }
+        parsed++;
+        const observed = receipt - (Number(b.seconds_ago) || 0);
+        const values = type.parseAdvertisement(adv);
+        let device = await devicesRepo.findLiveByHardwareId(mac);
+        await registry.touch(mac, { epoch: observed, model: type.slug, via: "ble", deviceUid: device ? device.uid : null });
+        const rssi = b.rssi === undefined ? null : Number(b.rssi);
+        if (!device)
+        {
+            // Unplaced: record where it is heard, then claim it if this gateway's location is in
+            // auto claim (DECISIONS "Auto claim membership mode"); the claiming message is stored below.
+            await registry.heardBy(mac, gateway.id, observed, rssi);
+            device = await autoClaim.tryClaim(mac, type, gateway);
+            if (!device) { continue; }
+        }
+        await readingsRepo.upsertCoverage(device.id, gateway.id, observed, rssi);
+        // What this gateway observed (RSSI, times heard this cycle), one sensor per hearing gateway
+        // (perGateway channels), for winners and losers alike, as for LoRa frames (architecture 3.6).
+        const seen = deviceTypes.gatewayValues(type, gateway.hardware_id, { "rssi": rssi, "heard-count": b.count });
+        if (Object.keys(seen).length > 0)
+        {
+            await pipeline.ingest({ device: device, type: type, epoch: observed, values: seen, gatewayId: gateway.id, rssi: rssi, canonical: true });
+        }
+        const bucket = Math.floor(observed / Math.max(type.minIntervalSecs || 600, 1));
+        if (!(await readingsRepo.claimFrame(device.id, bucket, observed))) { continue; }
+        await pipeline.ingest({ device: device, type: type, epoch: observed, values: values, gatewayId: gateway.id, rssi: rssi });
+    }
+    logger.debug({ gateway: gateway.uid, beacons: beacons.length, parsed: parsed }, "ble batch");
+}
+
+// jsonFrameHeader: exported for tests/deviceMessages.test.js.
 module.exports = { handle, typeForDevice, jsonFrameHeader };

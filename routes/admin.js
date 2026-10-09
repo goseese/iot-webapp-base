@@ -1,4 +1,4 @@
-// Superadmin only: accounts, unknown devices, pod firmware, site settings, event log (architecture 12, 13).
+// Superadmin only: accounts, unknown devices, device firmware, site settings, event log (architecture 12, 13).
 const express = require("express");
 const { notFoundError } = require("../middleware/errors");
 const { body, validationResult } = require("express-validator");
@@ -69,7 +69,7 @@ router.post("/accounts/:uid", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
-// Pod firmware (services/firmware.js, DECISIONS.md "Firmware updates"): one card per image with the
+// Device firmware (services/firmware.js, DECISIONS.md "Firmware updates"): one card per image with the
 // current file, and its upload.
 router.get("/firmware", async (req, res, next) =>
 {
@@ -130,7 +130,7 @@ router.post("/firmware/:image", async (req, res, next) =>
         let message = image + " " + version + " uploaded (" + (buf.length / 1048576).toFixed(2) + " MB, MD5 " + md5.slice(0, 8) + ").";
         let kind = "success";
         if (!firmware.hasVersion(buf, version)) { message += " Note: \"" + version + "\" does not appear in the file, so check the version; upload again to correct it."; kind = "warning"; }
-        if (stale > 0) { message += " " + stale + " update" + (stale === 1 ? " was" : "s were") + " queued for the previous file; the pods will refuse " + (stale === 1 ? "it" : "them") + " (MD5), so cancel and queue again."; kind = "warning"; }
+        if (stale > 0) { message += " " + stale + " update" + (stale === 1 ? " was" : "s were") + " queued for the previous file; the devices will refuse " + (stale === 1 ? "it" : "them") + " (MD5), so cancel and queue again."; kind = "warning"; }
         req.flash(kind, message);
         res.json({ ok: true, message: message });
     }
@@ -516,9 +516,10 @@ router.post("/users/:uid/reset-link", async (req, res, next) =>
     catch (err) { next(err); }
 });
 
-// Offline or back online (users.disabled_epoch). Offline stops signing in only: password, sign in
-// code and reset link are refused and open sessions end (middleware/auth.js loadUser). Alarm email
-// still follows the Alerts switches. A superadmin cannot put themselves offline.
+// Offline or back online (users.disabled_epoch). Offline stops signing in: password, sign in code
+// and reset link are refused and open sessions end (middleware/auth.js loadUser). It also stops every
+// email and SMS to the user (services/mail, alarms/notify, support). A superadmin cannot put
+// themselves offline.
 router.post("/users/:uid/offline", async (req, res, next) =>
 {
     try

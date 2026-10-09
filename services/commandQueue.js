@@ -1,4 +1,4 @@
-// Queued commands (DECISIONS.md "Queued commands", pod-protocol.md section 5, migration 0005).
+// Queued commands (DECISIONS.md "Queued commands", command-protocol.md section 2, migration 0005).
 //
 // Every command to a pod type (commandQueue: true) waits in command_queue until the pod acks it:
 // queued -> sent -> done | failed. A target pod's commands go to the controller it is paired with,
@@ -9,7 +9,7 @@
 //     or a connect (ingest process), under a per pod advisory lock so the two processes never send
 //     two at once.
 //   - A sent command is published again, same cmd_id, when the pod publishes its connect message
-//     (onConnect). The pod carries out an id once and acks repeats (pod-protocol.md 5.3).
+//     (onConnect). The pod carries out an id once and acks repeats (command-protocol.md 2.3).
 //   - Cancel deletes the row. A pod that already has the command may still carry it out; its late
 //     ack finds no row and is only logged.
 //   - A target pod's set_config (its Config tab) also marks the key pending in unit_config for the
@@ -24,7 +24,7 @@ const downlink = require("../mqtt/downlink");
 const LOCK_CLASS = 7305;        // pg_advisory_xact_lock(class, device id): one sender per pod
 const PENDING = ["queued", "sent"];
 // Commands whose value is stored as JSON text and sent as an object: set_config { key, value },
-// ota { url, md5 } (pod-protocol.md 5.4).
+// ota { url, md5 } (command-protocol.md section 3).
 const JSON_VALUES = ["set_config", "ota"];
 
 // Where a placement's commands go. { pod, guid, target, targetDeviceId } or { error } for the page.
@@ -45,7 +45,7 @@ async function route(device)
     const cred = await credentials.forDevice(pod);
     if (!cred || cred.state !== "active")
     {
-        return { error: target ? "Its controller, " + pod.name + ", has no active broker credentials yet, so commands cannot be sent." : "This pod has no active broker credentials yet, so it cannot be sent commands.", pod: pod };
+        return { error: target ? "Its controller, " + pod.name + ", has no active broker credentials yet, so commands cannot be sent." : "This device has no active broker credentials yet, so it cannot be sent commands.", pod: pod };
     }
     return { pod: pod, guid: cred.broker_username, target: target, targetDeviceId: targetDeviceId };
 }

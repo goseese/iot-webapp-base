@@ -7,6 +7,19 @@ developer) working in the target repo, as the spec for the work.
 The target sites are likely PostgreSQL. Nothing here depends on a database engine: the SQL shown is
 plain and portable, and the code uses whatever query layer the site already has (knex, pg, an ORM).
 
+**As built in this app** (iot-webapp-base, from voltastc; `DECISIONS.md` "Alarm titles and the rule
+change log" and "API and webhooks" win where they differ from the devmon spec below):
+
+- The site wide title setting stores `''` when blank; the other levels store NULL.
+- A NULL channel policy is snapshotted as email on, SMS off (`NULL_POLICY` in
+  `services/alarms/ruleLog.js`), not all on.
+- The audited fields also include `chart_in_alarm` and `chart_window_secs` (labels "Chart in alarm"
+  and "Chart window"), added by `ALARM_CHARTS_README.md`.
+- The sensor page's "Removed rules" panel shows the 50 most recently removed.
+- `GET /alarm-rules/changes` takes a required `rule` uid instead of `location`, `device` and
+  `sensor`, starts from the rule's first change unless `from` is given, and answers a malformed uid
+  with an empty list (`API_SCOPING_AND_TABS_README.md`).
+
 ## How to use this document
 
 1. Read the target site's own decisions log, structure notes and alarm code first. Where the site
@@ -176,7 +189,7 @@ function render(template, vars)
         const v = vars[name];
         return v === null || v === undefined ? "" : String(v);
     });
-    return out.replace(/\s*[\r\n]+\s*/g, " ").trim();
+    return out.replace(/\s+/g, " ").trim();
 }
 
 function duration(secs)

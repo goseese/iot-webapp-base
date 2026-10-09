@@ -1,7 +1,7 @@
-// Pod firmware downloads (services/firmware.js, pod-protocol.md 5.4 ota).
+// Device firmware downloads (services/firmware.js, command-protocol.md section 3).
 //
-// Unauthenticated on purpose: a controller downloads over plain HTTPS GET, for itself or to pass on
-// to its target pods over ESP-NOW, and has no login to present. Only the images a pod type names
+// Unauthenticated on purpose: a gateway downloads over plain HTTPS GET, for itself or to pass on to
+// the nodes behind it, and has no login to present. Only the images a device type names
 // are served, from storage/firmware/{image}/firmware.bin. Mounted in app.js ahead of the session.
 //
 // The firmware needs Content-Length (arduino-esp32 HTTPUpdate refuses a response without it), so

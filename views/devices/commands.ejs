@@ -1,7 +1,7 @@
 <% var uid = fmt.uid(device.uid); var queued = !!queue; var ready = queued ? !queue.error : (cred && cred.state === "active"); %>
 
 <% if (queued) { %>
-<p class="text-secondary small">Commands are queued and sent one at a time: each waits for the pod's answer before the next goes out. A command for a pod that is offline goes out when it next connects. Cancel removes a command that has not been answered yet.<% if (queue.pod && queue.pod.id !== device.id) { %> This pod's commands go through its controller, <a href="/devices/<%= fmt.uid(queue.pod.uid) %>"><%= queue.pod.name %></a>.<% } %></p>
+<p class="text-secondary small">Commands are queued and sent one at a time: each waits for the device's answer before the next goes out. A command for a device that is offline goes out when it next connects. Cancel removes a command that has not been answered yet.<% if (queue.pod && queue.pod.id !== device.id) { %> This pod's commands go through its controller, <a href="/devices/<%= fmt.uid(queue.pod.uid) %>"><%= queue.pod.name %></a>.<% } %></p>
 <% if (queue.error) { %><div class="alert alert-secondary"><%= queue.error %></div><% } %>
 <% } else { %>
 <p class="text-secondary small">Commands go to the gateway right away and are not queued. If the gateway is offline nothing happens, and nothing is sent when it reconnects.</p>

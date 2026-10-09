@@ -25,8 +25,8 @@
         <tr>
           <td>
             <a href="/locations/<%= fmt.uid(l.uid) %>"><%= l.name %></a>
-            <% var mm = l.membership_mode, mmIcon = { locked: "fa-lock", release: "fa-box-open" }[mm] || "fa-lock-open", mmClass = { locked: "text-bg-secondary", release: "text-bg-info" }[mm] || "text-bg-light", mmTitle = { locked: "Locked: no automatic joins", release: "Release: devices may be taken by any location with add permission" }[mm] || "Normal membership"; %>
-            <span class="badge <%= mmClass %> ms-1" title="<%= mmTitle %>"><i class="fa-solid <%= mmIcon %> me-1"></i><%= mm %></span>
+            <% var mm = l.membership_mode, mmIcon = { locked: "fa-lock", release: "fa-box-open", auto_claim: "fa-wand-magic-sparkles" }[mm] || "fa-lock-open", mmClass = { locked: "text-bg-secondary", release: "text-bg-info", auto_claim: "text-bg-warning" }[mm] || "text-bg-light", mmTitle = { locked: "Locked: no automatic joins", release: "Release: devices may be taken by any location with add permission", auto_claim: "Auto claim: beacons heard here are added automatically until it ends" }[mm] || "Normal membership"; %>
+            <span class="badge <%= mmClass %> ms-1" title="<%= mmTitle %>"><i class="fa-solid <%= mmIcon %> me-1"></i><%= mm === "auto_claim" ? "auto claim" : mm %></span>
             <% var am = l.alarm_mode || (l.notifications_muted ? "muted" : "active"); %>
             <span class="badge <%= am === "active" ? "text-bg-success" : (am === "muted" ? "text-bg-warning" : "text-bg-danger") %>" title="<%= am === "active" ? "Alarms evaluated and notified" : (am === "muted" ? "Alarms recorded, nobody notified" : "Alarms not evaluated") %>"><i class="fa-solid <%= am === "active" ? "fa-bell" : (am === "muted" ? "fa-bell-slash" : "fa-power-off") %> me-1"></i><%= am %></span>
           </td>

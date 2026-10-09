@@ -1,6 +1,7 @@
-# Voltastc: Mosquitto dynamic security and device provisioning
+# Mosquitto dynamic security and device provisioning
 
-The broker and provisioning design, server side, as deployed on app.voltastc.com (Sep 26 2026).
+The broker and provisioning design, server side, as first deployed on Voltastc (app.voltastc.com,
+Sep 26 2026) and kept in this base. `<slug>` is the site name slug (`APP_SLUG`).
 The device side is `device-provisioning.md`; the reasons are also in `DECISIONS.md`. Verified on
 Mosquitto 2.1.2 built from source and on the Ubuntu 26.04 package (2.0.22): 20 behaviour checks
 (the app's server user, `announce`, the dynsec user, device users, command delivery, refusals, and a
@@ -28,7 +29,7 @@ credentials are delivered over HTTPS. On 2.1 the per device roles could collapse
   The Mosquitto PPA builds 2.1.2 for 24.04 only, not 26.04. The app works the same on both.
 - Configuration: Ubuntu's `/etc/mosquitto/mosquitto.conf` (persistence on in `/var/lib/mosquitto/`,
   log to `/var/log/mosquitto/mosquitto.log`, `include_dir /etc/mosquitto/conf.d`) plus
-  `/etc/mosquitto/conf.d/voltastc.conf`, installed from `deploy/mosquitto/voltastc.conf`:
+  `/etc/mosquitto/conf.d/<slug>.conf`, installed from `deploy/mosquitto/broker.conf`:
   `allow_anonymous false`, `plugin <dynsec .so>` (path found with `dpkg -L mosquitto`; on this arm64
   server `/usr/lib/aarch64-linux-gnu/mosquitto_dynamic_security.so`), `plugin_opt_config_file
   /var/lib/mosquitto/dynamic-security.json`, the two listeners. No `password_file`, no `acl_file`:
@@ -59,7 +60,7 @@ credentials are delivered over HTTPS. On 2.1 the per device roles could collapse
 
 - `listener 1883 127.0.0.1`: plaintext, loopback only, for the app's own processes.
 - `listener 8883`: TLS, all interfaces, for devices. Certificate and key are copies of the
-  app.voltastc.com Let's Encrypt certificate in `/etc/mosquitto/certs/` (owner mosquitto, 0600),
+  site's Let's Encrypt certificate in `/etc/mosquitto/certs/` (owner mosquitto, 0600),
   refreshed by the certbot deploy hook, which then sends SIGHUP; 2.0.22 reloads listener
   certificates on SIGHUP, so connected devices stay connected.
 - EC2 security group: 8883 open, 1883 closed.
@@ -84,13 +85,13 @@ Verified: a takeover by client id reuse receives nothing. **Every role must ther
 
 | Client | Role | Used by |
 |---|---|---|
-| `admin` | `admin` (2.0 init: full read, `$CONTROL/dynamic-security/#`, `$SYS`; on 2.1 `super-admin`) | People only. Password in `/etc/voltastc/broker.env`. |
-| `voltastc_server` | `voltastc-server` | The ingest client and the web process's realtime relay (`MQTT_USER`), over 127.0.0.1:1883. |
-| `voltastc_dynsec` | `dynsec-admin` | The app's dynsec driver: creates and removes device users (`MQTT_DYNSEC_USER`). |
+| `admin` | `admin` (2.0 init: full read, `$CONTROL/dynamic-security/#`, `$SYS`; on 2.1 `super-admin`) | People only. Password in `/etc/<slug>/broker.env`. |
+| `<slug>_server` | `<slug>-server` | The ingest client and the web process's realtime relay (`MQTT_USER`), over 127.0.0.1:1883. |
+| `<slug>_dynsec` | `dynsec-admin` | The app's dynsec driver: creates and removes device users (`MQTT_DYNSEC_USER`). |
 | `announce` | `announce` | Shared first contact login, the same password in every firmware image. |
 | `{guid}` | `dev-{guid}` | One per provisioned unit, created by the app. |
 
-- `voltastc-server`: `subscribePattern` and `publishClientReceive` on `dev/+/#` and `acct/#`;
+- `<slug>-server`: `subscribePattern` and `publishClientReceive` on `dev/+/#` and `acct/#`;
   `publishClientSend` on `dev/+/cmd/#`, `acct/#` and `con/endpoint`. Exactly what the code publishes
   and subscribes to; it cannot touch `$CONTROL`.
 - `dynsec-admin`: `publishClientSend`, `publishClientReceive`, `subscribePattern` and
@@ -104,15 +105,15 @@ Verified: a takeover by client id reuse receives nothing. **Every role must ther
 `scripts/broker-bootstrap.js` sets all of this idempotently (create, or on "already exists"
 modify), reads everything back and fails loudly on any difference, and with `--settings` stores the
 MQTT site settings (`MQTT_HOST` 127.0.0.1, `MQTT_PORT` 1883, `MQTT_TLS` 0, `MQTT_USER`,
-`MQTT_PASSWORD`, `MQTT_CLIENT_ID` voltastc-server, `BROKER_DRIVER` dynsec, `MQTT_DYNSEC_USER`,
+`MQTT_PASSWORD`, `MQTT_CLIENT_ID` `<slug>-server`, `BROKER_DRIVER` dynsec, `MQTT_DYNSEC_USER`,
 `MQTT_DYNSEC_PASSWORD`, secrets encrypted). Passwords come from the environment
 (`BROKER_ADMIN_PASSWORD`, `BROKER_SERVER_PASSWORD`, `BROKER_DYNSEC_PASSWORD`,
-`BROKER_ANNOUNCE_PASSWORD`), which the installer loads from `/etc/voltastc/broker.env`.
+`BROKER_ANNOUNCE_PASSWORD`), which the installer loads from `/etc/<slug>/broker.env`, with `APP_SLUG` exported.
 
 ## First contact: the retained endpoint
 
 - Topic `con/endpoint` (`mqtt/topics.js`), retained, QoS 1, payload
-  `{"url":"https://app.voltastc.com/provision/v1","published":"2026-09-26T23:13:15Z"}`. The date is
+  `{"url":"https://<domain>/provision/v1","published":"2026-09-26T23:13:15Z"}`. The date is
   for a human reading it with `mosquitto_sub`; firmware reads `url` and ignores the rest, so fields
   can be added without a firmware change.
 - The path is the `PROVISION_PATH` setting (default `/provision/v1`); the host always comes from
@@ -169,7 +170,7 @@ Provision is one publish to `$CONTROL/dynamic-security/v1` with a `commands` arr
 then `createClient`), processed in order, one response message for the batch. The role
 `dev-{guid}` holds exactly what `mqtt/topics.deviceAcls()` produces:
 
-- `publishClientSend` on `dev/{guid}/frame`, `status`, `data`, `geoscan`, `cmd_ack` and
+- `publishClientSend` on `dev/{guid}/frame`, `ble`, `status`, `data`, `geoscan`, `cmd_ack`, `event` and
   `dev/{guid}/config/+`
 - `subscribePattern` and `publishClientReceive` on `dev/{guid}/cmd/#`
 
@@ -219,7 +220,8 @@ before sending any command.
 
 - **Certificate chain for firmware:** firmware pins ISRG Root X1 for both HTTPS and 8883. Check what
   a device actually receives before building firmware:
-  `openssl s_client -connect app.voltastc.com:8883 -servername app.voltastc.com -showcerts </dev/null 2>/dev/null | grep -E " s:| i:"`
+  `openssl s_client -connect <domain>:8883 -servername <domain> -showcerts </dev/null 2>/dev/null | grep -E " s:| i:"`
   (and the same on 443). Expect the leaf, the intermediate, and an issuer chaining to ISRG Root X1.
-- **Model strings:** only `platform_server` exists today, so every provisioning request is refused
-  with 400 until the pod types list their models.
+- **Model strings:** a provisioning request is accepted only for a model a gateway or direct type
+  lists in `models` (today `gw7080`, and `gw-cell-1`, `gw-eth-1`, `gw-wifi-1` from `gateway_generic`);
+  any other model is refused with 400.

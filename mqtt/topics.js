@@ -1,6 +1,7 @@
 // MQTT topic scheme, the single place topics are built and parsed.
 //
 //   dev/{device_guid}/frame     uplink, one relayed LoRa frame + rssi
+//   dev/{device_guid}/ble       uplink, one relayed BLE beacon per message (not a 4.3 batch)
 //   dev/{device_guid}/status    uplink, device self JSON, retained, LWT online:false
 //   dev/{device_guid}/data      uplink, the device's own readings (not retained)
 //   dev/{device_guid}/config/+  uplink, one config value per publish, key in the topic (not retained)
@@ -20,7 +21,7 @@
 //                               topic the shared `announce` credential is allowed to read.
 const DEVICE_PREFIX = "dev";
 const ACCOUNT_PREFIX = "acct";
-const UPLINK_KINDS = ["frame", "status", "data", "geoscan", "cmd_ack", "event"];
+const UPLINK_KINDS = ["frame", "ble", "status", "data", "geoscan", "cmd_ack", "event"];
 // Kinds whose last topic level is a key: dev/{guid}/config/{key}, one value per publish.
 const KEYED_UPLINK_KINDS = ["config"];
 
@@ -29,6 +30,7 @@ const lower = (g) => String(g).toLowerCase();
 const device =
 {
     frame: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/frame",
+    ble: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/ble",
     status: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/status",
     cmd: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd",
     // One config write, bare value payload, not retained. The unit replies on config/{key}.
@@ -36,7 +38,7 @@ const device =
     // One command (the Commands tab), not retained. Covered by the cmd/# ACL, so no role change.
     // name comes only from a type module's commands list, never from the request.
     command: (guid, name) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/" + name,
-    // Queued commands (pod-protocol.md section 5): JSON { id, to?, cmd, value? }, acked on cmd_ack.
+    // Queued commands (command-protocol.md section 2): JSON { id, to?, cmd, value? }, acked on cmd_ack.
     queued: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/q",
     cmdAll: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/cmd/#",
     all: (guid) => DEVICE_PREFIX + "/" + lower(guid) + "/#"

@@ -215,13 +215,21 @@ async function locationTitle(locationId)
     return row ? row.setting_value : null;
 }
 
+// Auto claim state for the settings page: hours offered, whether it is on here, and other
+// locations in the account with an active auto claim (DECISIONS "Auto claim membership mode").
+async function autoClaimInfo(location)
+{
+    const autoClaim = require("../services/autoClaim");
+    return { autoClaimHours: autoClaim.HOURS, autoClaimActive: autoClaim.isActive(location), autoClaimElsewhere: await autoClaim.activeElsewhere(location.account_id, location.id) };
+}
+
 router.get("/:uid/settings", requireBits("location", ["edit"]), async (req, res, next) =>
 {
     try
     {
         const c = await common(req);
         const titleField = await locationTitleField(req, c, await locationTitle(req.scope.id));
-        res.render("locations/settings", Object.assign({ title: "Settings", values: req.scope, errors: {}, titleField: titleField }, c));
+        res.render("locations/settings", Object.assign({ title: "Settings", values: req.scope, errors: {}, titleField: titleField }, await autoClaimInfo(req.scope), c));
     }
     catch (err) { next(err); }
 });
@@ -241,19 +249,29 @@ router.post("/:uid/settings", requireBits("location", ["edit"]),
             const lat = req.body.lat === "" ? null : Number(req.body.lat);
             const lng = req.body.lng === "" ? null : Number(req.body.lng);
             if ((lat !== null && Number.isNaN(lat)) || (lng !== null && Number.isNaN(lng))) { errors.lat = "Latitude and longitude must be numbers."; }
+            const autoClaim = require("../services/autoClaim");
             const canLock = permissions.has(req.scopeBits, permissions.byName.lock_location);
-            const mode = canLock && ["locked", "normal", "release"].includes(req.body.membership_mode) ? req.body.membership_mode : null;
+            const mode = canLock && ["locked", "normal", "release", "auto_claim"].includes(req.body.membership_mode) ? req.body.membership_mode : null;
+            let claimUntil = null;
+            if (mode === "auto_claim")
+            {
+                // A timeout is required; "" keeps the current end while auto claim is already on.
+                const hours = Number(req.body.auto_claim_hours);
+                if (autoClaim.HOURS.includes(hours)) { claimUntil = nowEpoch() + hours * 3600; }
+                else if (req.body.auto_claim_hours === "" && autoClaim.isActive(req.scope)) { claimUntil = req.scope.auto_claim_until_epoch; }
+                else { errors.auto_claim = "Pick how long auto claim stays on."; }
+            }
             if (Object.keys(errors).length > 0)
             {
                 const titleField = await locationTitleField(req, c, req.body.alarm_title);
-                return res.status(422).render("locations/settings", Object.assign({ title: "Settings", values: Object.assign({}, req.scope, req.body), errors: errors, titleField: titleField }, c));
+                return res.status(422).render("locations/settings", Object.assign({ title: "Settings", values: Object.assign({}, req.scope, req.body), errors: errors, titleField: titleField }, await autoClaimInfo(req.scope), c));
             }
             const patch = { name: req.body.name.trim(), iana_timezone: req.body.iana_timezone.trim(), address: (req.body.address || "").trim() || null, lat: lat, lng: lng, notes: (req.body.notes || "").trim() || null };
             if (permissions.has(req.scopeBits, permissions.byName.manage_alarms) && ["active", "muted", "offline"].includes(req.body.alarm_mode) && req.body.alarm_mode !== req.scope.alarm_mode)
             {
                 await locationService.setAlarmMode(req.scope, req.body.alarm_mode, req.user);
             }
-            if (mode) { patch.membership_mode = mode; }
+            if (mode) { patch.membership_mode = mode; patch.auto_claim_until_epoch = mode === "auto_claim" ? claimUntil : null; }
             await locationService.update(req.scope, patch, req.user);
             // Alarm title: a location_settings row; blank deletes it (inherit from the account).
             const oldTitle = await locationTitle(req.scope.id);
@@ -270,6 +288,11 @@ router.post("/:uid/settings", requireBits("location", ["edit"]),
             display.invalidate();
             await activity.log(req, "location_updated", { entity_type: "location", entity_uid: req.scope.uid });
             req.flash("success", "Location settings saved.");
+            if (mode === "auto_claim")
+            {
+                const others = await autoClaim.activeElsewhere(req.scope.account_id, req.scope.id);
+                if (others.length) { req.flash("warning", "Auto claim is also on at " + others.map((l) => l.name).join(", ") + ". A beacon goes to whichever location hears it first."); }
+            }
             res.redirect("/locations/" + req.params.uid + "/settings");
         }
         catch (err) { next(err); }

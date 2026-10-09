@@ -25,7 +25,7 @@
           </td>
           <td><code><%= r.cmd %></code><% if (r.value !== null) { %> <% if (r.cmd === "led" && r.value !== "off") { %><span class="d-inline-block align-middle rounded-1 border" style="width: 0.9rem; height: 0.9rem; background: #<%= r.value %>"></span> <% } %><span class="small"><%= showValue(r) %></span><% } %></td>
           <td class="small">
-            <% if (!r.target) { %>this pod
+            <% if (!r.target) { %>this device
             <% } else if (r.target === "all") { %>every target pod
             <% } else if (r.target_uid && fmt.uid(r.target_uid) !== uid) { %><a href="/devices/<%= fmt.uid(r.target_uid) %>"><%= r.target_name %></a>
             <% } else { %><%= r.target_name || fmt.hardwareId(r.target) %><% } %>

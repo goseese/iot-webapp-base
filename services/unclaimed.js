@@ -1,7 +1,8 @@
 // Unclaimed devices for one account (DECISIONS "Unclaimed devices, per account"): MACs on no live
 // device that a gateway in the account has heard (unclaimed_heard), with every location that
 // heard each one, strongest signal first. Used by the account page and the location's Unclaimed
-// view (the same view, filtered). Claim, ignore and unignore live here so both pages share them.
+// view (the same view, filtered), and by auto claim (isIgnored). Claim, ignore and unignore live
+// here so both pages share them.
 const { knex, T, nowEpoch, isUniqueViolation } = require("../db/knex");
 const deviceTypes = require("../deviceTypes");
 const levels = require("./levels");

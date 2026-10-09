@@ -1,4 +1,4 @@
--- Queued commands (DECISIONS.md "Queued commands", pod-protocol.md section 5). Every command to a
+-- Queued commands (DECISIONS.md "Queued commands", command-protocol.md section 2; written for the pods). Every command to a
 -- pod, or through a controller to its target pods, waits here until the pod acks it.
 --   device_id         the pod the message is published to (dev/{guid}/cmd/q): a controller or
 --                     account pod, never a target pod

@@ -383,8 +383,8 @@ async function queueCommand(req, res, back, cmd)
     {
         const firmware = require("../services/firmware");
         const fw = await firmware.current(firmware.imageForType(req.typeModule));
-        if (!fw) { req.flash("warning", "There is no firmware file on the server for this pod yet."); return res.redirect(back); }
-        if (otaWaiting(await q.pendingOta(r.pod.id), r.target)) { req.flash("warning", "A firmware update for this pod is already waiting."); return res.redirect(back); }
+        if (!fw) { req.flash("warning", "There is no firmware file on the server for this device yet."); return res.redirect(back); }
+        if (otaWaiting(await q.pendingOta(r.pod.id), r.target)) { req.flash("warning", "A firmware update for this device is already waiting."); return res.redirect(back); }
         value = JSON.stringify({ url: fw.url, md5: fw.md5 });
     }
     if (cmd.cooldownSecs)

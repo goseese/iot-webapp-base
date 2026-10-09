@@ -58,7 +58,7 @@ function endpoints(s)
     const CURL_POST = s.curlPost;
     const apiBase = s.apiBase;
     const maxObjects = s.maxObjects;
-    const NAME = "Power in on Pod 3 at Main field";
+    const NAME = "Temperature on Freezer 2 at Main lab";
     const RULE = "f2a3b4c5-d6e7-4f80-91a2-b3c4d5e6f708";
     const GROUP = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
     const NAME_NOTE = " name is the alarm title, the same text as the email subject after the event word; it is null if the title could not be built.";
@@ -69,15 +69,15 @@ function endpoints(s)
         about: "Every location the key can view.",
         params: [],
         example: CURL + "\"" + apiBase + "/locations\"",
-        response: { locations: [{ uid: LOC, name: "Main field", timezone: "America/Chicago", membership_mode: "normal" }] }
+        response: { locations: [{ uid: LOC, name: "Main lab", timezone: "America/Chicago", membership_mode: "normal" }] }
       },
       {
         id: "devices", method: "GET", path: "/devices", perm: "View",
         about: "Live devices (not archived or deleted) in the locations the key can view.",
         params: [["location", "Optional. A location uid; only that location's devices. An unknown or hidden location returns an empty list."]],
         example: CURL + "\"" + apiBase + "/devices?location=" + LOC + "\"",
-        response: { devices: [{ uid: DEV, name: "Pod 3", type: "target_accel", kind: "node", hardware_id: "A1B2C3D4E5F6", location: LOC, last_seen_epoch: 1791295200, is_offline: false }] },
-        note: "kind is gateway (controller and account pods), node (target pods) or direct."
+        response: { devices: [{ uid: DEV, name: "Freezer 2", type: "ble_s5", kind: "beacon", hardware_id: "A1B2C3D4E5F6", location: LOC, last_seen_epoch: 1791295200, is_offline: false }] },
+        note: "kind is gateway, node, beacon, direct or asset."
       },
       {
         id: "silent-devices", method: "GET", path: "/devices/silent", perm: "View",
@@ -89,7 +89,7 @@ function endpoints(s)
           ["include_never_seen", "Optional. yes (the default) or no."]
         ],
         example: CURL + "\"" + apiBase + "/devices/silent?location=" + LOC + "&minutes=1440\"",
-        response: { minutes: 1440, cutoff_epoch: 1791208800, devices: [{ uid: DEV, name: "Pod 3", type: "target_accel", kind: "node", hardware_id: "A1B2C3D4E5F6", location: LOC, last_seen_epoch: 1791100000, silent_secs: 195200 }] },
+        response: { minutes: 1440, cutoff_epoch: 1791208800, devices: [{ uid: DEV, name: "Freezer 2", type: "ble_s5", kind: "beacon", hardware_id: "A1B2C3D4E5F6", location: LOC, last_seen_epoch: 1791100000, silent_secs: 195200 }] },
         note: "cutoff_epoch is now less minutes; a device last seen at or before it is listed. silent_secs is null for a device that never reported. Status 400 without account or location, or without a valid minutes. An account or location the key cannot see returns an empty list."
       },
       {
@@ -97,10 +97,10 @@ function endpoints(s)
         about: "One device with every sensor's latest value and alarm status. alarm_status is \"ok\" or the worst severity among active alarms (info, warning, alarm, emergency); the device's alarm_status is the worst over its sensors. active_alarms lists each active alarm, oldest first; its uid works with the alarm endpoints below. The location's alarm_mode is active, muted (alarms recorded, nobody notified) or offline (no alarms evaluated).",
         params: [],
         example: CURL + "\"" + apiBase + "/devices/" + DEV + "\"",
-        response: { device: { uid: DEV, name: "Pod 3", type: "target_accel", kind: "node", hardware_id: "A1B2C3D4E5F6", model: "vpod-acc", firmware: "1.0.3",
-          location: { uid: LOC, name: "Main field", timezone: "America/Chicago", alarm_mode: "active" }, last_seen_epoch: 1791295200, is_offline: false, is_archived: false, alarm_status: "alarm",
-          sensors: [{ uid: SEN, device: DEV, channel: "vin", name: "Power in", metric: "voltage", canonical_unit: "V", display_unit: "V", is_hidden: false, last_value: 0.4, last_display: "0.40 V", last_epoch: 1791295200,
-            alarm_status: "alarm", active_alarms: [{ uid: ALM, severity: "alarm", direction: "lower", raised_epoch: 1791294000, acknowledged: false, ack_until_epoch: null, suppressed: false, trigger_value: 0.4 }] }] } },
+        response: { device: { uid: DEV, name: "Freezer 2", type: "ble_s5", kind: "beacon", hardware_id: "A1B2C3D4E5F6", model: "s5", firmware: "1.0.3",
+          location: { uid: LOC, name: "Main lab", timezone: "America/Chicago", alarm_mode: "active" }, last_seen_epoch: 1791295200, is_offline: false, is_archived: false, alarm_status: "alarm",
+          sensors: [{ uid: SEN, device: DEV, channel: "int-temp", name: "Temperature", metric: "temperature", canonical_unit: "C", display_unit: "C", is_hidden: false, last_value: -6.5, last_display: "-6.5 C", last_epoch: 1791295200,
+            alarm_status: "alarm", active_alarms: [{ uid: ALM, severity: "alarm", direction: "upper", raised_epoch: 1791294000, acknowledged: false, ack_until_epoch: null, suppressed: false, trigger_value: -6.5 }] }] } },
         note: "Values and trigger_value are in the canonical unit; last_display is in the display unit. Status 404 when the device does not exist or the key may not view it."
       },
       {
@@ -108,15 +108,15 @@ function endpoints(s)
         about: "Sensors with their latest value. last_value is in the canonical unit; last_display is formatted in the display unit the pages use.",
         params: [["device", "Optional. A device uid; only that device's sensors. An unknown or malformed uid returns an empty list."]],
         example: CURL + "\"" + apiBase + "/sensors?device=" + DEV + "\"",
-        response: { sensors: [{ uid: SEN, device: DEV, channel: "vin", name: "Power in", metric: "voltage", canonical_unit: "V", display_unit: "V", last_value: 12.1, last_display: "12.10 V", last_epoch: 1791295200 }] }
+        response: { sensors: [{ uid: SEN, device: DEV, channel: "int-temp", name: "Temperature", metric: "temperature", canonical_unit: "C", display_unit: "C", last_value: -18.2, last_display: "-18.2 C", last_epoch: 1791295200 }] }
       },
       {
         id: "sensor", method: "GET", path: "/sensors/<uid>", perm: "View",
         about: "One sensor's latest value and alarm status, with its device and location.",
         params: [],
         example: CURL + "\"" + apiBase + "/sensors/" + SEN + "\"",
-        response: { sensor: { uid: SEN, device: DEV, channel: "vin", name: "Power in", metric: "voltage", canonical_unit: "V", display_unit: "V", is_hidden: false, last_value: 12.1, last_display: "12.10 V", last_epoch: 1791295200,
-          alarm_status: "ok", active_alarms: [], device_name: "Pod 3", location: { uid: LOC, name: "Main field", timezone: "America/Chicago", alarm_mode: "active" } } },
+        response: { sensor: { uid: SEN, device: DEV, channel: "int-temp", name: "Temperature", metric: "temperature", canonical_unit: "C", display_unit: "C", is_hidden: false, last_value: -18.2, last_display: "-18.2 C", last_epoch: 1791295200,
+          alarm_status: "ok", active_alarms: [], device_name: "Freezer 2", location: { uid: LOC, name: "Main lab", timezone: "America/Chicago", alarm_mode: "active" } } },
         note: "Status 404 when the sensor does not exist or the key may not view it."
       },
       {
@@ -129,20 +129,20 @@ function endpoints(s)
           ["limit", "Optional. Most rows per reply, default 5000, at most 20000. When there are more, truncated is true: ask again with from set to next_from, and repeat until truncated is false. Nothing is skipped or repeated, unless more than limit readings share one second: then that second is cut at limit and next_from moves past it, so keep limit well above one second's worth."]
         ],
         example: CURL + "\"" + apiBase + "/readings?sensor=" + SEN + "&from=1791208800&to=1791295200\"",
-        response: { sensor: SEN, metric: "voltage", canonical_unit: "V", display_unit: "V", from: 1791208800, to: 1791295200, truncated: false, next_from: null, readings: [{ epoch: 1791208860, value: 12.1, display_value: 12.1 }, { epoch: 1791209160, value: 12.08, display_value: 12.08 }] },
+        response: { sensor: SEN, metric: "temperature", canonical_unit: "C", display_unit: "C", from: 1791208800, to: 1791295200, truncated: false, next_from: null, readings: [{ epoch: 1791208860, value: -18.2, display_value: -18.2 }, { epoch: 1791209160, value: -18, display_value: -18 }] },
         note: "Status 404 when the sensor does not exist, is missing from the request or the key may not view it."
       },
       {
         id: "post-readings", method: "POST", path: "/readings", perm: "API write",
-        about: "Send single readings by sensor uid, for direct devices (devices that report over the API rather than through a pod or gateway) whose device type accepts API readings. To send a device's readings by channel, or a batch, use POST /devices/<uid>/readings. The body is an array, or { \"readings\": [...] }. Each item names a sensor uid and a value; unit is optional and defaults to the metric's canonical unit; epoch is optional and defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " items per request. Accepted values go through the same pipeline as pod data, so alarm rules apply.",
+        about: "Send single readings by sensor uid, for direct devices (devices that report over the API rather than through a gateway) whose device type accepts API readings. To send a device's readings by channel, or a batch, use POST /devices/<uid>/readings. The body is an array, or { \"readings\": [...] }. Each item names a sensor uid and a value; unit is optional and defaults to the metric's canonical unit; epoch is optional and defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " items per request. Accepted values go through the same pipeline as gateway data, so alarm rules apply.",
         params: [],
-        example: CURL_POST + "-d '[{ \"sensor\": \"" + SEN + "\", \"value\": 12.1, \"unit\": \"V\", \"epoch\": 1791295200 }]' \\\n  \"" + apiBase + "/readings\"",
+        example: CURL_POST + "-d '[{ \"sensor\": \"" + SEN + "\", \"value\": -18.2, \"unit\": \"C\", \"epoch\": 1791295200 }]' \\\n  \"" + apiBase + "/readings\"",
         response: { accepted: 1, rejected: [] },
         note: "Items that fail are listed with their position: { \"index\": 3, \"error\": \"only direct devices accept API readings\" }. A reading for a device whose type does not accept API readings is rejected the same way. Status 400 when the body is not an array of readings, 413 when it has too many, 422 when nothing is accepted."
       },
       {
         id: "device-readings", method: "POST", path: "/devices/<uid>/readings", perm: "API write",
-        about: "Send readings for one device by channel: the usual way to upload, and the one for a batch of buffered readings. Only devices whose type accepts API readings take them; pods do not, their data comes only from the pods themselves. The body is one object or an array of them, each { \"epoch\": optional, \"data\": { channel: value, ... } }. Channels are the device type's channel ids (as on the device's sensors, for example vin or int-temp). Values are numbers (or true and false) in the canonical unit. epoch defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " objects per request. The whole request is checked before anything is stored. A sensor appears with its channel's first value. A channel that already has a reading at that epoch is counted as deduped and not stored again, so a retried upload is safe. Accepted values go through the same pipeline as pod data, so alarm rules apply.",
+        about: "Send readings for one device by channel: the usual way to upload, and the one for a batch of buffered readings. Only devices whose type accepts API readings take them; gateways and the devices they relay do not, their data comes only over MQTT. The body is one object or an array of them, each { \"epoch\": optional, \"data\": { channel: value, ... } }. Channels are the device type's channel ids (as on the device's sensors, for example vin or int-temp). Values are numbers (or true and false) in the canonical unit. epoch defaults to now, may be in the past, and may not be more than 5 minutes in the future. At most " + maxObjects + " objects per request. The whole request is checked before anything is stored. A sensor appears with its channel's first value. A channel that already has a reading at that epoch is counted as deduped and not stored again, so a retried upload is safe. Accepted values go through the same pipeline as gateway data, so alarm rules apply.",
         params: [],
         example: CURL_POST + "-d '[{ \"epoch\": 1791295140, \"data\": { \"vin\": 12.1, \"int-temp\": 24.5 } }, { \"epoch\": 1791295200, \"data\": { \"vin\": 12.08 } }]' \\\n  \"" + apiBase + "/devices/" + DEV + "/readings\"",
         response: { device: DEV, accepted: 3, deduped: 0, results: [{ index: 0, epoch: 1791295140, accepted: 2, deduped: [], skipped: [] }, { index: 1, epoch: 1791295200, accepted: 1, deduped: [], skipped: [] }] },
@@ -158,7 +158,7 @@ function endpoints(s)
           ["sensor", "This sensor's alarms (sensor uid)."]
         ],
         example: CURL + "\"" + apiBase + "/alarms/active?location=" + LOC + "\"",
-        response: { alarms: [{ uid: ALM, name: NAME, severity: "alarm", direction: "lower", raised_epoch: 1791294000, acknowledged: false, suppressed: false, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC, trigger_value: 0.4 }] },
+        response: { alarms: [{ uid: ALM, name: NAME, severity: "alarm", direction: "upper", raised_epoch: 1791294000, acknowledged: false, suppressed: false, sensor: SEN, sensor_name: "Temperature", device: DEV, device_name: "Freezer 2", location: LOC, trigger_value: -6.5 }] },
         note: "trigger_value is in the canonical unit. direction is upper, lower or no_data. Status 400 without account, location, device or sensor; one the key cannot see returns an empty list."
       },
       {
@@ -173,9 +173,9 @@ function endpoints(s)
           ["limit", "Optional. Most alarms per reply, default 500, at most 1000. Paged like readings: while truncated is true, ask again with from set to next_from."]
         ],
         example: CURL + "\"" + apiBase + "/alarms/history?from=1790690400&to=1791295200&location=" + LOC + "\"",
-        response: { from: 1790690400, to: 1791295200, truncated: false, next_from: null, alarms: [{ uid: ALM, name: NAME, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC,
-          direction: "lower", severity: "warning", highest_severity: "alarm", raised_epoch: 1791294000, cleared_epoch: 1791297600, is_active: false, duration_secs: 3600, clear_reason: "returned",
-          acknowledged: true, suppressed: false, trigger_value: 0.4, canonical_unit: "V" }] },
+        response: { from: 1790690400, to: 1791295200, truncated: false, next_from: null, alarms: [{ uid: ALM, name: NAME, sensor: SEN, sensor_name: "Temperature", device: DEV, device_name: "Freezer 2", location: LOC,
+          direction: "upper", severity: "warning", highest_severity: "alarm", raised_epoch: 1791294000, cleared_epoch: 1791297600, is_active: false, duration_secs: 3600, clear_reason: "returned",
+          acknowledged: true, suppressed: false, trigger_value: -6.5, canonical_unit: "C" }] },
         note: "trigger_value is in canonical_unit. A filter that names nothing the key can see returns an empty list. Each uid works with the alarm endpoints."
       },
       {
@@ -183,25 +183,25 @@ function endpoints(s)
         about: "Everything about one alarm, as its page shows it: where it is, the rule that set its severity, every event from raised to cleared with who did it and the notifications each event sent, and the alert group escalation ladders. Values are canonical; the *_display fields are in the display unit." + NAME_NOTE,
         params: [],
         example: CURL + "\"" + apiBase + "/alarms/" + ALM + "\"",
-        response: { alarm: { uid: ALM, name: NAME, direction: "lower", severity: "alarm", highest_severity: "alarm", raised_epoch: 1791294000, cleared_epoch: 1791297600, is_active: false, duration_secs: 3600, clear_reason: "manual",
-          acknowledged: true, acked_epoch: 1791294300, acked_by: "jseese", ack_until_epoch: 1791297900, suppressed: false, trigger_value: 0.4, trigger_display: "0.40 V", canonical_unit: "V", display_unit: "V",
-          sensor: { uid: SEN, name: "Power in", channel: "vin", metric: "voltage" }, device: { uid: DEV, name: "Pod 3" },
-          location: { uid: LOC, name: "Main field", timezone: "America/Chicago" }, account: { uid: "e1f2a3b4-c5d6-4e7f-8091-a2b3c4d5e6f7", name: "Acme" },
-          rule: { uid: RULE, kind: "threshold", direction: "lower", threshold: 10, threshold_display: "10.00 V", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, is_deleted: false },
+        response: { alarm: { uid: ALM, name: NAME, direction: "upper", severity: "alarm", highest_severity: "alarm", raised_epoch: 1791294000, cleared_epoch: 1791297600, is_active: false, duration_secs: 3600, clear_reason: "manual",
+          acknowledged: true, acked_epoch: 1791294300, acked_by: "jseese", ack_until_epoch: 1791297900, suppressed: false, trigger_value: -6.5, trigger_display: "-6.5 C", canonical_unit: "C", display_unit: "C",
+          sensor: { uid: SEN, name: "Temperature", channel: "int-temp", metric: "temperature" }, device: { uid: DEV, name: "Freezer 2" },
+          location: { uid: LOC, name: "Main lab", timezone: "America/Chicago" }, account: { uid: "e1f2a3b4-c5d6-4e7f-8091-a2b3c4d5e6f7", name: "Acme" },
+          rule: { uid: RULE, kind: "threshold", direction: "upper", threshold: -10, threshold_display: "-10.0 C", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, is_deleted: false },
           events: [
-            { epoch: 1791294000, kind: "raised", severity: "alarm", value: 0.4, value_display: "0.40 V", comment: null, actor: { type: "system", name: null },
-              notifications: [{ epoch: 1791294001, channel: "email", outcome: "sent", reason: null, to: "coaches@example.com", recipient_type: "user", ladder: "level 1 of Coaches", subject: "ALARM: " + NAME }] },
-            { epoch: 1791294300, kind: "acknowledged", severity: null, value: null, value_display: null, comment: "Pod unplugged for cleaning", actor: { type: "user", name: "jseese" }, notifications: [] },
-            { epoch: 1791297600, kind: "cleared", severity: "alarm", value: null, value_display: null, comment: "Power restored", actor: { type: "api_credential", name: "Scoreboard" }, notifications: [] }
+            { epoch: 1791294000, kind: "raised", severity: "alarm", value: -6.5, value_display: "-6.5 C", comment: null, actor: { type: "system", name: null },
+              notifications: [{ epoch: 1791294001, channel: "email", outcome: "sent", reason: null, to: "lab@example.com", recipient_type: "user", ladder: "level 1 of Lab staff", subject: "ALARM: " + NAME }] },
+            { epoch: 1791294300, kind: "acknowledged", severity: null, value: null, value_display: null, comment: "Door left open during restock", actor: { type: "user", name: "jseese" }, notifications: [] },
+            { epoch: 1791297600, kind: "cleared", severity: "alarm", value: null, value_display: null, comment: "Temperature back in range", actor: { type: "api_credential", name: "LIMS" }, notifications: [] }
           ],
-          escalations: [{ alert_group: GROUP, alert_group_name: "Coaches", level: 1, level_entered_epoch: 1791294000, is_stopped: true }] } },
+          escalations: [{ alert_group: GROUP, alert_group_name: "Lab staff", level: 1, level_entered_epoch: 1791294000, is_stopped: true }] } },
         note: "Event kinds: raised, escalated, de_escalated, acknowledged, ignored, cleared, re_notified, suppressed. An actor is a user, an API key (api_credential) or the system. Notification outcome is sent, failed or suppressed, with the reason when it was not sent; message bodies are not included. rule is null when no rule set the severity; is_deleted is true when that rule has since been removed. Status 404 when the alarm does not exist or the key may not view it."
       },
       {
         id: "ack", method: "POST", path: "/alarms/<uid>/ack", perm: "Acknowledge alarms",
         about: "Acknowledge an active alarm, which stops its notifications for a while.",
         params: [["comment", "Required, in the JSON body. Up to 500 characters."], ["minutes", "Optional, in the JSON body. How long the acknowledgement lasts, 5 to 1440. Default 60."]],
-        example: CURL_POST + "-d '{ \"comment\": \"Pod unplugged for cleaning\", \"minutes\": 60 }' \\\n  \"" + apiBase + "/alarms/" + ALM + "/ack\"",
+        example: CURL_POST + "-d '{ \"comment\": \"Door left open during restock\", \"minutes\": 60 }' \\\n  \"" + apiBase + "/alarms/" + ALM + "/ack\"",
         response: { ok: true },
         note: "Status 404 when the alarm does not exist or the key may not acknowledge it, 400 when comment is missing, 409 when the alarm is already cleared."
       },
@@ -209,7 +209,7 @@ function endpoints(s)
         id: "clear", method: "POST", path: "/alarms/<uid>/clear", perm: "Clear alarms",
         about: "Clear an active alarm by hand.",
         params: [["comment", "Required, in the JSON body. Up to 500 characters."]],
-        example: CURL_POST + "-d '{ \"comment\": \"Power restored\" }' \\\n  \"" + apiBase + "/alarms/" + ALM + "/clear\"",
+        example: CURL_POST + "-d '{ \"comment\": \"Temperature back in range\" }' \\\n  \"" + apiBase + "/alarms/" + ALM + "/clear\"",
         response: { ok: true },
         note: "Same statuses as acknowledge."
       },
@@ -218,10 +218,10 @@ function endpoints(s)
         about: "The alarm rules (limits) in force now. kind is threshold (direction upper or lower, threshold in the canonical unit, exceed_secs past the limit before it raises, return_secs back inside before it clears) or no_data (timeout_secs without a reading). channel_policy says which transitions (raise, escalate, de_escalate, clear) send email and SMS. use_default_group means the account's default alert group is notified as well as alert_groups. alarm_title is the rule's own title template, or null when it uses the sensor's or a wider one. chart_in_alarm says whether a threshold rule's first alarm email and clear email carry a chart of the sensor; chart_window_secs is how much history it shows, null for Auto (twice exceed_secs, at least 30 days, at most a year).",
         params: [["location", "This location's rules (location uid). One of location, device or sensor is required; given together they narrow each other."], ["device", "This device's rules (device uid)."], ["sensor", "This sensor's rules (sensor uid)."]],
         example: CURL + "\"" + apiBase + "/alarm-rules?sensor=" + SEN + "\"",
-        response: { rules: [{ uid: RULE, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC, kind: "threshold", direction: "lower",
-          threshold: 10, threshold_display: "10.00 V", canonical_unit: "V", display_unit: "V", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, use_default_group: true,
+        response: { rules: [{ uid: RULE, sensor: SEN, sensor_name: "Temperature", device: DEV, device_name: "Freezer 2", location: LOC, kind: "threshold", direction: "upper",
+          threshold: -10, threshold_display: "-10.0 C", canonical_unit: "C", display_unit: "C", severity: "alarm", exceed_secs: 300, return_secs: 300, timeout_secs: null, is_enabled: true, use_default_group: true,
           channel_policy: { raise: { email: true, sms: false }, escalate: { email: true, sms: false }, de_escalate: { email: true, sms: false }, clear: { email: true, sms: false } }, alarm_title: null,
-          chart_in_alarm: true, chart_window_secs: null, alert_groups: [{ uid: GROUP, name: "Coaches" }], created_epoch: 1790000000 }] },
+          chart_in_alarm: true, chart_window_secs: null, alert_groups: [{ uid: GROUP, name: "Lab staff" }], created_epoch: 1790000000 }] },
         note: "channel_policy is null for a rule never saved from its form; it then sends on every channel. Status 400 without location, device or sensor; one that names nothing the key can see returns an empty list. Each rule's uid is what GET /alarm-rules/changes takes."
       },
       {
@@ -235,12 +235,12 @@ function endpoints(s)
         ],
         example: CURL + "\"" + apiBase + "/alarm-rules/changes?rule=" + RULE + "&from=1790690400\"",
         response: { from: 1790690400, to: 1791295200, truncated: false, next_from: null, changes: [
-          { epoch: 1791200000, rule: RULE, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC,
-            change: "threshold", old_value: 9, new_value: 10, old_display: "9.00 V", new_display: "10.00 V", actor: { type: "user", name: "jseese" } },
-          { epoch: 1791200400, rule: RULE, sensor: SEN, sensor_name: "Power in", device: DEV, device_name: "Pod 3", location: LOC,
-            change: "alert_groups", old_value: null, new_value: "Coaches", old_display: "none", new_display: "Coaches", actor: { type: "user", name: "jseese" } }
+          { epoch: 1791200000, rule: RULE, sensor: SEN, sensor_name: "Temperature", device: DEV, device_name: "Freezer 2", location: LOC,
+            change: "threshold", old_value: -12, new_value: -10, old_display: "-12.0 C", new_display: "-10.0 C", actor: { type: "user", name: "jseese" } },
+          { epoch: 1791200400, rule: RULE, sensor: SEN, sensor_name: "Temperature", device: DEV, device_name: "Freezer 2", location: LOC,
+            change: "alert_groups", old_value: null, new_value: "Lab staff", old_display: "none", new_display: "Lab staff", actor: { type: "user", name: "jseese" } }
         ] },
-        note: "In created and deleted rows the whole rule comes back as an object with typed values, plus reason when the system made the change: { \"rule_kind\": \"threshold\", \"direction\": \"lower\", \"threshold\": 10, \"is_enabled\": true, ..., \"reason\": \"sensor deleted\" }. actor type is user, api_credential or system (rules a device type adds when a sensor first reports). Rules removed along with a deleted sensor or device carry the reason in the deleted row; rules of a deleted location are no longer visible to any key."
+        note: "In created and deleted rows the whole rule comes back as an object with typed values, plus reason when the system made the change: { \"rule_kind\": \"threshold\", \"direction\": \"upper\", \"threshold\": -10, \"is_enabled\": true, ..., \"reason\": \"sensor deleted\" }. actor type is user, api_credential or system (rules a device type adds when a sensor first reports). Rules removed along with a deleted sensor or device carry the reason in the deleted row; rules of a deleted location are no longer visible to any key."
       }
     ];
 }
@@ -315,7 +315,7 @@ function pageCalls(s, page)
     else if (page.kind === "location-devices")
     {
         const l = page.location.uid;
-        call("devices", "Every live device at this location, gateways and pods alike (kind tells them apart), with its last seen time.", line("/devices?location=" + l));
+        call("devices", "Every live device at this location, gateways and devices alike (kind tells them apart), with its last seen time.", line("/devices?location=" + l));
         call("silent-devices", "Devices here with no data for 24 hours or more; change minutes for another span.", line("/devices/silent?location=" + l + "&minutes=1440"));
     }
     else if (page.kind === "location-alarms")
@@ -359,7 +359,7 @@ function text(s)
         keySteps:
         [
             "Open the [API Keys](@/api) tab (Account > API).",
-            "Under API credentials, give the key a name that says who uses it, for example \"Scoreboard\".",
+            "Under API credentials, give the key a name that says who uses it, for example \"LIMS\".",
             "Optionally set Expires (days). Leave it blank for a key that does not expire.",
             "Tick the permissions the program needs, and no more (see [Permissions](#permissions)). You can only give a key permissions you hold yourself.",
             "Click Create key and copy the key from the green box. It is shown once and never stored; if it is lost, revoke it and create a new one."
@@ -416,7 +416,7 @@ function text(s)
             "`x-iot-signature`: `sha256=` followed by the HMAC SHA-256 of the raw body, keyed with the signing secret, in hex"
         ],
         retries: "Reply with any 2xx status within 10 seconds. Anything else is retried after 1, 5, 30 and 120 minutes, then marked failed. Deliveries still waiting when a webhook is paused or removed are marked failed. The Recent column on the Webhooks tab shows the last five deliveries.",
-        readingSample: { event: "reading", device: DEV, epoch: 1791295200, readings: [{ sensor: SEN, channel: "vin", metric: "voltage", value: 12.1, epoch: 1791295200 }] },
+        readingSample: { event: "reading", device: DEV, epoch: 1791295200, readings: [{ sensor: SEN, channel: "int-temp", metric: "temperature", value: -18.2, epoch: 1791295200 }] },
         readingText: "Values are in the canonical unit. Use the device and sensor uids with the API.",
         alarmSample: { event: "alarm", device: DEV, epoch: 1791294000, alarm: ALM, sensor: SEN, direction: "lower", kind: "raised", severity: "alarm" },
         alarmText: "`kind` is raised, escalated, de_escalated, cleared or suppressed; `direction` is upper, lower or no_data. Use the alarm uid with the [alarm endpoints](@/api/docs#alarm-detail) for the whole story, including its title.",

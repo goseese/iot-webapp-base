@@ -134,7 +134,7 @@ async function startWeb()
     const eventLog = require("./middleware/eventLog");
     app.use(eventLog.early());
     app.use("/provision/v1", require("./routes/provision")); // unauthenticated device first contact; must precede /api/v1
-    app.use("/firmware", require("./routes/firmware"));       // unauthenticated pod firmware downloads (services/firmware.js)
+    app.use("/firmware", require("./routes/firmware"));       // unauthenticated device firmware downloads (services/firmware.js)
     app.use("/api/v1", require("./routes/api"));            // bearer only, before session and CSRF
 
     const sessionMiddleware = require("./middleware/session").build();

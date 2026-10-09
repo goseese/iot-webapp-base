@@ -1,10 +1,10 @@
 # Device provisioning: firmware guide
 
-How a pod (a controller pod, an account pod, or any device that holds its own MQTT login) gets its
-credentials from the Voltastc server, and what it does when it is connected, when a connection
-fails, and when its credentials stop working. Written for firmware work; the server side is in
-`dynsec-broker-summary.md` and `DECISIONS.md`. Target pods do not provision: they talk ESP-NOW to
-their controller pod, which relays their data under its own login.
+How a gateway (or any device that holds its own MQTT login) gets its credentials from the server,
+and what it does when it is connected, when a connection fails, and when its credentials stop
+working. Written for firmware work; the server side is in `dynsec-broker-summary.md` and
+`DECISIONS.md`. Nodes behind a gateway do not provision: the gateway relays their data under its
+own login. Examples use `iot.example.com`; use the site's own domain.
 
 ## The model in one paragraph
 
@@ -20,7 +20,7 @@ within 30 days. When they stop working, the device provisions again.
 
 | Item | Value |
 |---|---|
-| Broker | `app.voltastc.com`, port 8883, TLS |
+| Broker | the site's domain, port 8883, TLS |
 | Root CA | ISRG Root X1, for both the broker and HTTPS (pin the root, never an intermediate) |
 | First contact login | username `announce`, password: the shared value, the same in every image |
 | Its own MAC | 12 hex digits |
@@ -37,7 +37,7 @@ provisioning URL permanently; read it fresh each time (step 1), because the serv
 3. Parse the JSON, disconnect.
 
 ```json
-{"url":"https://app.voltastc.com/provision/v1","published":"2026-09-26T23:13:15Z"}
+{"url":"https://iot.example.com/provision/v1","published":"2026-09-26T23:13:15Z"}
 ```
 
 Use `url`. Ignore every other field (`published` is for humans; more fields may be added later).
@@ -94,7 +94,7 @@ Write GUID and password to flash together, and only after a complete 200 answer 
 | Password | the password |
 | Client id | `{model}-{mac}`, lower case MAC. The same on every boot and unique per unit; two connections with the same id evict each other |
 | Keepalive | 60 s |
-| Last will | topic `dev/{guid}/status`, payload `{"online":false}`, retained, QoS 1. A clean DISCONNECT discards it, so publish the same yourself first, or use MQTT 5 reason 0x04 (`pod-protocol.md` section 2) |
+| Last will | topic `dev/{guid}/status`, payload `{"online":false}`, retained, QoS 1. A clean DISCONNECT discards it, so publish the same yourself first, or use MQTT 5 reason 0x04 (`command-protocol.md` section 1) |
 
 Once connected:
 
@@ -104,7 +104,7 @@ Once connected:
    and whatever connectivity details the type defines). Any later status publish is **not
    retained**, so the broker keeps the connect message as the unit's current state.
 3. Publish each config value to `dev/{guid}/config/{key}`, one value per publish, **not retained**.
-4. From then on, publish your own readings to `dev/{guid}/data` and relayed target pod traffic to
+4. From then on, publish your own readings to `dev/{guid}/data` and relayed node traffic to
    `dev/{guid}/frame`, not retained, QoS 1.
 5. Handle commands arriving on `dev/{guid}/cmd` and anything under it, and publish
    `dev/{guid}/cmd_ack` when a command is heard.
@@ -116,7 +116,8 @@ Once connected:
 | `dev/{guid}/status` | connect message only | connect message (retained), other status (not retained). Firmware version as `firmware`. LWT `{"online":false}` |
 | `dev/{guid}/data` | no | flat JSON of the unit's own readings; the keys are mapped by the device type's `dataMap` on the server |
 | `dev/{guid}/config/{key}` | no | the bare value, e.g. topic `.../config/rf_channel`, payload `11` |
-| `dev/{guid}/frame` | no | one relayed frame from a device this unit hears (a target pod) |
+| `dev/{guid}/frame` | no | one relayed frame from a device this unit hears (a node) |
+| `dev/{guid}/ble` | no | one relayed BLE beacon: `{"dmac":"C3A1B2C3D4E5","rssi":-71,"count":3,"data":"AAFE21..."}`, the advertisement in hex (`DECISIONS.md`, "BLE uplink is one beacon per publish") |
 | `dev/{guid}/cmd_ack` | no | `{"event":"cmd_ack","value":...}` when a command was heard |
 | `dev/{guid}/geoscan` | no | `{"event":"geoscan","wifi":[{bssid,ssid,rssi,ch}]}` if the product ever reports it |
 
@@ -143,8 +144,9 @@ Commands arrive on `dev/{guid}/cmd/{name}` (and the bare `dev/{guid}/cmd`), with
 command names as declared in the device type's `commands` list. They are never retained or queued by
 the server: a command sent while the unit is offline is not delivered later.
 
-Pods use queued commands instead, on `dev/{guid}/cmd/q` with an ack on `dev/{guid}/cmd_ack`: see
-`pod-protocol.md`, section 5.
+A type with `commandQueue: true` uses queued commands instead, on `dev/{guid}/cmd/q` with an ack
+`{"id":...,"ok":...}` on `dev/{guid}/cmd_ack` after the command is applied: see
+`command-protocol.md`, section 2. The `{"event":"cmd_ack",...}` form above is for unqueued commands.
 
 ## When the MQTT connection fails
 
@@ -205,20 +207,20 @@ digit 2, 6, A or E, for example `020000000001`, so it can never collide with rea
 model string a device type on the server lists:
 
 ```
-ANNOUNCE_PASSWORD='...' ./scripts/provision-test.sh --broker app.voltastc.com --mac 020000000001 --model <model>
+ANNOUNCE_PASSWORD='...' ./scripts/provision-test.sh --broker iot.example.com --mac 020000000001 --model <model>
 ```
 
 On the server, to remove the test unit completely and test first contact again:
 
 ```
-cd /opt/voltastc && sudo runuser -u voltastc -- node scripts/reset-test-unit.js 020000000001 --yes
+cd /opt/<slug> && sudo runuser -u <slug> -- node scripts/reset-test-unit.js 020000000001 --yes
 ```
 
 ## Open items for firmware
 
-- **Model strings:** the server provisions `vpod-ctl` (controller pod) and `vpod-acct` (account pod).
-  Target pod models (`vpod-acc`, `vpod-tof`) get 400: they never connect to the broker
-  (`pod-protocol.md`).
+- **Model strings:** the server provisions the models a gateway or direct type lists in `models`
+  (today `gw7080`, and `gw-cell-1`, `gw-eth-1`, `gw-wifi-1` from `gateway_generic`). Any other model
+  gets 400.
 - **Certificate chain:** check what a device actually receives on 443 and 8883 before building
   firmware (see `dynsec-broker-summary.md`, Open items). Expect the leaf, the intermediate, and an
   issuer chaining to ISRG Root X1.

@@ -1,6 +1,6 @@
-<%# Pod firmware (routes/admin.js, services/firmware.js): one card per image, the current file and
+<%# Device firmware (routes/admin.js, services/firmware.js): one card per image, the current file and
     its upload. The upload posts the file itself as the body (see the script below). %>
-<p class="text-secondary small">Each image has one current file, which "Update firmware" sends to the pods that run it. Uploading replaces it; a pod part way through a download finishes the previous file. Upload the sketch's <code>.ino.bin</code> (Arduino IDE: Sketch, Export Compiled Binary), up to <%= maxMb %> MB.</p>
+<p class="text-secondary small">Each image has one current file, which "Update firmware" sends to the devices that run it. Uploading replaces it; a device part way through a download finishes the previous file. Upload the sketch's <code>.ino.bin</code> (Arduino IDE: Sketch, Export Compiled Binary), up to <%= maxMb %> MB.</p>
 <div class="row g-3">
 <% cards.forEach(function (c) { var f = c.file; %>
   <div class="col-12 col-xl-6">
@@ -8,7 +8,7 @@
       <div class="iot-panel__header"><strong><%= c.types.join(", ") %></strong> <code class="ms-2 small"><%= c.image %></code></div>
       <div class="iot-panel__body">
         <% if (!f) { %>
-        <div class="alert alert-secondary py-2">No file yet. Pods of these types cannot be updated until one is uploaded.</div>
+        <div class="alert alert-secondary py-2">No file yet. Devices of these types cannot be updated until one is uploaded.</div>
         <% } else { %>
         <table class="table table-sm iot-table mb-3" data-tools="none">
           <tbody>
@@ -22,7 +22,7 @@
           </tbody>
         </table>
         <% } %>
-        <% if (c.waiting) { %><div class="small text-secondary mb-2"><%= c.waiting %> firmware update<%= c.waiting === 1 ? "" : "s" %> for this image waiting in pod queues.</div><% } %>
+        <% if (c.waiting) { %><div class="small text-secondary mb-2"><%= c.waiting %> firmware update<%= c.waiting === 1 ? "" : "s" %> for this image waiting in device queues.</div><% } %>
         <form class="fw-upload row g-2 align-items-end" data-image="<%= c.image %>">
           <div class="col-12 col-md-6"><label class="form-label small mb-1">Firmware file</label><input class="form-control form-control-sm" type="file" name="file" accept=".bin" required></div>
           <div class="col-6 col-md-3"><label class="form-label small mb-1">Version</label><input class="form-control form-control-sm" name="version" placeholder="1.0.2" maxlength="32" required pattern="[0-9A-Za-z._+\-]{1,32}"></div>
