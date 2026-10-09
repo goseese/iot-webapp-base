@@ -38,8 +38,10 @@ function connectsItself(device)
 // placement is unclaimed: it is connected with valid credentials and there is nowhere for its data
 // to go, which is expected, not an error.
 //
-// Returns { gateway, unit }. gateway is null when there is nowhere to deliver.
-async function resolve(guid)
+// Returns { gateway, unit }. gateway is null when there is nowhere to deliver. heard is false for a
+// message the server itself published on the unit's topic (an empty status: a retained status
+// clear), which must not count as hearing from the unit.
+async function resolve(guid, heard)
 {
     const unit = await credentials.forGuid(guid);
     if (!unit)
@@ -52,9 +54,16 @@ async function resolve(guid)
 
     // First message ever from this unit over MQTT. The 30 day cleanup revokes units that were issued
     // credentials and never got this far, so stamp it once; later messages skip the write.
-    if (unit.mqtt_seen_epoch === null || unit.mqtt_seen_epoch === undefined)
+    if (heard && (unit.mqtt_seen_epoch === null || unit.mqtt_seen_epoch === undefined))
     {
         await knex(T("device_credentials")).where({ id: unit.id }).whereNull("mqtt_seen_epoch").update({ mqtt_seen_epoch: nowEpoch() });
+    }
+    // Last heard, at most once an hour per unit (DECISIONS "Retained status cleanup"). Hearing a unit
+    // again also undoes a retained status clear: it republishes its retained connect message.
+    const now = nowEpoch();
+    if (heard && (unit.mqtt_last_epoch === null || unit.mqtt_last_epoch === undefined || Number(unit.mqtt_last_epoch) < now - 3600))
+    {
+        await knex(T("device_credentials")).where({ id: unit.id }).update({ mqtt_last_epoch: now, status_cleared_epoch: null });
     }
 
     const placement = await credentials.currentPlacement(unit.mac);
@@ -99,7 +108,7 @@ async function handle(topic, payload, meta)
     if (!t) { return; }
 
     const receipt = nowEpoch();
-    const { gateway, unit } = await resolve(t.guid);
+    const { gateway, unit } = await resolve(t.guid, !(t.channel === "status" && payload.length === 0));
 
     // Config belongs to the unit (MAC), so it is kept even while the unit has no placement.
     if (t.channel === "config")

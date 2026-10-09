@@ -31,6 +31,7 @@ const DEFAULTS =
     { key: "EVENT_LOG_DAYS", value: "30", kind: "int", group: "logging", description: "Days of event log kept (every request and the events it records).", min: 1, max: 365 },
     { key: "DEVICE_FRAMES_HOURS", value: "24", kind: "int", group: "logging", description: "Hours dedup frame claims are kept.", min: 1, max: 168 },
     { key: "RAW_PUBLISH_LOG_DAYS", value: "0", kind: "int", group: "logging", description: "Days of raw MQTT payloads kept for parser debugging. 0 = off.", min: 0, max: 30 },
+    { key: "RETAINED_STATUS_DAYS", value: "30", kind: "int", group: "logging", description: "Days a unit may be silent before the daily job clears its retained status from the broker (a lost or retired gateway). A unit that comes back republishes it. 0 turns the cleanup off.", min: 0, max: 3650 },
     { key: "PURGE_BATCH_ROWS", value: "2000", kind: "int", group: "logging", description: "Rows deleted per purge batch.", min: 100, max: 20000 },
 
     { key: "API_RATE_PER_MINUTE", value: "120", kind: "int", group: "api", description: "API requests per minute per credential.", min: 10, max: 10000 },

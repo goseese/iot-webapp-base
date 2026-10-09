@@ -184,8 +184,14 @@ async function resetUnit(mac)
 {
     const cred = await credentials.forMac(mac);
     if (!cred) { return false; }
-    await broker.active().removeDeviceUser(String(cred.broker_username).toLowerCase());
-    await knex(T("device_credentials")).where({ id: cred.id }).update({ state: "pending", rotated_epoch: nowEpoch(), broker_password_enc: null, broker_fault: null });
+    const guid = String(cred.broker_username).toLowerCase();
+    await broker.active().removeDeviceUser(guid);
+    // Its retained status would stay on the broker for good (DECISIONS "Retained status cleanup").
+    // Deleting the dynsec client kicks the unit without its will (mosquitto dynamic-security
+    // clients.c, with_will false), so nothing republishes it after this. With no broker connection
+    // the clear is only logged; the daily cleanup clears it later.
+    const cleared = await require("../mqtt/downlink").clearRetained(topics.device.status(guid));
+    await knex(T("device_credentials")).where({ id: cred.id }).update({ state: "pending", rotated_epoch: nowEpoch(), broker_password_enc: null, broker_fault: null, status_cleared_epoch: cleared ? nowEpoch() : null });
     logger.info({ mac: mac, unit: cred.broker_username }, "unit credentials revoked; pending reissue");
     return true;
 }

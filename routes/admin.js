@@ -231,7 +231,7 @@ const SECTIONS =
     logging:
     [
         ["Data retention", ["RETENTION_DAYS_DEFAULT", "REPORT_FILE_DAYS"]],
-        ["Logs and purge", ["EVENT_LOG_DAYS", "DEVICE_FRAMES_HOURS", "RAW_PUBLISH_LOG_DAYS", "PURGE_BATCH_ROWS"]]
+        ["Logs and purge", ["EVENT_LOG_DAYS", "DEVICE_FRAMES_HOURS", "RAW_PUBLISH_LOG_DAYS", "RETAINED_STATUS_DAYS", "PURGE_BATCH_ROWS"]]
     ]
 };
 
